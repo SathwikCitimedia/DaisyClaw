@@ -273,7 +273,7 @@
   min-height: 38px;
   padding: 0 14px;
   border: 1px solid color-mix(in srgb, var(--border) 88%, transparent);
-  border-radius: var(--radius-full);
+  border-radius: 9px;
   background: color-mix(in srgb, var(--bg-elevated) 84%, transparent);
   color: var(--muted);
   font-size: 13px;

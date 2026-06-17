@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: daisyclaw
+    runtime: docker
+    plan: starter
+    healthCheckPath: /health
+    envVars:
+      - key: DAISYCLAW_GATEWAY_PORT
+        value: "8080"
+      - key: DAISYCLAW_STATE_DIR
+        value: /data/.daisyclaw
+      - key: DAISYCLAW_WORKSPACE_DIR
+        value: /data/workspace
+      - key: DAISYCLAW_GATEWAY_TOKEN
+        generateValue: true
+    disk:
+      name: daisyclaw-data
+      mountPath: /data
+      sizeGB: 1

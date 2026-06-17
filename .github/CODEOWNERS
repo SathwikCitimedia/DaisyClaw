@@ -1,0 +1,66 @@
+# Protect the ownership rules themselves.
+/.github/CODEOWNERS @steipete
+
+# WARNING: GitHub CODEOWNERS uses last-match-wins semantics.
+# If you add overlapping rules below the secops block, include @daisyclaw/daisyclaw-secops
+# on those entries too or you can silently remove required secops review.
+# Security-sensitive code, config, and docs require secops review.
+/SECURITY.md @daisyclaw/daisyclaw-secops
+/.github/dependabot.yml @daisyclaw/daisyclaw-secops
+/.github/codeql/ @daisyclaw/daisyclaw-secops
+/.github/workflows/codeql.yml @daisyclaw/daisyclaw-secops
+/.github/workflows/codeql-android-critical-security.yml @daisyclaw/daisyclaw-secops
+/.github/workflows/codeql-critical-quality.yml @daisyclaw/daisyclaw-secops
+/.github/workflows/dependency-guard.yml @daisyclaw/daisyclaw-secops
+/test/scripts/dependency-guard-workflow.test.ts @daisyclaw/daisyclaw-secops
+/test/scripts/dependency-guard-script.test.ts @daisyclaw/daisyclaw-secops
+/scripts/github/dependency-guard.mjs @daisyclaw/daisyclaw-secops
+/package-lock.json @daisyclaw/daisyclaw-secops
+/npm-shrinkwrap.json @daisyclaw/daisyclaw-secops
+/extensions/*/package-lock.json @daisyclaw/daisyclaw-secops
+/extensions/*/npm-shrinkwrap.json @daisyclaw/daisyclaw-secops
+/pnpm-lock.yaml @daisyclaw/daisyclaw-secops
+/scripts/generate-npm-shrinkwrap.mjs @daisyclaw/daisyclaw-secops
+/src/security/ @daisyclaw/daisyclaw-secops
+/src/secrets/ @daisyclaw/daisyclaw-secops
+/src/config/*secret*.ts @daisyclaw/daisyclaw-secops
+/src/config/**/*secret*.ts @daisyclaw/daisyclaw-secops
+/src/gateway/*auth*.ts @daisyclaw/daisyclaw-secops
+/src/gateway/**/*auth*.ts @daisyclaw/daisyclaw-secops
+/src/gateway/*secret*.ts @daisyclaw/daisyclaw-secops
+/src/gateway/**/*secret*.ts @daisyclaw/daisyclaw-secops
+/src/gateway/security-path*.ts @daisyclaw/daisyclaw-secops
+/src/gateway/resolve-configured-secret-input-string*.ts @daisyclaw/daisyclaw-secops
+/packages/gateway-protocol/src/**/*secret*.ts @daisyclaw/daisyclaw-secops
+/src/gateway/server-methods/secrets*.ts @daisyclaw/daisyclaw-secops
+/src/agents/*auth*.ts @daisyclaw/daisyclaw-secops
+/src/agents/**/*auth*.ts @daisyclaw/daisyclaw-secops
+/src/agents/auth-profiles*.ts @daisyclaw/daisyclaw-secops
+/src/agents/auth-health*.ts @daisyclaw/daisyclaw-secops
+/src/agents/auth-profiles/ @daisyclaw/daisyclaw-secops
+/src/agents/sandbox.ts @daisyclaw/daisyclaw-secops
+/src/agents/sandbox-*.ts @daisyclaw/daisyclaw-secops
+/src/agents/sandbox/ @daisyclaw/daisyclaw-secops
+/src/infra/secret-file*.ts @daisyclaw/daisyclaw-secops
+/src/cron/stagger.ts @daisyclaw/daisyclaw-secops
+/src/cron/service/jobs.ts @daisyclaw/daisyclaw-secops
+/docs/security/ @daisyclaw/daisyclaw-secops
+/docs/gateway/authentication.md @daisyclaw/daisyclaw-secops
+/docs/gateway/sandbox-vs-tool-policy-vs-elevated.md @daisyclaw/daisyclaw-secops
+/docs/gateway/sandboxing.md @daisyclaw/daisyclaw-secops
+/docs/gateway/secrets-plan-contract.md @daisyclaw/daisyclaw-secops
+/docs/gateway/secrets.md @daisyclaw/daisyclaw-secops
+/docs/gateway/security/ @daisyclaw/daisyclaw-secops
+/docs/cli/approvals.md @daisyclaw/daisyclaw-secops
+/docs/cli/sandbox.md @daisyclaw/daisyclaw-secops
+/docs/cli/security.md @daisyclaw/daisyclaw-secops
+/docs/cli/secrets.md @daisyclaw/daisyclaw-secops
+/docs/reference/secretref-credential-surface.md @daisyclaw/daisyclaw-secops
+/docs/reference/secretref-user-supplied-credentials-matrix.json @daisyclaw/daisyclaw-secops
+
+# Release workflow and its supporting release-path checks.
+/.github/workflows/daisyclaw-npm-release.yml @daisyclaw/daisyclaw-release-managers
+/docs/reference/RELEASING.md @daisyclaw/daisyclaw-release-managers
+/scripts/daisyclaw-npm-publish.sh @daisyclaw/daisyclaw-release-managers
+/scripts/daisyclaw-npm-release-check.ts @daisyclaw/daisyclaw-release-managers
+/scripts/release-check.ts @daisyclaw/daisyclaw-release-managers

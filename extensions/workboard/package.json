@@ -1,0 +1,27 @@
+{
+  "name": "@daisyclaw/workboard",
+  "version": "2026.6.2",
+  "private": true,
+  "description": "DaisyClaw dashboard workboard plugin",
+  "type": "module",
+  "dependencies": {
+    "typebox": "1.1.39"
+  },
+  "devDependencies": {
+    "@daisyclaw/plugin-sdk": "workspace:*",
+    "daisyclaw": "workspace:*"
+  },
+  "peerDependencies": {
+    "daisyclaw": ">=2026.6.2"
+  },
+  "peerDependenciesMeta": {
+    "daisyclaw": {
+      "optional": true
+    }
+  },
+  "daisyclaw": {
+    "extensions": [
+      "./index.ts"
+    ]
+  }
+}

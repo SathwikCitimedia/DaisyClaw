@@ -1,0 +1,15 @@
+{
+  "name": "@daisyclaw/admin-http-rpc",
+  "version": "2026.6.2",
+  "private": true,
+  "description": "DaisyClaw admin HTTP RPC endpoint",
+  "type": "module",
+  "devDependencies": {
+    "@daisyclaw/plugin-sdk": "workspace:*"
+  },
+  "daisyclaw": {
+    "extensions": [
+      "./index.ts"
+    ]
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "name": "@daisyclaw/migrate-hermes",
+  "version": "2026.6.2",
+  "private": true,
+  "description": "Hermes to DaisyClaw migration provider",
+  "type": "module",
+  "dependencies": {
+    "yaml": "2.9.0"
+  },
+  "devDependencies": {
+    "@daisyclaw/plugin-sdk": "workspace:*",
+    "daisyclaw": "workspace:*"
+  },
+  "peerDependencies": {
+    "daisyclaw": ">=2026.6.2"
+  },
+  "peerDependenciesMeta": {
+    "daisyclaw": {
+      "optional": true
+    }
+  },
+  "daisyclaw": {
+    "extensions": [
+      "./index.ts"
+    ]
+  }
+}

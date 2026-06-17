@@ -1,0 +1,10 @@
+{
+  "name": "@daisyclaw/video-generation-core",
+  "version": "2026.6.2",
+  "private": true,
+  "description": "DaisyClaw video generation runtime package",
+  "type": "module",
+  "devDependencies": {
+    "@daisyclaw/plugin-sdk": "workspace:*"
+  }
+}

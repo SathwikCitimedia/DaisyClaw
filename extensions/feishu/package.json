@@ -1,0 +1,64 @@
+{
+  "name": "@daisyclaw/feishu",
+  "version": "2026.6.2",
+  "description": "DaisyClaw Feishu/Lark channel plugin for chats and workplace tools (community maintained by @m1heng).",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/daisyclaw/daisyclaw"
+  },
+  "type": "module",
+  "dependencies": {
+    "@larksuiteoapi/node-sdk": "1.66.0",
+    "typebox": "1.1.39",
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "@daisyclaw/plugin-sdk": "workspace:*",
+    "daisyclaw": "workspace:*"
+  },
+  "peerDependencies": {
+    "daisyclaw": ">=2026.6.2"
+  },
+  "peerDependenciesMeta": {
+    "daisyclaw": {
+      "optional": true
+    }
+  },
+  "daisyclaw": {
+    "extensions": [
+      "./index.ts"
+    ],
+    "setupEntry": "./setup-entry.ts",
+    "setupFeatures": {
+      "legacyStateMigrations": true
+    },
+    "channel": {
+      "id": "feishu",
+      "label": "Feishu",
+      "selectionLabel": "Feishu/Lark (飞书)",
+      "docsPath": "/channels/feishu",
+      "docsLabel": "feishu",
+      "blurb": "飞书/Lark enterprise messaging with doc/wiki/drive tools.",
+      "aliases": [
+        "lark"
+      ],
+      "order": 35,
+      "quickstartAllowFrom": true
+    },
+    "install": {
+      "npmSpec": "@daisyclaw/feishu",
+      "defaultChoice": "npm",
+      "minHostVersion": ">=2026.5.29"
+    },
+    "compat": {
+      "pluginApi": ">=2026.6.2"
+    },
+    "build": {
+      "daisyclawVersion": "2026.6.2"
+    },
+    "release": {
+      "publishToClawHub": true,
+      "publishToNpm": true
+    }
+  }
+}

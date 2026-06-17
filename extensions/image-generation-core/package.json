@@ -1,0 +1,10 @@
+{
+  "name": "@daisyclaw/image-generation-core",
+  "version": "2026.6.2",
+  "private": true,
+  "description": "DaisyClaw image generation runtime package",
+  "type": "module",
+  "devDependencies": {
+    "@daisyclaw/plugin-sdk": "workspace:*"
+  }
+}

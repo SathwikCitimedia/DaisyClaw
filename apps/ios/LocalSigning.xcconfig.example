@@ -1,0 +1,17 @@
+// Copy to LocalSigning.xcconfig for personal local signing overrides.
+// This file is only an example and should stay committed.
+
+DAISYCLAW_CODE_SIGN_STYLE = Automatic
+DAISYCLAW_DEVELOPMENT_TEAM = YOUR_TEAM_ID
+
+DAISYCLAW_APP_BUNDLE_ID = ai.daisyclaw.client
+DAISYCLAW_SHARE_BUNDLE_ID = ai.daisyclaw.client.share
+DAISYCLAW_ACTIVITY_WIDGET_BUNDLE_ID = ai.daisyclaw.client.activitywidget
+DAISYCLAW_WATCH_APP_BUNDLE_ID = ai.daisyclaw.client.watchkitapp
+DAISYCLAW_WATCH_EXTENSION_BUNDLE_ID = ai.daisyclaw.client.watchkitapp.extension
+
+// Leave empty with automatic signing.
+DAISYCLAW_APP_PROFILE =
+DAISYCLAW_SHARE_PROFILE =
+DAISYCLAW_WATCH_APP_PROFILE =
+DAISYCLAW_WATCH_EXTENSION_PROFILE =

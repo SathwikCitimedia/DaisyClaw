@@ -1,0 +1,22 @@
+// Default signing values for shared/repo builds.
+// Auto-selected local team overrides live in .local-signing.xcconfig (git-ignored).
+// Manual local overrides can go in LocalSigning.xcconfig (git-ignored).
+
+#include "Config/Version.xcconfig"
+
+DAISYCLAW_CODE_SIGN_STYLE = Manual
+DAISYCLAW_DEVELOPMENT_TEAM = Y5PE65HELJ
+
+DAISYCLAW_APP_BUNDLE_ID = ai.daisyclaw.client
+DAISYCLAW_SHARE_BUNDLE_ID = ai.daisyclaw.client.share
+DAISYCLAW_WATCH_APP_BUNDLE_ID = ai.daisyclaw.client.watchkitapp
+DAISYCLAW_WATCH_EXTENSION_BUNDLE_ID = ai.daisyclaw.client.watchkitapp.extension
+DAISYCLAW_ACTIVITY_WIDGET_BUNDLE_ID = ai.daisyclaw.client.activitywidget
+
+DAISYCLAW_APP_PROFILE = ai.daisyclaw.client Development
+DAISYCLAW_SHARE_PROFILE = ai.daisyclaw.client.share Development
+
+// Keep local includes after defaults: xcconfig is evaluated top-to-bottom,
+// so later assignments in local files override the defaults above.
+#include? ".local-signing.xcconfig"
+#include? "LocalSigning.xcconfig"

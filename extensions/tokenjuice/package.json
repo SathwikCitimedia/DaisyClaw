@@ -1,0 +1,47 @@
+{
+  "name": "@daisyclaw/tokenjuice",
+  "version": "2026.6.2",
+  "description": "DaisyClaw tokenjuice exec output compaction plugin",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/daisyclaw/daisyclaw"
+  },
+  "type": "module",
+  "dependencies": {
+    "tokenjuice": "0.8.0"
+  },
+  "peerDependencies": {
+    "daisyclaw": ">=2026.6.2"
+  },
+  "peerDependenciesMeta": {
+    "daisyclaw": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@daisyclaw/plugin-sdk": "workspace:*",
+    "daisyclaw": "workspace:*"
+  },
+  "daisyclaw": {
+    "extensions": [
+      "./index.ts"
+    ],
+    "install": {
+      "clawhubSpec": "clawhub:@daisyclaw/tokenjuice",
+      "npmSpec": "@daisyclaw/tokenjuice",
+      "defaultChoice": "npm",
+      "minHostVersion": ">=2026.5.28"
+    },
+    "compat": {
+      "pluginApi": ">=2026.6.2"
+    },
+    "build": {
+      "daisyclawVersion": "2026.6.2",
+      "bundledDist": false
+    },
+    "release": {
+      "publishToClawHub": true,
+      "publishToNpm": true
+    }
+  }
+}

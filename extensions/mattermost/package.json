@@ -1,0 +1,44 @@
+{
+  "name": "@daisyclaw/mattermost",
+  "version": "2026.6.2",
+  "description": "DaisyClaw Mattermost channel plugin",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/daisyclaw/daisyclaw"
+  },
+  "type": "module",
+  "dependencies": {
+    "ws": "8.21.0",
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "@daisyclaw/plugin-sdk": "workspace:*",
+    "daisyclaw": "workspace:*"
+  },
+  "peerDependencies": {
+    "daisyclaw": ">=2026.6.2"
+  },
+  "peerDependenciesMeta": {
+    "daisyclaw": {
+      "optional": true
+    }
+  },
+  "daisyclaw": {
+    "extensions": [
+      "./index.ts"
+    ],
+    "setupEntry": "./setup-entry.ts",
+    "channel": {
+      "id": "mattermost",
+      "label": "Mattermost",
+      "selectionLabel": "Mattermost (plugin)",
+      "docsPath": "/channels/mattermost",
+      "docsLabel": "mattermost",
+      "blurb": "self-hosted Slack-style chat; install the plugin to enable.",
+      "order": 65
+    },
+    "install": {
+      "minHostVersion": ">=2026.4.10"
+    }
+  }
+}

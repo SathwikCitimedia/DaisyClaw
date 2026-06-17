@@ -1,0 +1,97 @@
+#!/usr/bin/env -S node --import tsx
+// Daisyclaw Npm Prepublish Verify script supports DaisyClaw repository automation.
+
+import { mkdtempSync, readFileSync, realpathSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { pathToFileURL } from "node:url";
+import { formatErrorMessage } from "../src/infra/errors.ts";
+import { runNpmVerifyCommand } from "./lib/npm-verify-exec.ts";
+import { runInstalledWorkspaceBootstrapSmoke } from "./lib/workspace-bootstrap-smoke.mjs";
+import {
+  collectInstalledPackageErrors,
+  normalizeInstalledBinaryVersion,
+  resolveInstalledBinaryCommandInvocation,
+} from "./daisyclaw-npm-postpublish-verify.ts";
+import { resolveNpmCommandInvocation } from "./daisyclaw-npm-release-check.ts";
+
+type InstalledPackageJson = {
+  version?: string;
+};
+
+function npmExec(args: string[], cwd: string): string {
+  const invocation = resolveNpmCommandInvocation({
+    npmArgs: args,
+    npmExecPath: process.env.npm_execpath,
+    nodeExecPath: process.execPath,
+    platform: process.platform,
+  });
+
+  return runNpmVerifyCommand(invocation, cwd);
+}
+
+function main(): void {
+  const tarballPath = process.argv[2]?.trim();
+  const expectedVersion = process.argv[3]?.trim();
+  if (!tarballPath) {
+    throw new Error(
+      "Usage: node --import tsx scripts/daisyclaw-npm-prepublish-verify.ts <tarball.tgz> [expected-version]",
+    );
+  }
+
+  const workingDir = mkdtempSync(join(tmpdir(), "daisyclaw-prepublish-"));
+  const prefixDir = join(workingDir, "prefix");
+  try {
+    npmExec(
+      [
+        "install",
+        "-g",
+        "--prefix",
+        prefixDir,
+        realpathSync(tarballPath),
+        "--no-fund",
+        "--no-audit",
+      ],
+      workingDir,
+    );
+    const globalRoot = npmExec(["root", "-g", "--prefix", prefixDir], workingDir);
+    const packageRoot = join(globalRoot, "daisyclaw");
+    const pkg = JSON.parse(
+      readFileSync(join(packageRoot, "package.json"), "utf8"),
+    ) as InstalledPackageJson;
+    const resolvedExpectedVersion = expectedVersion || pkg.version?.trim() || "";
+    const errors = collectInstalledPackageErrors({
+      expectedVersion: resolvedExpectedVersion,
+      installedVersion: pkg.version?.trim() ?? "",
+      packageRoot,
+    });
+    const binaryInvocation = resolveInstalledBinaryCommandInvocation(prefixDir, ["--version"]);
+    const installedBinaryVersion = runNpmVerifyCommand(binaryInvocation, workingDir);
+    if (normalizeInstalledBinaryVersion(installedBinaryVersion) !== resolvedExpectedVersion) {
+      errors.push(
+        `installed daisyclaw binary version mismatch: expected ${resolvedExpectedVersion}, found ${installedBinaryVersion || "<missing>"}.`,
+      );
+    }
+    if (errors.length === 0) {
+      runInstalledWorkspaceBootstrapSmoke({ packageRoot });
+    }
+    if (errors.length > 0) {
+      throw new Error(`prepared tarball install failed:\n- ${errors.join("\n- ")}`);
+    }
+    console.log(
+      `daisyclaw-npm-prepublish-verify: prepared tarball install OK (${resolvedExpectedVersion}).`,
+    );
+  } finally {
+    rmSync(workingDir, { force: true, recursive: true });
+  }
+}
+
+const entrypoint = process.argv[1] ? pathToFileURL(process.argv[1]).href : null;
+if (entrypoint !== null && import.meta.url === entrypoint) {
+  try {
+    main();
+  } catch (error) {
+    console.error(`daisyclaw-npm-prepublish-verify: ${formatErrorMessage(error)}`);
+    process.exitCode = 1;
+  }
+}

@@ -1,0 +1,413 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ROOT_DIR="${DAISYCLAW_LIVE_DOCKER_REPO_ROOT:-$SCRIPT_ROOT_DIR}"
+ROOT_DIR="$(cd "$ROOT_DIR" && pwd)"
+TRUSTED_HARNESS_DIR="${DAISYCLAW_LIVE_DOCKER_TRUSTED_HARNESS_DIR:-${DAISYCLAW_LIVE_CODEX_TRUSTED_HARNESS_DIR:-$SCRIPT_ROOT_DIR}}"
+if [[ -z "$TRUSTED_HARNESS_DIR" || ! -d "$TRUSTED_HARNESS_DIR" ]]; then
+  echo "ERROR: trusted Codex harness directory not found: ${TRUSTED_HARNESS_DIR:-<empty>}." >&2
+  exit 1
+fi
+TRUSTED_HARNESS_DIR="$(cd "$TRUSTED_HARNESS_DIR" && pwd)"
+source "$TRUSTED_HARNESS_DIR/scripts/lib/live-docker-auth.sh"
+IMAGE_NAME="${DAISYCLAW_IMAGE:-daisyclaw:local}"
+LIVE_IMAGE_NAME="${DAISYCLAW_LIVE_IMAGE:-${IMAGE_NAME}-live}"
+CONFIG_DIR="${DAISYCLAW_CONFIG_DIR:-$HOME/.daisyclaw}"
+WORKSPACE_DIR="${DAISYCLAW_WORKSPACE_DIR:-$HOME/.daisyclaw/workspace}"
+PROFILE_FILE="$(daisyclaw_live_default_profile_file)"
+CODEX_HARNESS_AUTH_MODE="${DAISYCLAW_LIVE_CODEX_HARNESS_AUTH:-codex-auth}"
+CODEX_CLI_PACKAGE_SPEC="${DAISYCLAW_LIVE_CODEX_CLI_PACKAGE_SPEC:-}"
+TEMP_DIRS=()
+DOCKER_USER="${DAISYCLAW_DOCKER_USER:-node}"
+DOCKER_HOME_MOUNT=()
+DOCKER_TRUSTED_HARNESS_MOUNT=()
+DOCKER_TRUSTED_HARNESS_CONTAINER_DIR=""
+DOCKER_CACHE_CONTAINER_DIR="/tmp/daisyclaw-cache"
+DOCKER_CLI_TOOLS_CONTAINER_DIR="/tmp/daisyclaw-npm-global"
+DOCKER_EXTRA_ENV_FILES=()
+DOCKER_AUTH_PRESTAGED=0
+
+daisyclaw_live_codex_harness_is_ci() {
+  daisyclaw_live_is_ci
+}
+
+daisyclaw_live_codex_harness_append_build_extension() {
+  local extension="${1:?extension required}"
+  local current="${DAISYCLAW_DOCKER_BUILD_EXTENSIONS:-${DAISYCLAW_EXTENSIONS:-}}"
+  case " $current " in
+    *" $extension "*)
+      ;;
+    *)
+      export DAISYCLAW_DOCKER_BUILD_EXTENSIONS="${current:+$current }$extension"
+      ;;
+  esac
+}
+
+case "$CODEX_HARNESS_AUTH_MODE" in
+  codex-auth | api-key)
+    ;;
+  *)
+    echo "ERROR: DAISYCLAW_LIVE_CODEX_HARNESS_AUTH must be one of: codex-auth, api-key." >&2
+    exit 1
+    ;;
+esac
+
+if [[ -f "$PROFILE_FILE" && -r "$PROFILE_FILE" ]]; then
+  set -a
+  # shellcheck disable=SC1090
+  source "$PROFILE_FILE"
+  set +a
+fi
+
+if [[ "$CODEX_HARNESS_AUTH_MODE" == "api-key" && -z "${OPENAI_API_KEY:-}" ]]; then
+  echo "ERROR: DAISYCLAW_LIVE_CODEX_HARNESS_AUTH=api-key requires OPENAI_API_KEY." >&2
+  exit 1
+fi
+if [[ "$CODEX_HARNESS_AUTH_MODE" != "api-key" && ! -s "$HOME/.codex/auth.json" ]]; then
+  echo "ERROR: DAISYCLAW_LIVE_CODEX_HARNESS_AUTH=codex-auth requires ~/.codex/auth.json before building the live Docker image." >&2
+  if [[ -n "${OPENAI_API_KEY:-}" ]]; then
+    echo "If this is a Testbox/API-key run, set DAISYCLAW_LIVE_CODEX_HARNESS_AUTH=api-key and run through daisyclaw-testbox-env." >&2
+  fi
+  exit 1
+fi
+if [[ -z "$CODEX_CLI_PACKAGE_SPEC" ]]; then
+  CODEX_CLI_PACKAGE_SPEC="$(
+    node -e '
+      const pkg = require(process.argv[1]);
+      const version = pkg.dependencies?.["@openai/codex"];
+      if (!version || typeof version !== "string") process.exit(1);
+      process.stdout.write(`@openai/codex@${version}`);
+    ' "$ROOT_DIR/extensions/codex/package.json"
+  )"
+fi
+
+cleanup_temp_dirs() {
+  if ((${#TEMP_DIRS[@]} > 0)); then
+    rm -rf "${TEMP_DIRS[@]}"
+  fi
+}
+trap cleanup_temp_dirs EXIT
+
+if [[ -n "${DAISYCLAW_DOCKER_CLI_TOOLS_DIR:-}" ]]; then
+  CLI_TOOLS_DIR="${DAISYCLAW_DOCKER_CLI_TOOLS_DIR}"
+elif daisyclaw_live_codex_harness_is_ci; then
+  CLI_TOOLS_DIR="$(mktemp -d "${RUNNER_TEMP:-/tmp}/daisyclaw-docker-cli-tools.XXXXXX")"
+  TEMP_DIRS+=("$CLI_TOOLS_DIR")
+else
+  CLI_TOOLS_DIR="$HOME/.cache/daisyclaw/docker-cli-tools"
+fi
+if [[ -n "${DAISYCLAW_DOCKER_CACHE_HOME_DIR:-}" ]]; then
+  CACHE_HOME_DIR="${DAISYCLAW_DOCKER_CACHE_HOME_DIR}"
+elif daisyclaw_live_codex_harness_is_ci; then
+  CACHE_HOME_DIR="$(mktemp -d "${RUNNER_TEMP:-/tmp}/daisyclaw-docker-cache.XXXXXX")"
+  TEMP_DIRS+=("$CACHE_HOME_DIR")
+else
+  CACHE_HOME_DIR="$HOME/.cache/daisyclaw/docker-cache"
+fi
+
+daisyclaw_live_prepare_bind_dir_for_container_user "$CLI_TOOLS_DIR"
+daisyclaw_live_prepare_bind_dir_for_container_user "$CACHE_HOME_DIR"
+if daisyclaw_live_uses_managed_bind_dirs; then
+  DOCKER_USER="$(id -u):$(id -g)"
+  DOCKER_HOME_DIR="$(mktemp -d "${RUNNER_TEMP:-/tmp}/daisyclaw-docker-home.XXXXXX")"
+  TEMP_DIRS+=("$DOCKER_HOME_DIR")
+  daisyclaw_live_prepare_bind_dir_for_container_user "$DOCKER_HOME_DIR"
+  DOCKER_HOME_MOUNT=(-v "$DOCKER_HOME_DIR":/home/node)
+fi
+if [[ "$CODEX_HARNESS_AUTH_MODE" == "api-key" ]]; then
+  if [[ -z "${DOCKER_HOME_DIR:-}" ]]; then
+    DOCKER_HOME_DIR="$(mktemp -d "${RUNNER_TEMP:-/tmp}/daisyclaw-docker-home.XXXXXX")"
+    TEMP_DIRS+=("$DOCKER_HOME_DIR")
+    daisyclaw_live_prepare_bind_dir_for_container_user "$DOCKER_HOME_DIR"
+    DOCKER_HOME_MOUNT=(-v "$DOCKER_HOME_DIR":/home/node)
+  fi
+  CONFIG_DIR="$(mktemp -d "${RUNNER_TEMP:-/tmp}/daisyclaw-docker-config.XXXXXX")"
+  WORKSPACE_DIR="$(mktemp -d "${RUNNER_TEMP:-/tmp}/daisyclaw-docker-workspace.XXXXXX")"
+  TEMP_DIRS+=("$CONFIG_DIR" "$WORKSPACE_DIR")
+  chmod 0777 "$DOCKER_HOME_DIR" "$CONFIG_DIR" "$WORKSPACE_DIR" || true
+  DOCKER_CACHE_CONTAINER_DIR="/home/node/.cache"
+  DOCKER_CLI_TOOLS_CONTAINER_DIR="/home/node/.npm-global"
+fi
+
+PROFILE_MOUNT=()
+PROFILE_STATUS="none"
+if [[ "$CODEX_HARNESS_AUTH_MODE" != "api-key" && -f "$PROFILE_FILE" && -r "$PROFILE_FILE" ]]; then
+  if [[ -n "${DOCKER_HOME_DIR:-}" ]]; then
+    daisyclaw_live_stage_profile_into_home "$DOCKER_HOME_DIR" "$PROFILE_FILE"
+  else
+    PROFILE_MOUNT=(-v "$PROFILE_FILE":/home/node/.profile:ro)
+  fi
+  PROFILE_STATUS="$PROFILE_FILE"
+elif [[ "$CODEX_HARNESS_AUTH_MODE" == "api-key" ]]; then
+  PROFILE_STATUS="api-key-env"
+fi
+
+DOCKER_TRUSTED_HARNESS_CONTAINER_DIR="/trusted-harness"
+DOCKER_TRUSTED_HARNESS_MOUNT=(-v "$TRUSTED_HARNESS_DIR":"$DOCKER_TRUSTED_HARNESS_CONTAINER_DIR":ro)
+
+AUTH_FILES=()
+if [[ "$CODEX_HARNESS_AUTH_MODE" != "api-key" ]]; then
+  while IFS= read -r auth_file; do
+    [[ -n "$auth_file" ]] || continue
+    AUTH_FILES+=("$auth_file")
+  done < <(daisyclaw_live_collect_auth_files_from_csv "openai")
+fi
+
+AUTH_FILES_CSV=""
+if ((${#AUTH_FILES[@]} > 0)); then
+  AUTH_FILES_CSV="$(daisyclaw_live_join_csv "${AUTH_FILES[@]}")"
+fi
+
+if [[ -n "${DOCKER_HOME_DIR:-}" ]]; then
+  daisyclaw_live_stage_auth_into_home "$DOCKER_HOME_DIR" --files "${AUTH_FILES[@]}"
+  DOCKER_AUTH_PRESTAGED=1
+fi
+
+EXTERNAL_AUTH_MOUNTS=()
+if ((${#AUTH_FILES[@]} > 0)); then
+  for auth_file in "${AUTH_FILES[@]}"; do
+    auth_file="$(daisyclaw_live_validate_relative_home_path "$auth_file")"
+    host_path="$HOME/$auth_file"
+    if [[ -f "$host_path" ]]; then
+      EXTERNAL_AUTH_MOUNTS+=(-v "$host_path":/host-auth-files/"$auth_file":ro)
+    fi
+  done
+fi
+
+DOCKER_AUTH_ENV=()
+if [[ "$CODEX_HARNESS_AUTH_MODE" == "api-key" ]]; then
+  docker_env_dir="$(mktemp -d "${RUNNER_TEMP:-/tmp}/daisyclaw-codex-harness-env.XXXXXX")"
+  TEMP_DIRS+=("$docker_env_dir")
+  docker_env_file="$docker_env_dir/openai.env"
+  {
+    printf 'OPENAI_API_KEY=%s\n' "${OPENAI_API_KEY}"
+    printf 'CODEX_API_KEY=%s\n' "${CODEX_API_KEY:-$OPENAI_API_KEY}"
+    if [[ -n "${OPENAI_BASE_URL:-}" ]]; then
+      printf 'OPENAI_BASE_URL=%s\n' "${OPENAI_BASE_URL}"
+    fi
+  } >"$docker_env_file"
+  DOCKER_EXTRA_ENV_FILES+=(--env-file "$docker_env_file")
+fi
+
+read -r -d '' LIVE_TEST_CMD <<'EOF' || true
+set -euo pipefail
+[ -f "$HOME/.profile" ] && [ -r "$HOME/.profile" ] && source "$HOME/.profile" || true
+export NPM_CONFIG_PREFIX="${NPM_CONFIG_PREFIX:-$HOME/.npm-global}"
+export npm_config_prefix="$NPM_CONFIG_PREFIX"
+export XDG_CACHE_HOME="${XDG_CACHE_HOME:-$HOME/.cache}"
+export COREPACK_HOME="${COREPACK_HOME:-$XDG_CACHE_HOME/node/corepack}"
+export NPM_CONFIG_CACHE="${NPM_CONFIG_CACHE:-$XDG_CACHE_HOME/npm}"
+export npm_config_cache="$NPM_CONFIG_CACHE"
+cleanup_codex_live_mounts() {
+  chmod -R a+rwX "$HOME" "$NPM_CONFIG_PREFIX" "$XDG_CACHE_HOME" 2>/dev/null || true
+}
+trap cleanup_codex_live_mounts EXIT
+if [ "${DAISYCLAW_LIVE_CODEX_HARNESS_DEBUG:-}" = "1" ]; then
+  id
+  mount | grep -E 'daisyclaw-cache|daisyclaw-npm|/home/node' || true
+  ls -ld "$HOME" "$XDG_CACHE_HOME" "$NPM_CONFIG_PREFIX" 2>/dev/null || true
+fi
+# Force the Codex harness to use the staged `~/.codex` auth files. This lane
+# is not meant to exercise raw OpenAI API-key routing unless the lane
+# explicitly opts into API-key auth for CI.
+if [ "${DAISYCLAW_LIVE_CODEX_HARNESS_AUTH:-codex-auth}" != "api-key" ]; then
+  unset OPENAI_API_KEY OPENAI_BASE_URL
+fi
+mkdir -p "$NPM_CONFIG_PREFIX" "$XDG_CACHE_HOME" "$COREPACK_HOME" "$NPM_CONFIG_CACHE"
+chmod 700 "$XDG_CACHE_HOME" "$COREPACK_HOME" "$NPM_CONFIG_CACHE" || true
+export PATH="$NPM_CONFIG_PREFIX/bin:$PATH"
+run_setup_command() {
+  local timeout_value="${DAISYCLAW_LIVE_CODEX_HARNESS_SETUP_TIMEOUT_SECONDS:-180}s"
+  local timeout_bin=""
+  if command -v timeout >/dev/null 2>&1; then
+    timeout_bin="timeout"
+  elif command -v gtimeout >/dev/null 2>&1; then
+    timeout_bin="gtimeout"
+  else
+    echo "timeout command not found; cannot bound live Codex harness setup after ${timeout_value}" >&2
+    return 127
+  fi
+  if "$timeout_bin" --kill-after=1s 1s true >/dev/null 2>&1; then
+    "$timeout_bin" --kill-after=30s "$timeout_value" "$@"
+  else
+    "$timeout_bin" "$timeout_value" "$@"
+  fi
+}
+if [ "${DAISYCLAW_DOCKER_AUTH_PRESTAGED:-0}" != "1" ]; then
+  IFS=',' read -r -a auth_files <<<"${DAISYCLAW_DOCKER_AUTH_FILES_RESOLVED:-}"
+  if ((${#auth_files[@]} > 0)); then
+    for auth_file in "${auth_files[@]}"; do
+      [ -n "$auth_file" ] || continue
+      if [ -f "/host-auth-files/$auth_file" ]; then
+        mkdir -p "$(dirname "$HOME/$auth_file")"
+        cp "/host-auth-files/$auth_file" "$HOME/$auth_file"
+        chmod u+rw "$HOME/$auth_file" || true
+      fi
+    done
+  fi
+fi
+if [ "${DAISYCLAW_LIVE_CODEX_HARNESS_AUTH:-codex-auth}" != "api-key" ] && [ ! -s "$HOME/.codex/auth.json" ]; then
+  echo "ERROR: missing ~/.codex/auth.json for Codex harness live test." >&2
+  exit 1
+fi
+trusted_scripts_dir="${DAISYCLAW_LIVE_DOCKER_SCRIPTS_DIR:-/src/scripts}"
+if [ "${DAISYCLAW_LIVE_CODEX_HARNESS_AUTH:-codex-auth}" != "api-key" ]; then
+  node --import tsx "$trusted_scripts_dir/prepare-codex-ci-auth.ts" "$HOME/.codex/auth.json"
+fi
+run_setup_command npm install -g "$DAISYCLAW_LIVE_CODEX_CLI_PACKAGE_SPEC"
+"$NPM_CONFIG_PREFIX/bin/codex" --version
+if [ "${DAISYCLAW_LIVE_CODEX_HARNESS_AUTH:-codex-auth}" = "api-key" ]; then
+  printf '%s\n' "$OPENAI_API_KEY" | "$NPM_CONFIG_PREFIX/bin/codex" login --with-api-key >/dev/null
+fi
+tmp_dir="$(mktemp -d)"
+source "$trusted_scripts_dir/lib/live-docker-stage.sh"
+daisyclaw_live_stage_source_tree "$tmp_dir"
+daisyclaw_live_stage_node_modules "$tmp_dir"
+daisyclaw_live_link_runtime_tree "$tmp_dir"
+if [ -d /app/dist-runtime/extensions/codex ]; then
+  export DAISYCLAW_BUNDLED_PLUGINS_DIR=/app/dist-runtime/extensions
+elif [ -d /app/dist/extensions/codex ]; then
+  export DAISYCLAW_BUNDLED_PLUGINS_DIR=/app/dist/extensions
+elif [ -f "$tmp_dir/extensions/codex/daisyclaw.plugin.json" ]; then
+  export DAISYCLAW_BUNDLED_PLUGINS_DIR="$tmp_dir/extensions"
+else
+  echo "ERROR: staged Codex plugin not found for live harness." >&2
+  exit 1
+fi
+daisyclaw_live_stage_state_dir "$tmp_dir/.daisyclaw-state"
+if [ -n "${DAISYCLAW_LIVE_CODEX_TRUSTED_HARNESS_DIR:-}" ] && [ -d "$DAISYCLAW_LIVE_CODEX_TRUSTED_HARNESS_DIR" ]; then
+  for harness_file in src/gateway/gateway-codex-harness.live-helpers.ts; do
+    if [ -f "$DAISYCLAW_LIVE_CODEX_TRUSTED_HARNESS_DIR/$harness_file" ]; then
+      mkdir -p "$(dirname "$tmp_dir/$harness_file")"
+      cp "$DAISYCLAW_LIVE_CODEX_TRUSTED_HARNESS_DIR/$harness_file" "$tmp_dir/$harness_file"
+    fi
+  done
+fi
+daisyclaw_live_prepare_staged_config
+cd "$tmp_dir"
+if [ "${DAISYCLAW_LIVE_CODEX_HARNESS_USE_CI_SAFE_CODEX_CONFIG:-1}" = "1" ]; then
+  node --import tsx "$trusted_scripts_dir/prepare-codex-ci-config.ts" "$HOME/.codex/config.toml" "$tmp_dir"
+fi
+codex_preflight_log="$tmp_dir/codex-preflight.log"
+codex_preflight_token="CODEX-PREFLIGHT-OK"
+if ! "$NPM_CONFIG_PREFIX/bin/codex" exec \
+  --json \
+  --color never \
+  --skip-git-repo-check \
+  "Reply exactly: $codex_preflight_token" >"$codex_preflight_log" 2>&1; then
+  if grep -q "Failed to extract accountId from token" "$codex_preflight_log"; then
+    echo "ERROR: Codex auth cannot extract accountId from the available token; refresh DAISYCLAW_CODEX_AUTH_JSON or use DAISYCLAW_LIVE_CODEX_HARNESS_AUTH=api-key." >&2
+    exit 1
+  fi
+  tail -c 262144 "$codex_preflight_log" >&2 || true
+  exit 1
+fi
+node scripts/test-live.mjs -- ${DAISYCLAW_LIVE_CODEX_TEST_FILES:-src/gateway/gateway-codex-harness.live.test.ts}
+EOF
+
+daisyclaw_live_codex_harness_append_build_extension codex
+# The release package image intentionally excludes externalized plugins such as
+# Codex. This lane must rebuild the live image so the plugin-owned harness is
+# present under the bundled plugin runtime directory.
+DAISYCLAW_SKIP_DOCKER_BUILD=0
+export DAISYCLAW_SKIP_DOCKER_BUILD
+DAISYCLAW_LIVE_DOCKER_REPO_ROOT="$ROOT_DIR" "$TRUSTED_HARNESS_DIR/scripts/test-live-build-docker.sh"
+if daisyclaw_live_uses_managed_bind_dirs; then
+  daisyclaw_live_chown_bind_dirs_for_container_user \
+    "$LIVE_IMAGE_NAME" \
+    "$DOCKER_USER" \
+    "$CLI_TOOLS_DIR" \
+    "$CACHE_HOME_DIR" \
+    "$CONFIG_DIR" \
+    "$WORKSPACE_DIR" \
+    "${DOCKER_HOME_DIR:-}"
+fi
+
+echo "==> Run Codex harness live test in Docker"
+echo "==> Model: ${DAISYCLAW_LIVE_CODEX_HARNESS_MODEL:-codex/gpt-5.5}"
+echo "==> Chat image probe: ${DAISYCLAW_LIVE_CODEX_HARNESS_CHAT_IMAGE_PROBE:-0}"
+echo "==> Image probe: ${DAISYCLAW_LIVE_CODEX_HARNESS_IMAGE_PROBE:-1}"
+echo "==> MCP probe: ${DAISYCLAW_LIVE_CODEX_HARNESS_MCP_PROBE:-1}"
+echo "==> Subagent probe: ${DAISYCLAW_LIVE_CODEX_HARNESS_SUBAGENT_PROBE:-1}"
+echo "==> Subagent-only fast path: ${DAISYCLAW_LIVE_CODEX_HARNESS_SUBAGENT_ONLY:-auto}"
+echo "==> Guardian probe: ${DAISYCLAW_LIVE_CODEX_HARNESS_GUARDIAN_PROBE:-1}"
+echo "==> Auth mode: $CODEX_HARNESS_AUTH_MODE"
+echo "==> Profile file: $PROFILE_STATUS"
+echo "==> CI-safe Codex config: ${DAISYCLAW_LIVE_CODEX_HARNESS_USE_CI_SAFE_CODEX_CONFIG:-1}"
+echo "==> Test files: ${DAISYCLAW_LIVE_CODEX_TEST_FILES:-src/gateway/gateway-codex-harness.live.test.ts}"
+echo "==> Codex CLI package: $CODEX_CLI_PACKAGE_SPEC"
+echo "==> Harness fallback: none"
+echo "==> Auth files: ${AUTH_FILES_CSV:-none}"
+DOCKER_RUN_ARGS=()
+daisyclaw_live_init_docker_run_args DOCKER_RUN_ARGS "${DAISYCLAW_LIVE_CODEX_HARNESS_DOCKER_RUN_TIMEOUT:-2100s}"
+DOCKER_RUN_ARGS+=(--rm -t \
+  -u "$DOCKER_USER" \
+  --entrypoint bash \
+  -e COREPACK_ENABLE_DOWNLOAD_PROMPT=0 \
+  -e HOME=/home/node \
+  -e NPM_CONFIG_PREFIX="$DOCKER_CLI_TOOLS_CONTAINER_DIR" \
+  -e npm_config_prefix="$DOCKER_CLI_TOOLS_CONTAINER_DIR" \
+  -e XDG_CACHE_HOME="$DOCKER_CACHE_CONTAINER_DIR" \
+  -e COREPACK_HOME="$DOCKER_CACHE_CONTAINER_DIR/node/corepack" \
+  -e NPM_CONFIG_CACHE="$DOCKER_CACHE_CONTAINER_DIR/npm" \
+  -e npm_config_cache="$DOCKER_CACHE_CONTAINER_DIR/npm" \
+  -e NODE_OPTIONS="$(daisyclaw_live_container_node_options)" \
+  -e DAISYCLAW_AGENT_HARNESS_FALLBACK=none \
+  -e DAISYCLAW_DOCKER_AUTH_PRESTAGED="$DOCKER_AUTH_PRESTAGED" \
+  -e DAISYCLAW_CODEX_APP_SERVER_BIN="${DAISYCLAW_CODEX_APP_SERVER_BIN:-codex}" \
+  -e DAISYCLAW_DOCKER_AUTH_FILES_RESOLVED="$AUTH_FILES_CSV" \
+  -e DAISYCLAW_LIVE_DOCKER_SOURCE_STAGE_MODE="${DAISYCLAW_LIVE_DOCKER_SOURCE_STAGE_MODE:-copy}" \
+  -e DAISYCLAW_LIVE_CODEX_HARNESS_AUTH="$CODEX_HARNESS_AUTH_MODE" \
+  -e DAISYCLAW_LIVE_CODEX_HARNESS=1 \
+  -e DAISYCLAW_LIVE_CODEX_HARNESS_CHAT_IMAGE_PROBE="${DAISYCLAW_LIVE_CODEX_HARNESS_CHAT_IMAGE_PROBE:-0}" \
+  -e DAISYCLAW_LIVE_CODEX_HARNESS_DEBUG="${DAISYCLAW_LIVE_CODEX_HARNESS_DEBUG:-}" \
+  -e DAISYCLAW_LIVE_CODEX_HARNESS_GUARDIAN_PROBE="${DAISYCLAW_LIVE_CODEX_HARNESS_GUARDIAN_PROBE:-1}" \
+  -e DAISYCLAW_LIVE_CODEX_HARNESS_IMAGE_PROBE="${DAISYCLAW_LIVE_CODEX_HARNESS_IMAGE_PROBE:-1}" \
+  -e DAISYCLAW_LIVE_CODEX_HARNESS_MCP_PROBE="${DAISYCLAW_LIVE_CODEX_HARNESS_MCP_PROBE:-1}" \
+  -e DAISYCLAW_LIVE_CODEX_HARNESS_MODEL="${DAISYCLAW_LIVE_CODEX_HARNESS_MODEL:-codex/gpt-5.5}" \
+  -e DAISYCLAW_LIVE_CODEX_HARNESS_REQUIRE_GUARDIAN_EVENTS="${DAISYCLAW_LIVE_CODEX_HARNESS_REQUIRE_GUARDIAN_EVENTS:-1}" \
+  -e DAISYCLAW_LIVE_CODEX_HARNESS_REQUEST_TIMEOUT_MS="${DAISYCLAW_LIVE_CODEX_HARNESS_REQUEST_TIMEOUT_MS:-}" \
+  -e DAISYCLAW_LIVE_CODEX_HARNESS_SETUP_TIMEOUT_SECONDS="${DAISYCLAW_LIVE_CODEX_HARNESS_SETUP_TIMEOUT_SECONDS:-180}" \
+  -e DAISYCLAW_LIVE_CODEX_HARNESS_SUBAGENT_ONLY="${DAISYCLAW_LIVE_CODEX_HARNESS_SUBAGENT_ONLY:-}" \
+  -e DAISYCLAW_LIVE_CODEX_HARNESS_SUBAGENT_PROBE="${DAISYCLAW_LIVE_CODEX_HARNESS_SUBAGENT_PROBE:-1}" \
+  -e DAISYCLAW_LIVE_CODEX_HARNESS_USE_CI_SAFE_CODEX_CONFIG="${DAISYCLAW_LIVE_CODEX_HARNESS_USE_CI_SAFE_CODEX_CONFIG:-1}" \
+  -e DAISYCLAW_LIVE_CODEX_CLI_PACKAGE_SPEC="$CODEX_CLI_PACKAGE_SPEC" \
+  -e DAISYCLAW_CLI_BACKEND_LOG_OUTPUT="${DAISYCLAW_CLI_BACKEND_LOG_OUTPUT:-}" \
+  -e DAISYCLAW_TEST_CONSOLE="${DAISYCLAW_TEST_CONSOLE:-}" \
+  -e DAISYCLAW_LIVE_DOCKER_SCRIPTS_DIR="${DOCKER_TRUSTED_HARNESS_CONTAINER_DIR}/scripts" \
+  -e DAISYCLAW_LIVE_DOCKER_TRUSTED_HARNESS_DIR="$DOCKER_TRUSTED_HARNESS_CONTAINER_DIR" \
+  -e DAISYCLAW_LIVE_CODEX_TRUSTED_HARNESS_DIR="$DOCKER_TRUSTED_HARNESS_CONTAINER_DIR" \
+  -e DAISYCLAW_LIVE_CODEX_BIND="${DAISYCLAW_LIVE_CODEX_BIND:-}" \
+  -e DAISYCLAW_LIVE_CODEX_BIND_MODEL="${DAISYCLAW_LIVE_CODEX_BIND_MODEL:-}" \
+  -e DAISYCLAW_LIVE_CODEX_BIND_PROVIDER="${DAISYCLAW_LIVE_CODEX_BIND_PROVIDER:-}" \
+  -e DAISYCLAW_LIVE_CODEX_TEST_FILES="${DAISYCLAW_LIVE_CODEX_TEST_FILES:-}" \
+  -e DAISYCLAW_LIVE_TEST=1 \
+  -e DAISYCLAW_VITEST_FS_MODULE_CACHE=0)
+daisyclaw_live_append_array DOCKER_RUN_ARGS DOCKER_AUTH_ENV
+daisyclaw_live_append_array DOCKER_RUN_ARGS DOCKER_EXTRA_ENV_FILES
+daisyclaw_live_append_array DOCKER_RUN_ARGS DOCKER_HOME_MOUNT
+daisyclaw_live_append_array DOCKER_RUN_ARGS DOCKER_TRUSTED_HARNESS_MOUNT
+DOCKER_RUN_ARGS+=(\
+  -v "$ROOT_DIR":/src:ro \
+  -v "$CONFIG_DIR":/home/node/.daisyclaw \
+  -v "$WORKSPACE_DIR":/home/node/.daisyclaw/workspace)
+if [[ "$CODEX_HARNESS_AUTH_MODE" != "api-key" ]]; then
+  DOCKER_RUN_ARGS+=(\
+    -v "$CACHE_HOME_DIR":"$DOCKER_CACHE_CONTAINER_DIR" \
+    -v "$CLI_TOOLS_DIR":"$DOCKER_CLI_TOOLS_CONTAINER_DIR")
+fi
+daisyclaw_live_append_array DOCKER_RUN_ARGS EXTERNAL_AUTH_MOUNTS
+daisyclaw_live_append_array DOCKER_RUN_ARGS PROFILE_MOUNT
+DOCKER_RUN_ARGS+=(\
+  "$LIVE_IMAGE_NAME" \
+  -lc "$LIVE_TEST_CMD")
+if [[ "${DAISYCLAW_LIVE_CODEX_HARNESS_DEBUG:-}" == "1" ]]; then
+  echo "==> Docker debug: host ids and mounted dirs"
+  id
+  ls -ld "$CACHE_HOME_DIR" "$CLI_TOOLS_DIR" "${DOCKER_HOME_DIR:-$HOME}" 2>/dev/null || true
+  printf '==> Docker debug args:'
+  printf ' %q' "${DOCKER_RUN_ARGS[@]}"
+  printf '\n'
+fi
+"${DOCKER_RUN_ARGS[@]}"

@@ -1,0 +1,38 @@
+{
+  "name": "@daisyclaw/amazon-bedrock-mantle-provider",
+  "version": "2026.6.2",
+  "description": "DaisyClaw Amazon Bedrock Mantle provider plugin for OpenAI-compatible model routing.",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/daisyclaw/daisyclaw"
+  },
+  "type": "module",
+  "dependencies": {
+    "@anthropic-ai/sdk": "0.100.1",
+    "@aws/bedrock-token-generator": "1.1.0"
+  },
+  "devDependencies": {
+    "@daisyclaw/plugin-sdk": "workspace:*"
+  },
+  "daisyclaw": {
+    "extensions": [
+      "./index.ts"
+    ],
+    "install": {
+      "npmSpec": "@daisyclaw/amazon-bedrock-mantle-provider",
+      "defaultChoice": "npm",
+      "minHostVersion": ">=2026.5.12-beta.1"
+    },
+    "compat": {
+      "pluginApi": ">=2026.6.2"
+    },
+    "build": {
+      "daisyclawVersion": "2026.6.2",
+      "bundledDist": false
+    },
+    "release": {
+      "publishToClawHub": true,
+      "publishToNpm": true
+    }
+  }
+}

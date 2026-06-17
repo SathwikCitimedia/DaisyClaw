@@ -1,0 +1,25 @@
+// Shared iOS signing defaults for local development + CI.
+#include "Version.xcconfig"
+
+DAISYCLAW_IOS_DEFAULT_TEAM = Y5PE65HELJ
+DAISYCLAW_IOS_SELECTED_TEAM = $(DAISYCLAW_IOS_DEFAULT_TEAM)
+DAISYCLAW_DEVELOPMENT_TEAM = $(DAISYCLAW_IOS_SELECTED_TEAM)
+DAISYCLAW_CODE_SIGN_STYLE = Automatic
+DAISYCLAW_APP_BUNDLE_ID = ai.daisyclaw.client
+DAISYCLAW_WATCH_APP_BUNDLE_ID = ai.daisyclaw.client.watchkitapp
+DAISYCLAW_WATCH_EXTENSION_BUNDLE_ID = ai.daisyclaw.client.watchkitapp.extension
+DAISYCLAW_ACTIVITY_WIDGET_BUNDLE_ID = ai.daisyclaw.client.activitywidget
+DAISYCLAW_WATCH_APP_PROFILE =
+DAISYCLAW_WATCH_EXTENSION_PROFILE =
+
+// Local contributors can override this by running scripts/ios-configure-signing.sh.
+// Keep include after defaults: xcconfig is evaluated top-to-bottom.
+#include? "../.local-signing.xcconfig"
+#include? "../LocalSigning.xcconfig"
+
+CODE_SIGN_STYLE = $(DAISYCLAW_CODE_SIGN_STYLE)
+CODE_SIGN_IDENTITY = Apple Development
+DEVELOPMENT_TEAM = $(DAISYCLAW_DEVELOPMENT_TEAM)
+
+// Let Xcode manage provisioning for the selected local team unless a local override pins one.
+PROVISIONING_PROFILE_SPECIFIER =

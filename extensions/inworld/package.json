@@ -1,0 +1,15 @@
+{
+  "name": "@daisyclaw/inworld-speech",
+  "version": "2026.6.2",
+  "private": true,
+  "description": "DaisyClaw Inworld speech plugin",
+  "type": "module",
+  "devDependencies": {
+    "@daisyclaw/plugin-sdk": "workspace:*"
+  },
+  "daisyclaw": {
+    "extensions": [
+      "./index.ts"
+    ]
+  }
+}

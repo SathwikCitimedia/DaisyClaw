@@ -1,0 +1,17 @@
+{
+  "id": "twitch",
+  "name": "Twitch",
+  "description": "DaisyClaw Twitch channel plugin for chat and moderation workflows.",
+  "activation": {
+    "onStartup": false
+  },
+  "channels": ["twitch"],
+  "channelEnvVars": {
+    "twitch": ["DAISYCLAW_TWITCH_ACCESS_TOKEN"]
+  },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {}
+  }
+}

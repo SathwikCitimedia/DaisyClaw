@@ -1,0 +1,4 @@
+interface:
+  display_name: "DaisyClaw Testing"
+  short_description: "Choose cheap, targeted DaisyClaw validation"
+  default_prompt: "Use $daisyclaw-testing to choose the cheapest safe test or CI verification path, inspect failures, and rerun only the relevant DaisyClaw lane."

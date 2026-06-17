@@ -1,0 +1,51 @@
+{
+  "name": "@daisyclaw/diffs",
+  "version": "2026.6.2",
+  "description": "DaisyClaw read-only diff viewer plugin and file renderer for agents.",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/daisyclaw/daisyclaw"
+  },
+  "type": "module",
+  "dependencies": {
+    "@pierre/diffs": "1.2.4",
+    "@pierre/theme": "1.0.3",
+    "@shikijs/langs": "4.1.0",
+    "playwright-core": "1.60.0",
+    "typebox": "1.1.39",
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "@daisyclaw/plugin-sdk": "workspace:*"
+  },
+  "daisyclaw": {
+    "extensions": [
+      "./index.ts"
+    ],
+    "install": {
+      "npmSpec": "@daisyclaw/diffs",
+      "localPath": "extensions/diffs",
+      "defaultChoice": "npm",
+      "minHostVersion": ">=2026.4.30"
+    },
+    "compat": {
+      "pluginApi": ">=2026.6.2"
+    },
+    "assetScripts": {
+      "build": "node ../../scripts/build-diffs-viewer-runtime.mjs curated"
+    },
+    "build": {
+      "daisyclawVersion": "2026.6.2",
+      "staticAssets": [
+        {
+          "source": "./assets/viewer-runtime.js",
+          "output": "assets/viewer-runtime.js"
+        }
+      ]
+    },
+    "release": {
+      "publishToClawHub": true,
+      "publishToNpm": true
+    }
+  }
+}

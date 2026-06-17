@@ -1,0 +1,15 @@
+{
+  "name": "@daisyclaw/gradium-speech",
+  "version": "2026.6.2",
+  "private": true,
+  "description": "DaisyClaw Gradium speech plugin",
+  "type": "module",
+  "devDependencies": {
+    "@daisyclaw/plugin-sdk": "workspace:*"
+  },
+  "daisyclaw": {
+    "extensions": [
+      "./index.ts"
+    ]
+  }
+}

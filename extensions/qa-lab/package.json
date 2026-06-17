@@ -1,0 +1,37 @@
+{
+  "name": "@daisyclaw/qa-lab",
+  "version": "2026.6.2",
+  "private": true,
+  "description": "DaisyClaw QA lab plugin with private debugger UI and scenario runner",
+  "type": "module",
+  "dependencies": {
+    "@copilotkit/aimock": "1.27.3",
+    "@modelcontextprotocol/sdk": "1.29.0",
+    "playwright-core": "1.60.0",
+    "yaml": "2.9.0",
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "@daisyclaw/discord": "workspace:*",
+    "@daisyclaw/plugin-sdk": "workspace:*",
+    "@daisyclaw/slack": "workspace:*",
+    "@daisyclaw/whatsapp": "workspace:*",
+    "daisyclaw": "workspace:*"
+  },
+  "peerDependencies": {
+    "daisyclaw": ">=2026.6.2"
+  },
+  "peerDependenciesMeta": {
+    "daisyclaw": {
+      "optional": true
+    }
+  },
+  "daisyclaw": {
+    "extensions": [
+      "./index.ts"
+    ],
+    "compat": {
+      "pluginApi": ">=2026.6.2"
+    }
+  }
+}

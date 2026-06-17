@@ -1,0 +1,12 @@
+{
+  "name": "@daisyclaw/lmstudio-provider",
+  "version": "2026.6.2",
+  "private": true,
+  "description": "DaisyClaw LM Studio provider plugin",
+  "type": "module",
+  "daisyclaw": {
+    "extensions": [
+      "./index.ts"
+    ]
+  }
+}

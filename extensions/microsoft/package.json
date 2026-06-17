@@ -1,0 +1,18 @@
+{
+  "name": "@daisyclaw/microsoft-speech",
+  "version": "2026.6.2",
+  "private": true,
+  "description": "DaisyClaw Microsoft speech plugin",
+  "type": "module",
+  "dependencies": {
+    "node-edge-tts": "1.2.10"
+  },
+  "devDependencies": {
+    "@daisyclaw/plugin-sdk": "workspace:*"
+  },
+  "daisyclaw": {
+    "extensions": [
+      "./index.ts"
+    ]
+  }
+}

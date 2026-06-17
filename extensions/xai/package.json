@@ -1,0 +1,19 @@
+{
+  "name": "@daisyclaw/xai-plugin",
+  "version": "2026.6.2",
+  "private": true,
+  "description": "DaisyClaw xAI plugin",
+  "type": "module",
+  "dependencies": {
+    "typebox": "1.1.39"
+  },
+  "devDependencies": {
+    "@daisyclaw/plugin-sdk": "workspace:*",
+    "ws": "8.21.0"
+  },
+  "daisyclaw": {
+    "extensions": [
+      "./index.ts"
+    ]
+  }
+}

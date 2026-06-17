@@ -1,0 +1,38 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: daisyclaw-config
+  labels:
+    app: daisyclaw
+data:
+  daisyclaw.json: |
+    {
+      "gateway": {
+        "mode": "local",
+        "bind": "loopback",
+        "port": 18789,
+        "auth": {
+          "mode": "token"
+        },
+        "controlUi": {
+          "enabled": true
+        }
+      },
+      "agents": {
+        "defaults": {
+          "workspace": "~/.daisyclaw/workspace"
+        },
+        "list": [
+          {
+            "id": "default",
+            "name": "DaisyClaw Assistant",
+            "workspace": "~/.daisyclaw/workspace"
+          }
+        ]
+      },
+      "cron": { "enabled": false }
+    }
+  AGENTS.md: |
+    # DaisyClaw Assistant
+
+    You are a helpful AI assistant running in Kubernetes.

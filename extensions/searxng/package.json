@@ -1,0 +1,15 @@
+{
+  "name": "@daisyclaw/searxng-plugin",
+  "version": "2026.6.2",
+  "private": true,
+  "description": "DaisyClaw SearXNG plugin",
+  "type": "module",
+  "devDependencies": {
+    "@daisyclaw/plugin-sdk": "workspace:*"
+  },
+  "daisyclaw": {
+    "extensions": [
+      "./index.ts"
+    ]
+  }
+}

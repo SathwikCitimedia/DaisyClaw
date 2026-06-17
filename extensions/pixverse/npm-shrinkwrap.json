@@ -1,0 +1,20 @@
+{
+  "name": "@daisyclaw/pixverse-provider",
+  "version": "2026.6.2",
+  "lockfileVersion": 3,
+  "requires": true,
+  "packages": {
+    "": {
+      "name": "@daisyclaw/pixverse-provider",
+      "version": "2026.6.2",
+      "peerDependencies": {
+        "daisyclaw": ">=2026.6.2"
+      },
+      "peerDependenciesMeta": {
+        "daisyclaw": {
+          "optional": true
+        }
+      }
+    }
+  }
+}

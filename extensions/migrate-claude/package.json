@@ -1,0 +1,24 @@
+{
+  "name": "@daisyclaw/migrate-claude",
+  "version": "2026.6.2",
+  "private": true,
+  "description": "Claude to DaisyClaw migration provider",
+  "type": "module",
+  "devDependencies": {
+    "@daisyclaw/plugin-sdk": "workspace:*",
+    "daisyclaw": "workspace:*"
+  },
+  "peerDependencies": {
+    "daisyclaw": ">=2026.6.2"
+  },
+  "peerDependenciesMeta": {
+    "daisyclaw": {
+      "optional": true
+    }
+  },
+  "daisyclaw": {
+    "extensions": [
+      "./index.ts"
+    ]
+  }
+}

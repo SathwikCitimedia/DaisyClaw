@@ -1,0 +1,362 @@
+name: DaisyClaw
+options:
+  bundleIdPrefix: ai.daisyclaw
+  deploymentTarget:
+    iOS: "18.0"
+  xcodeVersion: "16.0"
+
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    ENABLE_APP_INTENTS_METADATA_GENERATION: NO
+
+packages:
+  DaisyClawKit:
+    path: ../shared/DaisyClawKit
+  Swabble:
+    path: ../swabble
+  WebRTC:
+    url: https://github.com/stasel/WebRTC.git
+    exactVersion: 147.0.0
+
+schemes:
+  DaisyClaw:
+    shared: true
+    build:
+      targets:
+        DaisyClaw: all
+    test:
+      targets:
+        - DaisyClawTests
+        - DaisyClawLogicTests
+  DaisyClawLogicTests:
+    shared: true
+    build:
+      targets:
+        DaisyClawLogicTests: all
+    test:
+      targets:
+        - DaisyClawLogicTests
+
+targets:
+  DaisyClaw:
+    type: application
+    platform: iOS
+    configFiles:
+      Debug: Signing.xcconfig
+      Release: Signing.xcconfig
+    sources:
+      - path: Sources
+    dependencies:
+      - target: DaisyClawShareExtension
+        embed: true
+      - target: DaisyClawActivityWidget
+        embed: true
+      - target: DaisyClawWatchApp
+      - package: DaisyClawKit
+      - package: DaisyClawKit
+        product: DaisyClawChatUI
+      - package: DaisyClawKit
+        product: DaisyClawProtocol
+      - package: Swabble
+        product: SwabbleKit
+      - package: WebRTC
+      - sdk: AppIntents.framework
+    preBuildScripts:
+      - name: SwiftFormat (lint)
+        basedOnDependencyAnalysis: false
+        inputFileLists:
+          - $(SRCROOT)/SwiftSources.input.xcfilelist
+        script: |
+          set -euo pipefail
+          export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
+          if ! command -v swiftformat >/dev/null 2>&1; then
+            echo "error: swiftformat not found (brew install swiftformat)" >&2
+            exit 1
+          fi
+          swiftformat --lint --config "$SRCROOT/../../config/swiftformat" \
+            --unexclude "$SRCROOT/Sources,$SRCROOT/ShareExtension,$SRCROOT/ActivityWidget,$SRCROOT/WatchExtension,$SRCROOT/../shared/DaisyClawKit,$SRCROOT/../swabble" \
+            --filelist "$SRCROOT/SwiftSources.input.xcfilelist"
+      - name: SwiftLint
+        basedOnDependencyAnalysis: false
+        inputFileLists:
+          - $(SRCROOT)/SwiftSources.input.xcfilelist
+        script: |
+          set -euo pipefail
+          export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
+          if ! command -v swiftlint >/dev/null 2>&1; then
+            echo "error: swiftlint not found (brew install swiftlint)" >&2
+            exit 1
+          fi
+          swiftlint lint --config "$SRCROOT/.swiftlint.yml" --use-script-input-file-lists
+    settings:
+      base:
+        CODE_SIGN_IDENTITY: "Apple Development"
+        CODE_SIGN_ENTITLEMENTS: Sources/DaisyClaw.entitlements
+        CODE_SIGN_STYLE: "$(DAISYCLAW_CODE_SIGN_STYLE)"
+        DEVELOPMENT_TEAM: "$(DAISYCLAW_DEVELOPMENT_TEAM)"
+        PRODUCT_BUNDLE_IDENTIFIER: "$(DAISYCLAW_APP_BUNDLE_ID)"
+        PROVISIONING_PROFILE_SPECIFIER: "$(DAISYCLAW_APP_PROFILE)"
+        TARGETED_DEVICE_FAMILY: "1,2"
+        SWIFT_VERSION: "6.0"
+        SWIFT_STRICT_CONCURRENCY: complete
+        SUPPORTS_LIVE_ACTIVITIES: YES
+        ENABLE_APPINTENTS_METADATA: NO
+        ENABLE_APP_INTENTS_METADATA_GENERATION: NO
+      configs:
+        Debug:
+          DAISYCLAW_PUSH_TRANSPORT: direct
+          DAISYCLAW_PUSH_DISTRIBUTION: local
+          DAISYCLAW_PUSH_RELAY_BASE_URL: ""
+          DAISYCLAW_PUSH_APNS_ENVIRONMENT: sandbox
+        Release:
+          DAISYCLAW_PUSH_TRANSPORT: direct
+          DAISYCLAW_PUSH_DISTRIBUTION: local
+          DAISYCLAW_PUSH_RELAY_BASE_URL: ""
+          DAISYCLAW_PUSH_APNS_ENVIRONMENT: production
+    info:
+      path: Sources/Info.plist
+      properties:
+        CFBundleDisplayName: DaisyClaw
+        CFBundleIconName: AppIcon
+        CFBundleURLTypes:
+          - CFBundleURLName: ai.daisyclaw.ios
+            CFBundleURLSchemes:
+              - daisyclaw
+        CFBundleShortVersionString: "$(DAISYCLAW_MARKETING_VERSION)"
+        DaisyClawCanonicalVersion: "$(DAISYCLAW_IOS_VERSION)"
+        CFBundleVersion: "$(DAISYCLAW_BUILD_VERSION)"
+        UILaunchScreen: {}
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+        UIBackgroundModes:
+          - audio
+          - remote-notification
+        BGTaskSchedulerPermittedIdentifiers:
+          - ai.daisyclaw.ios.bgrefresh
+        NSLocalNetworkUsageDescription: DaisyClaw discovers and connects to your DaisyClaw gateway on the local network.
+        NSAppTransportSecurity:
+          NSAllowsArbitraryLoadsInWebContent: true
+          NSAllowsLocalNetworking: true
+        NSBonjourServices:
+          - _daisyclaw-gw._tcp
+        NSCameraUsageDescription: DaisyClaw can capture photos or short video clips when requested via the gateway.
+        NSCalendarsUsageDescription: DaisyClaw uses your calendars to show events and scheduling context when you enable calendar access.
+        NSCalendarsFullAccessUsageDescription: DaisyClaw uses your calendars to show events and scheduling context when you enable calendar access.
+        NSCalendarsWriteOnlyAccessUsageDescription: DaisyClaw uses your calendars to add events when you enable calendar access.
+        NSContactsUsageDescription: DaisyClaw uses your contacts so you can search and reference people while using the assistant.
+        NSLocationWhenInUseUsageDescription: DaisyClaw uses your location when you allow location sharing.
+        NSLocationAlwaysAndWhenInUseUsageDescription: DaisyClaw can share your location in the background when you enable Always.
+        NSMicrophoneUsageDescription: DaisyClaw uses the microphone for realtime chat, voice wake, and push-to-talk.
+        NSMotionUsageDescription: DaisyClaw may use motion data to support device-aware interactions and automations.
+        NSPhotoLibraryUsageDescription: DaisyClaw needs photo library access when you choose existing photos to share with your assistant.
+        NSRemindersFullAccessUsageDescription: DaisyClaw uses your reminders to list, add, and complete tasks when you enable reminders access.
+        NSSpeechRecognitionUsageDescription: DaisyClaw uses on-device speech recognition for talk mode and voice wake.
+        NSSupportsLiveActivities: true
+        ITSAppUsesNonExemptEncryption: false
+        DaisyClawPushTransport: "$(DAISYCLAW_PUSH_TRANSPORT)"
+        DaisyClawPushDistribution: "$(DAISYCLAW_PUSH_DISTRIBUTION)"
+        DaisyClawPushRelayBaseURL: "$(DAISYCLAW_PUSH_RELAY_BASE_URL)"
+        DaisyClawPushAPNsEnvironment: "$(DAISYCLAW_PUSH_APNS_ENVIRONMENT)"
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+  DaisyClawShareExtension:
+    type: app-extension
+    platform: iOS
+    configFiles:
+      Debug: Signing.xcconfig
+      Release: Signing.xcconfig
+    sources:
+      - path: ShareExtension
+    dependencies:
+      - package: DaisyClawKit
+      - sdk: AppIntents.framework
+    settings:
+      base:
+        CODE_SIGN_IDENTITY: "Apple Development"
+        CODE_SIGN_STYLE: "$(DAISYCLAW_CODE_SIGN_STYLE)"
+        DEVELOPMENT_TEAM: "$(DAISYCLAW_DEVELOPMENT_TEAM)"
+        ENABLE_APPINTENTS_METADATA: NO
+        ENABLE_APP_INTENTS_METADATA_GENERATION: NO
+        PRODUCT_BUNDLE_IDENTIFIER: "$(DAISYCLAW_SHARE_BUNDLE_ID)"
+        PROVISIONING_PROFILE_SPECIFIER: "$(DAISYCLAW_SHARE_PROFILE)"
+        TARGETED_DEVICE_FAMILY: "1,2"
+        SWIFT_VERSION: "6.0"
+        SWIFT_STRICT_CONCURRENCY: complete
+    info:
+      path: ShareExtension/Info.plist
+      properties:
+        CFBundleDisplayName: DaisyClaw Share
+        CFBundleShortVersionString: "$(DAISYCLAW_MARKETING_VERSION)"
+        CFBundleVersion: "$(DAISYCLAW_BUILD_VERSION)"
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.share-services
+          NSExtensionPrincipalClass: "$(PRODUCT_MODULE_NAME).ShareViewController"
+          NSExtensionAttributes:
+            NSExtensionActivationRule:
+              NSExtensionActivationSupportsText: true
+              NSExtensionActivationSupportsWebURLWithMaxCount: 1
+              NSExtensionActivationSupportsImageWithMaxCount: 10
+              NSExtensionActivationSupportsMovieWithMaxCount: 1
+
+  DaisyClawActivityWidget:
+    type: app-extension
+    platform: iOS
+    configFiles:
+      Debug: Signing.xcconfig
+      Release: Signing.xcconfig
+    sources:
+      - path: ActivityWidget
+      - path: Sources/LiveActivity/DaisyClawActivityAttributes.swift
+    dependencies:
+      - sdk: WidgetKit.framework
+      - sdk: ActivityKit.framework
+    settings:
+      base:
+        CODE_SIGN_IDENTITY: "Apple Development"
+        CODE_SIGN_STYLE: "$(DAISYCLAW_CODE_SIGN_STYLE)"
+        DEVELOPMENT_TEAM: "$(DAISYCLAW_DEVELOPMENT_TEAM)"
+        PRODUCT_BUNDLE_IDENTIFIER: "$(DAISYCLAW_ACTIVITY_WIDGET_BUNDLE_ID)"
+        TARGETED_DEVICE_FAMILY: "1,2"
+        SWIFT_VERSION: "6.0"
+        SWIFT_STRICT_CONCURRENCY: complete
+        SUPPORTS_LIVE_ACTIVITIES: YES
+    info:
+      path: ActivityWidget/Info.plist
+      properties:
+        CFBundleDisplayName: DaisyClaw Activity
+        CFBundleShortVersionString: "$(DAISYCLAW_MARKETING_VERSION)"
+        CFBundleVersion: "$(DAISYCLAW_BUILD_VERSION)"
+        NSSupportsLiveActivities: true
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+
+  DaisyClawWatchApp:
+    type: application.watchapp2
+    platform: watchOS
+    deploymentTarget: "11.0"
+    sources:
+      - path: WatchApp
+    dependencies:
+      - target: DaisyClawWatchExtension
+    configFiles:
+      Debug: Config/Signing.xcconfig
+      Release: Config/Signing.xcconfig
+    attributes:
+      DevelopmentTeam: "$(DAISYCLAW_DEVELOPMENT_TEAM)"
+      ProvisioningStyle: "$(DAISYCLAW_CODE_SIGN_STYLE)"
+    settings:
+      base:
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        CODE_SIGN_IDENTITY: "Apple Development"
+        CODE_SIGN_STYLE: "$(DAISYCLAW_CODE_SIGN_STYLE)"
+        DEVELOPMENT_TEAM: "$(DAISYCLAW_DEVELOPMENT_TEAM)"
+        ENABLE_APPINTENTS_METADATA: NO
+        ENABLE_APP_INTENTS_METADATA_GENERATION: NO
+        PRODUCT_BUNDLE_IDENTIFIER: "$(DAISYCLAW_WATCH_APP_BUNDLE_ID)"
+        PROVISIONING_PROFILE_SPECIFIER: "$(DAISYCLAW_WATCH_APP_PROFILE)"
+    info:
+      path: WatchApp/Info.plist
+      properties:
+        CFBundleDisplayName: DaisyClaw
+        CFBundleShortVersionString: "$(DAISYCLAW_MARKETING_VERSION)"
+        CFBundleVersion: "$(DAISYCLAW_BUILD_VERSION)"
+        WKCompanionAppBundleIdentifier: "$(DAISYCLAW_APP_BUNDLE_ID)"
+        WKWatchKitApp: true
+
+  DaisyClawWatchExtension:
+    type: watchkit2-extension
+    platform: watchOS
+    deploymentTarget: "11.0"
+    sources:
+      - path: WatchExtension/Sources
+    dependencies:
+      - sdk: AppIntents.framework
+      - sdk: WatchConnectivity.framework
+      - sdk: UserNotifications.framework
+    configFiles:
+      Debug: Config/Signing.xcconfig
+      Release: Config/Signing.xcconfig
+    attributes:
+      DevelopmentTeam: "$(DAISYCLAW_DEVELOPMENT_TEAM)"
+      ProvisioningStyle: "$(DAISYCLAW_CODE_SIGN_STYLE)"
+    settings:
+      base:
+        CODE_SIGN_IDENTITY: "Apple Development"
+        CODE_SIGN_STYLE: "$(DAISYCLAW_CODE_SIGN_STYLE)"
+        DEVELOPMENT_TEAM: "$(DAISYCLAW_DEVELOPMENT_TEAM)"
+        PRODUCT_BUNDLE_IDENTIFIER: "$(DAISYCLAW_WATCH_EXTENSION_BUNDLE_ID)"
+        PROVISIONING_PROFILE_SPECIFIER: "$(DAISYCLAW_WATCH_EXTENSION_PROFILE)"
+    info:
+      path: WatchExtension/Info.plist
+      properties:
+        CFBundleDisplayName: DaisyClaw
+        CFBundleShortVersionString: "$(DAISYCLAW_MARKETING_VERSION)"
+        CFBundleVersion: "$(DAISYCLAW_BUILD_VERSION)"
+        NSExtension:
+          NSExtensionAttributes:
+            WKAppBundleIdentifier: "$(DAISYCLAW_WATCH_APP_BUNDLE_ID)"
+          NSExtensionPointIdentifier: com.apple.watchkit
+
+  DaisyClawTests:
+    type: bundle.unit-test
+    platform: iOS
+    configFiles:
+      Debug: Signing.xcconfig
+      Release: Signing.xcconfig
+    sources:
+      - path: Tests
+        excludes:
+          - Logic
+    dependencies:
+      - target: DaisyClaw
+      - package: Swabble
+        product: SwabbleKit
+      - sdk: AppIntents.framework
+    settings:
+      base:
+        CODE_SIGN_IDENTITY: "Apple Development"
+        CODE_SIGN_STYLE: "$(DAISYCLAW_CODE_SIGN_STYLE)"
+        DEVELOPMENT_TEAM: "$(DAISYCLAW_DEVELOPMENT_TEAM)"
+        PRODUCT_BUNDLE_IDENTIFIER: ai.daisyclaw.ios.tests
+        ENABLE_APP_INTENTS_METADATA_GENERATION: NO
+        SWIFT_VERSION: "6.0"
+        SWIFT_STRICT_CONCURRENCY: complete
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/DaisyClaw.app/DaisyClaw"
+        BUNDLE_LOADER: "$(TEST_HOST)"
+    info:
+      path: Tests/Info.plist
+      properties:
+        CFBundleDisplayName: DaisyClawTests
+        CFBundleShortVersionString: "$(DAISYCLAW_MARKETING_VERSION)"
+        CFBundleVersion: "$(DAISYCLAW_BUILD_VERSION)"
+
+  DaisyClawLogicTests:
+    type: bundle.unit-test
+    platform: iOS
+    configFiles:
+      Debug: Signing.xcconfig
+      Release: Signing.xcconfig
+    sources:
+      - path: Tests/Logic
+    dependencies:
+      - package: DaisyClawKit
+    settings:
+      base:
+        CODE_SIGN_IDENTITY: "Apple Development"
+        CODE_SIGN_STYLE: "$(DAISYCLAW_CODE_SIGN_STYLE)"
+        DEVELOPMENT_TEAM: "$(DAISYCLAW_DEVELOPMENT_TEAM)"
+        PRODUCT_BUNDLE_IDENTIFIER: ai.daisyclaw.ios.logic-tests
+        ENABLE_APP_INTENTS_METADATA_GENERATION: NO
+        SWIFT_EMIT_CONST_VALUE_PROTOCOLS: ""
+        SWIFT_VERSION: "6.0"
+        SWIFT_STRICT_CONCURRENCY: complete
+    info:
+      path: Tests/Info.plist
+      properties:
+        CFBundleDisplayName: DaisyClawLogicTests
+        CFBundleShortVersionString: "$(DAISYCLAW_MARKETING_VERSION)"
+        CFBundleVersion: "$(DAISYCLAW_BUILD_VERSION)"

@@ -1,0 +1,284 @@
+{
+  "entries": [
+    {
+      "name": "@daisyclaw/acpx",
+      "description": "DaisyClaw ACP runtime backend",
+      "source": "official",
+      "kind": "plugin",
+      "daisyclaw": {
+        "plugin": {
+          "id": "acpx",
+          "label": "ACPX Runtime"
+        },
+        "install": {
+          "npmSpec": "@daisyclaw/acpx",
+          "defaultChoice": "npm",
+          "minHostVersion": ">=2026.4.25"
+        }
+      }
+    },
+    {
+      "name": "@daisyclaw/brave-plugin",
+      "description": "DaisyClaw Brave plugin",
+      "source": "official",
+      "kind": "plugin",
+      "daisyclaw": {
+        "plugin": {
+          "id": "brave",
+          "label": "Brave"
+        },
+        "webSearchProviders": [
+          {
+            "id": "brave",
+            "label": "Brave Search",
+            "hint": "Brave Search web results.",
+            "onboardingScopes": ["text-inference"],
+            "credentialLabel": "Brave Search API key",
+            "envVars": ["BRAVE_API_KEY"],
+            "placeholder": "BSA...",
+            "signupUrl": "https://api-dashboard.search.brave.com/app/keys",
+            "docsUrl": "https://docs.daisyclaw.ai/tools/brave-search",
+            "credentialPath": "plugins.entries.brave.config.webSearch.apiKey",
+            "autoDetectOrder": 10
+          }
+        ],
+        "install": {
+          "npmSpec": "@daisyclaw/brave-plugin",
+          "defaultChoice": "npm",
+          "minHostVersion": ">=2026.4.10",
+          "allowInvalidConfigRecovery": true
+        }
+      }
+    },
+    {
+      "name": "@daisyclaw/copilot",
+      "description": "DaisyClaw GitHub Copilot agent runtime plugin",
+      "source": "official",
+      "kind": "plugin",
+      "daisyclaw": {
+        "plugin": {
+          "id": "copilot",
+          "label": "GitHub Copilot agent runtime"
+        },
+        "install": {
+          "clawhubSpec": "clawhub:@daisyclaw/copilot",
+          "npmSpec": "@daisyclaw/copilot",
+          "defaultChoice": "npm",
+          "minHostVersion": ">=2026.5.28"
+        }
+      }
+    },
+    {
+      "name": "@daisyclaw/diagnostics-otel",
+      "description": "DaisyClaw diagnostics OpenTelemetry exporter",
+      "source": "official",
+      "kind": "plugin",
+      "daisyclaw": {
+        "plugin": {
+          "id": "diagnostics-otel",
+          "label": "Diagnostics OpenTelemetry"
+        },
+        "install": {
+          "clawhubSpec": "clawhub:@daisyclaw/diagnostics-otel",
+          "npmSpec": "@daisyclaw/diagnostics-otel",
+          "defaultChoice": "npm",
+          "minHostVersion": ">=2026.4.25"
+        }
+      }
+    },
+    {
+      "name": "@daisyclaw/diagnostics-prometheus",
+      "description": "DaisyClaw diagnostics Prometheus exporter",
+      "source": "official",
+      "kind": "plugin",
+      "daisyclaw": {
+        "plugin": {
+          "id": "diagnostics-prometheus",
+          "label": "Diagnostics Prometheus"
+        },
+        "install": {
+          "clawhubSpec": "clawhub:@daisyclaw/diagnostics-prometheus",
+          "npmSpec": "@daisyclaw/diagnostics-prometheus",
+          "defaultChoice": "npm",
+          "minHostVersion": ">=2026.4.25"
+        }
+      }
+    },
+    {
+      "name": "@daisyclaw/diffs",
+      "description": "DaisyClaw diff viewer plugin",
+      "source": "official",
+      "kind": "plugin",
+      "daisyclaw": {
+        "plugin": {
+          "id": "diffs",
+          "label": "Diffs"
+        },
+        "install": {
+          "npmSpec": "@daisyclaw/diffs",
+          "defaultChoice": "npm",
+          "minHostVersion": ">=2026.4.30"
+        }
+      }
+    },
+    {
+      "name": "@daisyclaw/diffs-language-pack",
+      "description": "DaisyClaw diffs viewer syntax highlighting language pack",
+      "source": "official",
+      "kind": "plugin",
+      "daisyclaw": {
+        "plugin": {
+          "id": "diffs-language-pack",
+          "label": "Diff Viewer Language Pack"
+        },
+        "install": {
+          "npmSpec": "@daisyclaw/diffs-language-pack",
+          "clawhubSpec": "clawhub:@daisyclaw/diffs-language-pack",
+          "defaultChoice": "npm",
+          "minHostVersion": ">=2026.5.27"
+        }
+      }
+    },
+    {
+      "name": "@daisyclaw/google-meet",
+      "description": "DaisyClaw Google Meet participant plugin",
+      "source": "official",
+      "kind": "plugin",
+      "daisyclaw": {
+        "plugin": {
+          "id": "google-meet",
+          "label": "Google Meet"
+        },
+        "install": {
+          "npmSpec": "@daisyclaw/google-meet",
+          "defaultChoice": "npm",
+          "minHostVersion": ">=2026.4.20"
+        }
+      }
+    },
+    {
+      "name": "@daisyclaw/lobster",
+      "description": "Lobster workflow tool plugin (typed pipelines + resumable approvals)",
+      "source": "official",
+      "kind": "plugin",
+      "daisyclaw": {
+        "plugin": {
+          "id": "lobster",
+          "label": "Lobster"
+        },
+        "install": {
+          "npmSpec": "@daisyclaw/lobster",
+          "defaultChoice": "npm",
+          "minHostVersion": ">=2026.4.25"
+        }
+      }
+    },
+    {
+      "name": "@daisyclaw/memory-lancedb",
+      "description": "DaisyClaw LanceDB-backed long-term memory plugin with auto-recall/capture",
+      "source": "official",
+      "kind": "plugin",
+      "daisyclaw": {
+        "plugin": {
+          "id": "memory-lancedb",
+          "label": "Memory LanceDB"
+        },
+        "install": {
+          "npmSpec": "@daisyclaw/memory-lancedb",
+          "defaultChoice": "npm",
+          "minHostVersion": ">=2026.5.31"
+        }
+      }
+    },
+    {
+      "name": "@daisyclaw/llama-cpp-provider",
+      "description": "DaisyClaw llama.cpp embedding provider plugin",
+      "source": "official",
+      "kind": "plugin",
+      "daisyclaw": {
+        "plugin": {
+          "id": "llama-cpp",
+          "label": "llama.cpp Provider"
+        },
+        "contracts": {
+          "embeddingProviders": ["local"]
+        },
+        "install": {
+          "npmSpec": "@daisyclaw/llama-cpp-provider",
+          "defaultChoice": "npm",
+          "minHostVersion": ">=2026.6.2"
+        }
+      }
+    },
+    {
+      "name": "@daisyclaw/openshell-sandbox",
+      "description": "DaisyClaw OpenShell sandbox backend",
+      "source": "official",
+      "kind": "plugin",
+      "daisyclaw": {
+        "plugin": {
+          "id": "openshell",
+          "label": "OpenShell Sandbox"
+        },
+        "install": {
+          "npmSpec": "@daisyclaw/openshell-sandbox",
+          "defaultChoice": "npm",
+          "minHostVersion": ">=2026.5.12-beta.1"
+        }
+      }
+    },
+    {
+      "name": "@daisyclaw/pixverse-provider",
+      "description": "DaisyClaw PixVerse video generation provider plugin",
+      "source": "official",
+      "kind": "plugin",
+      "daisyclaw": {
+        "plugin": {
+          "id": "pixverse",
+          "label": "PixVerse"
+        },
+        "install": {
+          "clawhubSpec": "clawhub:@daisyclaw/pixverse-provider",
+          "npmSpec": "@daisyclaw/pixverse-provider",
+          "defaultChoice": "npm",
+          "minHostVersion": ">=2026.5.26"
+        }
+      }
+    },
+    {
+      "name": "@daisyclaw/tokenjuice",
+      "description": "DaisyClaw tokenjuice exec output compaction plugin",
+      "source": "official",
+      "kind": "plugin",
+      "daisyclaw": {
+        "plugin": {
+          "id": "tokenjuice",
+          "label": "Tokenjuice"
+        },
+        "install": {
+          "clawhubSpec": "clawhub:@daisyclaw/tokenjuice",
+          "npmSpec": "@daisyclaw/tokenjuice",
+          "defaultChoice": "npm",
+          "minHostVersion": ">=2026.5.28"
+        }
+      }
+    },
+    {
+      "name": "@daisyclaw/voice-call",
+      "description": "DaisyClaw voice-call plugin",
+      "source": "official",
+      "kind": "plugin",
+      "daisyclaw": {
+        "plugin": {
+          "id": "voice-call",
+          "label": "Voice Call"
+        },
+        "install": {
+          "npmSpec": "@daisyclaw/voice-call",
+          "defaultChoice": "npm",
+          "minHostVersion": ">=2026.4.10"
+        }
+      }
+    }
+  ]
+}

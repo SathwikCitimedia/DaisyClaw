@@ -1,0 +1,233 @@
+{
+  "compilerOptions": {
+    "allowImportingTsExtensions": true,
+    "allowSyntheticDefaultImports": true,
+    "declaration": true,
+    "esModuleInterop": true,
+    "experimentalDecorators": true,
+    "forceConsistentCasingInFileNames": true,
+    "isolatedModules": true,
+    "lib": ["DOM", "DOM.Iterable", "ES2023", "ScriptHost"],
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "noImplicitOverride": true,
+    "noImplicitReturns": true,
+    "noEmit": true,
+    "noEmitOnError": true,
+    "noUncheckedSideEffectImports": true,
+    "outDir": "dist",
+    "resolveJsonModule": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "target": "es2023",
+    "types": ["node"],
+    "useDefineForClassFields": false,
+    "verbatimModuleSyntax": true,
+    "paths": {
+      "daisyclaw/extension-api": ["./src/extensionAPI.ts"],
+      "daisyclaw/plugin-sdk": ["./src/plugin-sdk/index.ts"],
+      "daisyclaw/plugin-sdk/*": ["./src/plugin-sdk/*.ts"],
+      "@daisyclaw/agent-core": ["./packages/agent-core/src/index.ts"],
+      "@daisyclaw/agent-core/*": ["./packages/agent-core/src/*"],
+      "@daisyclaw/llm-core": ["./packages/llm-core/src/index.ts"],
+      "@daisyclaw/llm-core/diagnostics": ["./packages/llm-core/src/utils/diagnostics.ts"],
+      "@daisyclaw/llm-core/event-stream": ["./packages/llm-core/src/utils/event-stream.ts"],
+      "@daisyclaw/llm-core/validation": ["./packages/llm-core/src/validation.ts"],
+      "@daisyclaw/llm-core/*": ["./packages/llm-core/src/*"],
+      "@daisyclaw/llm-runtime": ["./packages/llm-runtime/src/index.ts"],
+      "@daisyclaw/llm-runtime/*": ["./packages/llm-runtime/src/*"],
+      "@daisyclaw/model-catalog-core": ["./packages/model-catalog-core/src/index.ts"],
+      "@daisyclaw/model-catalog-core/configured-model-refs": [
+        "./packages/model-catalog-core/src/configured-model-refs.ts"
+      ],
+      "@daisyclaw/model-catalog-core/model-catalog-normalize": [
+        "./packages/model-catalog-core/src/model-catalog-normalize.ts"
+      ],
+      "@daisyclaw/model-catalog-core/model-catalog-refs": [
+        "./packages/model-catalog-core/src/model-catalog-refs.ts"
+      ],
+      "@daisyclaw/model-catalog-core/model-catalog-types": [
+        "./packages/model-catalog-core/src/model-catalog-types.ts"
+      ],
+      "@daisyclaw/model-catalog-core/provider-id": [
+        "./packages/model-catalog-core/src/provider-id.ts"
+      ],
+      "@daisyclaw/model-catalog-core/provider-model-id-normalization": [
+        "./packages/model-catalog-core/src/provider-model-id-normalization.ts"
+      ],
+      "@daisyclaw/model-catalog-core/provider-model-id-normalize": [
+        "./packages/model-catalog-core/src/provider-model-id-normalize.ts"
+      ],
+      "@daisyclaw/model-catalog-core/*": ["./packages/model-catalog-core/src/*"],
+      "@daisyclaw/gateway-client": ["./packages/gateway-client/src/index.ts"],
+      "@daisyclaw/gateway-client/*": ["./packages/gateway-client/src/*"],
+      "@daisyclaw/gateway-protocol": ["./packages/gateway-protocol/src/index.ts"],
+      "@daisyclaw/gateway-protocol/client-info": [
+        "./packages/gateway-protocol/src/client-info.ts"
+      ],
+      "@daisyclaw/gateway-protocol/connect-error-details": [
+        "./packages/gateway-protocol/src/connect-error-details.ts"
+      ],
+      "@daisyclaw/gateway-protocol/schema": ["./packages/gateway-protocol/src/schema.ts"],
+      "@daisyclaw/gateway-protocol/startup-unavailable": [
+        "./packages/gateway-protocol/src/startup-unavailable.ts"
+      ],
+      "@daisyclaw/gateway-protocol/version": ["./packages/gateway-protocol/src/version.ts"],
+      "@daisyclaw/gateway-protocol/*": ["./packages/gateway-protocol/src/*"],
+      "@daisyclaw/media-generation-core": ["./packages/media-generation-core/src/index.ts"],
+      "@daisyclaw/media-generation-core/capability-model-ref": [
+        "./packages/media-generation-core/src/capability-model-ref.ts"
+      ],
+      "@daisyclaw/media-generation-core/catalog": [
+        "./packages/media-generation-core/src/catalog.ts"
+      ],
+      "@daisyclaw/media-generation-core/model-ref": [
+        "./packages/media-generation-core/src/model-ref.ts"
+      ],
+      "@daisyclaw/media-generation-core/normalization": [
+        "./packages/media-generation-core/src/normalization.ts"
+      ],
+      "@daisyclaw/media-generation-core/*": ["./packages/media-generation-core/src/*"],
+      "@daisyclaw/media-core": ["./packages/media-core/src/index.ts"],
+      "@daisyclaw/media-core/base64": ["./packages/media-core/src/base64.ts"],
+      "@daisyclaw/media-core/constants": ["./packages/media-core/src/constants.ts"],
+      "@daisyclaw/media-core/content-length": ["./packages/media-core/src/content-length.ts"],
+      "@daisyclaw/media-core/file-name": ["./packages/media-core/src/file-name.ts"],
+      "@daisyclaw/media-core/inbound-path-policy": [
+        "./packages/media-core/src/inbound-path-policy.ts"
+      ],
+      "@daisyclaw/media-core/inline-image-data-url": [
+        "./packages/media-core/src/inline-image-data-url.ts"
+      ],
+      "@daisyclaw/media-core/media-source-url": [
+        "./packages/media-core/src/media-source-url.ts"
+      ],
+      "@daisyclaw/media-core/mime": ["./packages/media-core/src/mime.ts"],
+      "@daisyclaw/media-core/read-byte-stream-with-limit": [
+        "./packages/media-core/src/read-byte-stream-with-limit.ts"
+      ],
+      "@daisyclaw/media-core/read-response-with-limit": [
+        "./packages/media-core/src/read-response-with-limit.ts"
+      ],
+      "@daisyclaw/media-core/*": ["./packages/media-core/src/*"],
+      "@daisyclaw/media-understanding-common": [
+        "./packages/media-understanding-common/src/index.ts"
+      ],
+      "@daisyclaw/media-understanding-common/*": [
+        "./packages/media-understanding-common/src/*"
+      ],
+      "@daisyclaw/markdown-core": ["./packages/markdown-core/src/index.ts"],
+      "@daisyclaw/markdown-core/code-spans": ["./packages/markdown-core/src/code-spans.ts"],
+      "@daisyclaw/markdown-core/fences": ["./packages/markdown-core/src/fences.ts"],
+      "@daisyclaw/markdown-core/frontmatter": ["./packages/markdown-core/src/frontmatter.ts"],
+      "@daisyclaw/markdown-core/ir": ["./packages/markdown-core/src/ir.ts"],
+      "@daisyclaw/markdown-core/render": ["./packages/markdown-core/src/render.ts"],
+      "@daisyclaw/markdown-core/render-aware-chunking": [
+        "./packages/markdown-core/src/render-aware-chunking.ts"
+      ],
+      "@daisyclaw/markdown-core/tables": ["./packages/markdown-core/src/tables.ts"],
+      "@daisyclaw/markdown-core/types": ["./packages/markdown-core/src/types.ts"],
+      "@daisyclaw/markdown-core/*": ["./packages/markdown-core/src/*"],
+      "@daisyclaw/normalization-core": ["./packages/normalization-core/src/index.ts"],
+      "@daisyclaw/normalization-core/number-coercion": [
+        "./packages/normalization-core/src/number-coercion.ts"
+      ],
+      "@daisyclaw/normalization-core/record-coerce": [
+        "./packages/normalization-core/src/record-coerce.ts"
+      ],
+      "@daisyclaw/normalization-core/string-coerce": [
+        "./packages/normalization-core/src/string-coerce.ts"
+      ],
+      "@daisyclaw/normalization-core/string-normalization": [
+        "./packages/normalization-core/src/string-normalization.ts"
+      ],
+      "@daisyclaw/normalization-core/*": ["./packages/normalization-core/src/*"],
+      "@daisyclaw/acp-core": ["./packages/acp-core/src/index.ts"],
+      "@daisyclaw/acp-core/meta": ["./packages/acp-core/src/meta.ts"],
+      "@daisyclaw/acp-core/numeric-options": ["./packages/acp-core/src/numeric-options.ts"],
+      "@daisyclaw/acp-core/normalize-text": ["./packages/acp-core/src/normalize-text.ts"],
+      "@daisyclaw/acp-core/record-shared": ["./packages/acp-core/src/record-shared.ts"],
+      "@daisyclaw/acp-core/session": ["./packages/acp-core/src/session.ts"],
+      "@daisyclaw/acp-core/session-interaction-mode": [
+        "./packages/acp-core/src/session-interaction-mode.ts"
+      ],
+      "@daisyclaw/acp-core/session-lineage-meta": [
+        "./packages/acp-core/src/session-lineage-meta.ts"
+      ],
+      "@daisyclaw/acp-core/types": ["./packages/acp-core/src/types.ts"],
+      "@daisyclaw/acp-core/runtime/error-text": [
+        "./packages/acp-core/src/runtime/error-text.ts"
+      ],
+      "@daisyclaw/acp-core/runtime/errors": ["./packages/acp-core/src/runtime/errors.ts"],
+      "@daisyclaw/acp-core/runtime/session-identifiers": [
+        "./packages/acp-core/src/runtime/session-identifiers.ts"
+      ],
+      "@daisyclaw/acp-core/runtime/session-identity": [
+        "./packages/acp-core/src/runtime/session-identity.ts"
+      ],
+      "@daisyclaw/acp-core/runtime/types": ["./packages/acp-core/src/runtime/types.ts"],
+      "@daisyclaw/acp-core/*": ["./packages/acp-core/src/*"],
+      "@daisyclaw/terminal-core": ["./packages/terminal-core/src/index.ts"],
+      "@daisyclaw/terminal-core/ansi": ["./packages/terminal-core/src/ansi.ts"],
+      "@daisyclaw/terminal-core/decorative-emoji": [
+        "./packages/terminal-core/src/decorative-emoji.ts"
+      ],
+      "@daisyclaw/terminal-core/health-style": [
+        "./packages/terminal-core/src/health-style.ts"
+      ],
+      "@daisyclaw/terminal-core/links": ["./packages/terminal-core/src/links.ts"],
+      "@daisyclaw/terminal-core/note": ["./packages/terminal-core/src/note.ts"],
+      "@daisyclaw/terminal-core/osc-progress": ["./packages/terminal-core/src/osc-progress.ts"],
+      "@daisyclaw/terminal-core/palette": ["./packages/terminal-core/src/palette.ts"],
+      "@daisyclaw/terminal-core/progress-line": [
+        "./packages/terminal-core/src/progress-line.ts"
+      ],
+      "@daisyclaw/terminal-core/prompt-select-styled": [
+        "./packages/terminal-core/src/prompt-select-styled.ts"
+      ],
+      "@daisyclaw/terminal-core/prompt-select-styled-params": [
+        "./packages/terminal-core/src/prompt-select-styled-params.ts"
+      ],
+      "@daisyclaw/terminal-core/prompt-style": [
+        "./packages/terminal-core/src/prompt-style.ts"
+      ],
+      "@daisyclaw/terminal-core/restore": ["./packages/terminal-core/src/restore.ts"],
+      "@daisyclaw/terminal-core/safe-text": ["./packages/terminal-core/src/safe-text.ts"],
+      "@daisyclaw/terminal-core/stream-writer": [
+        "./packages/terminal-core/src/stream-writer.ts"
+      ],
+      "@daisyclaw/terminal-core/table": ["./packages/terminal-core/src/table.ts"],
+      "@daisyclaw/terminal-core/terminal-link": [
+        "./packages/terminal-core/src/terminal-link.ts"
+      ],
+      "@daisyclaw/terminal-core/theme": ["./packages/terminal-core/src/theme.ts"],
+      "@daisyclaw/terminal-core/*": ["./packages/terminal-core/src/*"],
+      "@daisyclaw/net-policy": ["./packages/net-policy/src/index.ts"],
+      "@daisyclaw/net-policy/ip": ["./packages/net-policy/src/ip.ts"],
+      "@daisyclaw/net-policy/ipv4": ["./packages/net-policy/src/ipv4.ts"],
+      "@daisyclaw/net-policy/redact-sensitive-url": [
+        "./packages/net-policy/src/redact-sensitive-url.ts"
+      ],
+      "@daisyclaw/net-policy/url-userinfo": ["./packages/net-policy/src/url-userinfo.ts"],
+      "@daisyclaw/net-policy/*": ["./packages/net-policy/src/*"],
+      "@daisyclaw/web-content-core": ["./packages/web-content-core/src/index.ts"],
+      "@daisyclaw/web-content-core/provider-runtime-shared": [
+        "./packages/web-content-core/src/provider-runtime-shared.ts"
+      ],
+      "@daisyclaw/web-content-core/*": ["./packages/web-content-core/src/*"],
+      "@daisyclaw/speech-core": ["./packages/speech-core/runtime-api.ts"],
+      "@daisyclaw/speech-core/api": ["./packages/speech-core/api.ts"],
+      "@daisyclaw/speech-core/runtime-api": ["./packages/speech-core/runtime-api.ts"],
+      "@daisyclaw/speech-core/speaker": ["./packages/speech-core/speaker.ts"],
+      "@daisyclaw/speech-core/voice-models": ["./packages/speech-core/voice-models.ts"],
+      "@daisyclaw/speech-core/*": ["./packages/speech-core/*"],
+      "@daisyclaw/sdk": ["./packages/sdk/src/index.ts"],
+      "@daisyclaw/plugin-sdk": ["./src/plugin-sdk/index.ts"],
+      "@daisyclaw/plugin-sdk/*": ["./src/plugin-sdk/*.ts"],
+      "daisyclaw/plugin-sdk/account-id": ["./src/plugin-sdk/account-id.ts"],
+      "@daisyclaw/*": ["./extensions/*"]
+    }
+  },
+  "include": ["src/**/*", "ui/**/*", "extensions/**/*", "packages/**/*"],
+  "exclude": ["node_modules", "dist", "**/dist/**"]
+}

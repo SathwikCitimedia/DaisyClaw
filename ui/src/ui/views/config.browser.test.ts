@@ -1119,15 +1119,15 @@ describe("config view", () => {
       onOpenCustomThemeImport,
     });
 
-    const customButton = findButtonByText(container, "Import");
+    const customButton = findButtonByText(container, "Import theme…");
 
     expect(customButton.disabled).toBe(false);
     expect(
       normalizedText(
-        queryRequired(container, ".settings-theme-import__inline-hint", HTMLParagraphElement),
+        queryRequired(container, ".settings-theme-custom__hint", HTMLParagraphElement),
       ),
     ).toBe(
-      "Click Import to add one browser-local tweakcn theme. In tweakcn, use Share and paste the copied link here.",
+      "Optionally import one browser-local theme from tweakcn. This is separate from the built-in themes above.",
     );
 
     customButton.click();

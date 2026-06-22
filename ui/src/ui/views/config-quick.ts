@@ -129,9 +129,9 @@ export type QuickSettingsProps = {
 
 type ThemeOption = { id: ThemeName; label: string };
 const BUILTIN_THEME_OPTIONS: ThemeOption[] = [
-  { id: "claw", label: "Claw" },
-  { id: "knot", label: "Knot" },
-  { id: "dash", label: "Dash" },
+  { id: "claw", label: "Graphite" },
+  { id: "knot", label: "Midnight" },
+  { id: "dash", label: "Slate" },
 ];
 
 const BORDER_RADIUS_STOPS: Array<{ value: BorderRadiusStop; label: string }> = [
@@ -590,13 +590,14 @@ function renderSecurityCard(props: QuickSettingsProps) {
 }
 
 function renderAppearanceCard(props: QuickSettingsProps) {
-  const importedThemeName = props.hasCustomTheme
-    ? (props.customThemeLabel ?? "Imported theme")
-    : "Import";
-  const themeOptions: ThemeOption[] = [
-    ...BUILTIN_THEME_OPTIONS,
-    { id: "custom", label: importedThemeName },
-  ];
+  // Only surface the imported theme as a selectable segment once one exists.
+  // The "Import" action gets its own row below so it is never mistaken for a theme.
+  const themeOptions: ThemeOption[] = props.hasCustomTheme
+    ? [
+        ...BUILTIN_THEME_OPTIONS,
+        { id: "custom", label: props.customThemeLabel ?? "Imported theme" },
+      ]
+    : [...BUILTIN_THEME_OPTIONS];
   return html`
     <div class="qs-card qs-card--appearance">
       ${renderCardHeader(icons.spark, "Appearance")}
@@ -628,6 +629,21 @@ function renderAppearanceCard(props: QuickSettingsProps) {
             )}
           </div>
         </div>
+        ${!props.hasCustomTheme
+          ? html`
+              <div class="qs-row">
+                <span class="qs-row__label">Custom</span>
+                <button
+                  class="qs-theme-import"
+                  type="button"
+                  title="Import a custom theme from tweakcn"
+                  @click=${() => props.onOpenCustomThemeImport?.()}
+                >
+                  ${icons.spark} Import theme…
+                </button>
+              </div>
+            `
+          : ""}
         <div class="qs-row">
           <span class="qs-row__label">Mode</span>
           <div class="qs-segmented">
@@ -743,7 +759,7 @@ function renderPersonalCard(props: QuickSettingsProps) {
                     type="text"
                     maxlength="16"
                     .value=${avatarText}
-                    placeholder="JD or 🦞"
+                    placeholder="JD or 🌼"
                     @input=${(e: Event) => {
                       const value = (e.target as HTMLInputElement).value;
                       props.onUserAvatarChange?.(value.trim() ? value : null);

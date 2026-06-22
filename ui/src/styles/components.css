@@ -579,7 +579,7 @@
 }
 
 /* ===========================================
-   Status Dot - With glow for emphasis
+   Status Dot - Flat, no glow
    =========================================== */
 
 .statusDot {
@@ -587,25 +587,21 @@
   height: 8px;
   border-radius: var(--radius-full);
   background: var(--danger);
-  box-shadow: 0 0 8px rgba(239, 68, 68, 0.5);
   animation: pulse-subtle 2s ease-in-out infinite;
 }
 
 .statusDot.ok {
   background: var(--ok);
-  box-shadow: 0 0 8px rgba(34, 197, 94, 0.5);
   animation: none;
 }
 
 .statusDot.warn {
   background: var(--warn);
-  box-shadow: 0 0 8px rgba(245, 158, 11, 0.5);
   animation: none;
 }
 
 .statusDot.muted {
   background: var(--muted);
-  box-shadow: none;
   animation: none;
   opacity: 0.5;
 }
@@ -714,13 +710,11 @@
   border-color: var(--accent);
   background: var(--accent);
   color: var(--primary-foreground);
-  box-shadow: 0 1px 3px var(--accent-subtle);
 }
 
 .btn.primary:hover {
   background: var(--accent-hover);
   border-color: var(--accent-hover);
-  box-shadow: 0 2px 12px var(--accent-glow);
 }
 
 /* Keyboard shortcut badge (shadcn style) */
@@ -1789,24 +1783,20 @@
 }
 
 .callout.danger {
-  border-color: color-mix(in srgb, var(--danger) 34%, var(--border));
-  background: linear-gradient(
-    135deg,
-    color-mix(in srgb, var(--danger) 14%, var(--bg-elevated)) 0%,
-    color-mix(in srgb, var(--danger) 8%, var(--bg-elevated)) 100%
-  );
+  border-color: color-mix(in srgb, var(--danger) 28%, var(--border));
+  background: var(--danger-subtle);
   color: color-mix(in srgb, var(--danger) 82%, var(--text-strong));
 }
 
 .callout.info {
-  border-color: rgba(59, 130, 246, 0.25);
-  background: linear-gradient(135deg, rgba(59, 130, 246, 0.08) 0%, rgba(59, 130, 246, 0.04) 100%);
+  border-color: color-mix(in srgb, var(--accent) 28%, var(--border));
+  background: var(--accent-subtle);
   color: var(--info);
 }
 
 .callout.success {
-  border-color: rgba(34, 197, 94, 0.25);
-  background: linear-gradient(135deg, rgba(34, 197, 94, 0.08) 0%, rgba(34, 197, 94, 0.04) 100%);
+  border-color: color-mix(in srgb, var(--ok) 28%, var(--border));
+  background: var(--ok-subtle);
   color: var(--ok);
 }
 
@@ -1842,7 +1832,7 @@
 
 .compaction-indicator--active {
   color: var(--info);
-  border-color: rgba(59, 130, 246, 0.35);
+  border-color: color-mix(in srgb, var(--accent) 35%, var(--border));
 }
 
 .compaction-indicator--active svg {
@@ -1878,15 +1868,15 @@
   margin: 0 auto 8px;
   padding: 12px 14px;
   border-radius: var(--radius-lg);
-  border: 1px solid rgba(59, 130, 246, 0.28);
-  background: linear-gradient(180deg, rgba(59, 130, 246, 0.08), rgba(59, 130, 246, 0.03));
+  border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--border));
+  background: var(--accent-subtle);
   color: var(--text);
   animation: fade-in 0.2s var(--ease-out);
 }
 
 .chat-side-result--error {
-  border-color: rgba(239, 68, 68, 0.28);
-  background: linear-gradient(180deg, rgba(239, 68, 68, 0.08), rgba(239, 68, 68, 0.03));
+  border-color: color-mix(in srgb, var(--danger) 28%, var(--border));
+  background: var(--danger-subtle);
 }
 
 .chat-side-result__header,
@@ -2867,7 +2857,7 @@
 
 .data-table-badge--group {
   color: var(--info);
-  background: rgba(59, 130, 246, 0.1);
+  background: var(--accent-subtle);
 }
 
 .data-table-badge--cron {
@@ -3762,7 +3752,7 @@ td.data-table-key-col {
 
 .log-level.info {
   color: var(--info);
-  border-color: rgba(59, 130, 246, 0.3);
+  border-color: color-mix(in srgb, var(--accent) 30%, var(--border));
 }
 
 .log-level.warn {
@@ -3783,7 +3773,7 @@ td.data-table-key-col {
 
 .log-chip.info {
   color: var(--info);
-  border-color: rgba(59, 130, 246, 0.3);
+  border-color: color-mix(in srgb, var(--accent) 30%, var(--border));
 }
 
 .log-chip.warn {
@@ -4952,9 +4942,8 @@ td.data-table-key-col {
 }
 
 .md-preview-dialog::backdrop {
-  background:
-    radial-gradient(circle at top, rgba(59, 130, 246, 0.12), transparent 32%), rgba(5, 8, 15, 0.76);
-  backdrop-filter: blur(14px);
+  background: color-mix(in srgb, #000 60%, transparent);
+  backdrop-filter: blur(2px);
 }
 
 .md-preview-dialog__panel {
@@ -5104,14 +5093,7 @@ td.data-table-key-col {
   overflow: auto;
   overscroll-behavior: contain;
   padding: clamp(18px, 3vw, 28px);
-  background:
-    radial-gradient(circle at top right, rgba(59, 130, 246, 0.055), transparent 32%),
-    radial-gradient(circle at bottom left, rgba(20, 184, 166, 0.045), transparent 28%),
-    linear-gradient(
-      180deg,
-      color-mix(in srgb, var(--panel) 84%, black 16%),
-      color-mix(in srgb, var(--bg) 88%, black 12%)
-    );
+  background: var(--bg);
 }
 
 .md-preview-dialog__meta {

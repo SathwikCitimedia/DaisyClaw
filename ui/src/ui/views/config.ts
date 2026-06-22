@@ -787,9 +787,9 @@ type ThemeOption = {
   icon: TemplateResult;
 };
 const BUILTIN_THEME_OPTIONS: ThemeOption[] = [
-  { id: "claw", label: "Claw", description: "Chroma family", icon: icons.zap },
-  { id: "knot", label: "Knot", description: "Black & red", icon: icons.link },
-  { id: "dash", label: "Dash", description: "Chocolate blueprint", icon: icons.barChart },
+  { id: "claw", label: "Graphite", description: "Neutral dark · indigo accent", icon: icons.zap },
+  { id: "knot", label: "Midnight", description: "Deep navy · blue accent", icon: icons.link },
+  { id: "dash", label: "Slate", description: "Cool slate · teal accent", icon: icons.barChart },
 ];
 
 function importedThemeName(props: Pick<ConfigProps, "hasCustomTheme" | "customThemeLabel">) {
@@ -955,17 +955,20 @@ function renderAppearanceSection(props: ConfigProps) {
     focusCustomThemeImportInput();
   }
   const importedName = importedThemeName(props);
-  const themeOptions: ThemeOption[] = [
-    ...BUILTIN_THEME_OPTIONS,
-    {
-      id: "custom",
-      label: props.hasCustomTheme ? importedName : "Import",
-      description: props.hasCustomTheme
-        ? `Imported from tweakcn: ${importedName}`
-        : "Import a tweakcn theme into this browser-local slot",
-      icon: icons.spark,
-    },
-  ];
+  // The custom/imported theme only appears as a selectable card once one has actually
+  // been imported. The "Import" action itself lives in its own section below the grid
+  // so it is never mistaken for a built-in theme.
+  const themeOptions: ThemeOption[] = props.hasCustomTheme
+    ? [
+        ...BUILTIN_THEME_OPTIONS,
+        {
+          id: "custom",
+          label: importedName,
+          description: `Imported from tweakcn: ${importedName}`,
+          icon: icons.spark,
+        },
+      ]
+    : [...BUILTIN_THEME_OPTIONS];
   return html`
     <div class="settings-appearance">
       <div class="settings-appearance__section">
@@ -1081,10 +1084,22 @@ function renderAppearanceSection(props: ConfigProps) {
               </div>
             `
           : html`
-              <p class="settings-theme-import__inline-hint">
-                Click <strong>Import</strong> to add one browser-local tweakcn theme. In tweakcn,
-                use Share and paste the copied link here.
-              </p>
+              <div class="settings-theme-custom">
+                <div class="settings-theme-custom__copy">
+                  <div class="settings-theme-custom__title">Custom theme</div>
+                  <p class="settings-theme-custom__hint">
+                    Optionally import one browser-local theme from tweakcn. This is separate from
+                    the built-in themes above.
+                  </p>
+                </div>
+                <button
+                  class="btn btn--sm"
+                  type="button"
+                  @click=${() => props.onOpenCustomThemeImport?.()}
+                >
+                  ${icons.spark} Import theme…
+                </button>
+              </div>
             `}
       </div>
 

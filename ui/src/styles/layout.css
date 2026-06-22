@@ -547,24 +547,15 @@
 .sidebar-brand__copy {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  justify-content: center;
   min-width: 0;
 }
 
-.sidebar-brand__eyebrow {
-  font-size: 10px;
-  line-height: 1.1;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  color: var(--muted);
-  text-transform: uppercase;
-}
-
 .sidebar-brand__title {
-  font-size: 15px;
-  line-height: 1.1;
-  font-weight: 700;
-  letter-spacing: -0.03em;
+  font-size: 19px;
+  line-height: 1.05;
+  font-weight: 650;
+  letter-spacing: -0.02em;
   color: var(--text-strong);
   white-space: nowrap;
   overflow: hidden;

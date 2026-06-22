@@ -51,6 +51,7 @@ import {
   isReplyPayloadStatusNotice,
   type ReplyPayload,
 } from "../../auto-reply/reply-payload.js";
+import { generateConversationLabel } from "../../auto-reply/reply/conversation-label-generator.js";
 import { createReplyDispatcher } from "../../auto-reply/reply/reply-dispatcher.js";
 import { stageSandboxMedia } from "../../auto-reply/reply/stage-sandbox-media.js";
 import type { MsgContext, TemplateContext } from "../../auto-reply/templating.js";
@@ -140,6 +141,11 @@ import {
 import { ADMIN_SCOPE } from "../method-scopes.js";
 import type { ChatRunTiming } from "../server-chat-state.js";
 import { getMaxChatHistoryMessagesBytes, MAX_PAYLOAD_BYTES } from "../server-constants.js";
+import {
+  MAX_SESSION_TITLE_LENGTH,
+  SESSION_TITLE_SYSTEM_PROMPT,
+  maybeAutoTitleSession,
+} from "../session-auto-title.js";
 import { resolveSessionHistoryTailReadOptions } from "../session-history-state.js";
 import { readSessionTranscriptIndex } from "../session-transcript-index.fs.js";
 import {
@@ -174,6 +180,7 @@ import {
 } from "./optional-model-catalog.js";
 import { hasTrackedActiveSessionRun } from "./session-active-runs.js";
 import { emitSessionsChanged } from "./session-change-event.js";
+import { applyAutoSessionLabel } from "./session-label-apply.js";
 import type {
   GatewayClient,
   GatewayRequestContext,
@@ -3416,6 +3423,36 @@ export const chatHandlers: GatewayRequestHandlers = {
         { config: cfg },
       );
       respond(true, ackPayload, undefined, { runId: clientRunId });
+      // ChatGPT-style auto-title: name new control-UI chats from the first user
+      // message. Fire-and-forget so it never blocks or fails the send; no-ops
+      // unless the session is eligible and has no title yet.
+      if (rawMessage && !stopCommand && !systemInputProvenance && !systemProvenanceReceipt) {
+        const autoTitleAgentId = selectedAgent.agentId;
+        void maybeAutoTitleSession({
+          sessionKey,
+          existingLabel: entry?.label ?? null,
+          existingDisplayName: entry?.displayName ?? null,
+          message: rawMessage,
+          applyLabel: (label) =>
+            applyAutoSessionLabel({
+              context,
+              cfg,
+              key: sessionKey,
+              ...(autoTitleAgentId ? { agentId: autoTitleAgentId } : {}),
+              label,
+            }),
+          generateLabel: (userMessage) =>
+            generateConversationLabel({
+              userMessage,
+              prompt: SESSION_TITLE_SYSTEM_PROMPT,
+              cfg,
+              ...(autoTitleAgentId ? { agentId: autoTitleAgentId } : {}),
+              maxLength: MAX_SESSION_TITLE_LENGTH,
+            }),
+          onError: (err) =>
+            context.logGateway.warn(`auto session title failed: ${formatForLog(err)}`),
+        }).catch(() => {});
+      }
       const chatSendAckedAtMs = chatSendTiming?.ackedAtMs ?? performance.now();
       const persistedImagesPromise = persistChatSendImages({
         images: parsedImages,

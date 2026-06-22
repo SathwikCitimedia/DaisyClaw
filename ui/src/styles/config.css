@@ -659,15 +659,42 @@
   flex: 0 0 auto;
 }
 
-.settings-theme-import__inline-hint {
-  margin: 0;
-  font-size: 12px;
-  line-height: 1.5;
-  color: var(--muted);
+/* Custom-theme action — visually separated from the built-in theme grid */
+.settings-theme-custom {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 4px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
 }
 
-.settings-theme-import__inline-hint strong {
-  color: var(--text);
+.settings-theme-custom__copy {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.settings-theme-custom__title {
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--text-strong);
+}
+
+.settings-theme-custom__hint {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--muted);
+  max-width: 52ch;
+}
+
+@media (max-width: 560px) {
+  .settings-theme-custom {
+    flex-direction: column;
+    align-items: flex-start;
+  }
 }
 
 .settings-theme-import__field {

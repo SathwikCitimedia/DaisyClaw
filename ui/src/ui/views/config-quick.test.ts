@@ -451,7 +451,7 @@ describe("renderQuickSettings", () => {
 
     expect(
       Array.from(container.querySelectorAll("button")).some(
-        (button) => button.textContent?.trim() === "Import",
+        (button) => button.textContent?.trim() === "Import theme…",
       ),
     ).toBe(true);
   });
@@ -472,7 +472,7 @@ describe("renderQuickSettings", () => {
       container,
     );
 
-    expectButtonByText(container, "Import").click();
+    expectButtonByText(container, "Import theme…").click();
 
     expect(onOpenCustomThemeImport).toHaveBeenCalledTimes(1);
     expect(setTheme).not.toHaveBeenCalled();

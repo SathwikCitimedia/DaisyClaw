@@ -2306,7 +2306,6 @@ export function renderApp(state: AppViewState) {
                         alt="DaisyClaw"
                       />
                       <span class="sidebar-brand__copy">
-                        <span class="sidebar-brand__eyebrow">${t("nav.control")}</span>
                         <span class="sidebar-brand__title">DaisyClaw</span>
                       </span>
                     `}

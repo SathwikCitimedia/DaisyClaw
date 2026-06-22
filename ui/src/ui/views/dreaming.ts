@@ -258,36 +258,55 @@ const STARS: {
   { top: 88, left: 18, size: 2, delay: 2.3, hue: "neutral" },
 ];
 
-const sleepingLobster = html`
+// Daisy — the DaisyClaw mascot. White petals + gold center matching the brand
+// logo, with a calm sleeping face for the dreaming scene.
+const sleepingDaisy = html`
   <svg viewBox="0 0 120 120" fill="none">
     <defs>
-      <linearGradient id="dream-lob-g" x1="0%" y1="0%" x2="100%" y2="100%">
-        <stop offset="0%" stop-color="#ff4d4d" />
-        <stop offset="100%" stop-color="#991b1b" />
+      <linearGradient id="dream-daisy-petal" x1="50%" y1="0%" x2="50%" y2="100%">
+        <stop offset="0%" stop-color="#ffffff" />
+        <stop offset="100%" stop-color="#e6eefc" />
       </linearGradient>
+      <radialGradient id="dream-daisy-center" cx="50%" cy="40%" r="68%">
+        <stop offset="0%" stop-color="#ffd766" />
+        <stop offset="100%" stop-color="#f5a300" />
+      </radialGradient>
     </defs>
+    <g fill="url(#dream-daisy-petal)" stroke="#cdddf8" stroke-width="1">
+      <g transform="rotate(0 60 60)"><ellipse cx="60" cy="26" rx="8.5" ry="20" /></g>
+      <g transform="rotate(30 60 60)"><ellipse cx="60" cy="26" rx="8.5" ry="20" /></g>
+      <g transform="rotate(60 60 60)"><ellipse cx="60" cy="26" rx="8.5" ry="20" /></g>
+      <g transform="rotate(90 60 60)"><ellipse cx="60" cy="26" rx="8.5" ry="20" /></g>
+      <g transform="rotate(120 60 60)"><ellipse cx="60" cy="26" rx="8.5" ry="20" /></g>
+      <g transform="rotate(150 60 60)"><ellipse cx="60" cy="26" rx="8.5" ry="20" /></g>
+      <g transform="rotate(180 60 60)"><ellipse cx="60" cy="26" rx="8.5" ry="20" /></g>
+      <g transform="rotate(210 60 60)"><ellipse cx="60" cy="26" rx="8.5" ry="20" /></g>
+      <g transform="rotate(240 60 60)"><ellipse cx="60" cy="26" rx="8.5" ry="20" /></g>
+      <g transform="rotate(270 60 60)"><ellipse cx="60" cy="26" rx="8.5" ry="20" /></g>
+      <g transform="rotate(300 60 60)"><ellipse cx="60" cy="26" rx="8.5" ry="20" /></g>
+      <g transform="rotate(330 60 60)"><ellipse cx="60" cy="26" rx="8.5" ry="20" /></g>
+    </g>
+    <circle cx="60" cy="60" r="16" fill="url(#dream-daisy-center)" />
+    <circle cx="60" cy="60" r="16" fill="none" stroke="#d98c00" stroke-width="1.5" opacity="0.45" />
+    <!-- sleeping face -->
     <path
-      d="M60 10C30 10 15 35 15 55C15 75 30 95 45 100L45 110L55 110L55 100C55 100 60 102 65 100L65 110L75 110L75 100C90 95 105 75 105 55C105 35 90 10 60 10Z"
-      fill="url(#dream-lob-g)"
-    />
-    <path d="M20 45C5 40 0 50 5 60C10 70 20 65 25 55C28 48 25 45 20 45Z" fill="url(#dream-lob-g)" />
-    <path
-      d="M100 45C115 40 120 50 115 60C110 70 100 65 95 55C92 48 95 45 100 45Z"
-      fill="url(#dream-lob-g)"
-    />
-    <path d="M45 15Q38 8 35 14" stroke="#ff4d4d" stroke-width="3" stroke-linecap="round" />
-    <path d="M75 15Q82 8 85 14" stroke="#ff4d4d" stroke-width="3" stroke-linecap="round" />
-    <path
-      d="M39 36Q45 32 51 36"
-      stroke="#050810"
-      stroke-width="2.5"
+      d="M50 56Q53.5 59 57 56"
+      stroke="#5a4500"
+      stroke-width="2"
       stroke-linecap="round"
       fill="none"
     />
     <path
-      d="M69 36Q75 32 81 36"
-      stroke="#050810"
-      stroke-width="2.5"
+      d="M63 56Q66.5 59 70 56"
+      stroke="#5a4500"
+      stroke-width="2"
+      stroke-linecap="round"
+      fill="none"
+    />
+    <path
+      d="M55 65Q60 69 65 65"
+      stroke="#5a4500"
+      stroke-width="2"
       stroke-linecap="round"
       fill="none"
     />
@@ -445,7 +464,7 @@ function renderScene(props: DreamingProps, idle: boolean, dreamText: string) {
         : nothing}
 
       <div class="dreams__glow"></div>
-      <div class="dreams__lobster">${sleepingLobster}</div>
+      <div class="dreams__lobster">${sleepingDaisy}</div>
       <span class="dreams__z">z</span>
       <span class="dreams__z">z</span>
       <span class="dreams__z">Z</span>

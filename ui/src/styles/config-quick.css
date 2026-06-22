@@ -591,6 +591,47 @@
   box-shadow: var(--shadow-sm);
 }
 
+/* ── Custom theme import (distinct from the theme segments) ── */
+
+.qs-theme-import {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 550;
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    color var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out),
+    background var(--duration-fast) var(--ease-out);
+}
+
+.qs-theme-import:hover {
+  color: var(--text);
+  border-color: var(--border-strong);
+  background: var(--bg-hover);
+}
+
+.qs-theme-import:focus-visible {
+  outline: none;
+  color: var(--text);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 22%, transparent);
+}
+
+.qs-theme-import svg {
+  width: 14px;
+  height: 14px;
+  stroke: currentColor;
+  fill: none;
+  flex: 0 0 auto;
+}
+
 /* ── Toggle switch ── */
 
 .qs-toggle {

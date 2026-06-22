@@ -591,6 +591,80 @@
   box-shadow: var(--shadow-sm);
 }
 
+/* ── Accent color swatches ── */
+
+.qs-row--accent {
+  align-items: center;
+}
+
+.qs-accent-swatches {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.qs-accent-swatch {
+  width: 20px;
+  height: 20px;
+  border-radius: var(--radius-full);
+  background: var(--swatch, #5e6ad2);
+  border: 2px solid transparent;
+  cursor: pointer;
+  padding: 0;
+  flex-shrink: 0;
+  transition:
+    transform var(--duration-fast) var(--ease-out),
+    box-shadow var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out);
+  outline: none;
+  position: relative;
+}
+
+.qs-accent-swatch:hover {
+  transform: scale(1.18);
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--swatch, #5e6ad2) 50%, transparent);
+}
+
+.qs-accent-swatch--active {
+  border-color: var(--text-strong);
+  box-shadow:
+    0 0 0 1px var(--bg),
+    0 0 0 3px var(--swatch, #5e6ad2);
+  transform: scale(1.1);
+}
+
+.qs-accent-swatch--active:hover {
+  transform: scale(1.18);
+}
+
+.qs-accent-swatch--custom {
+  background: conic-gradient(
+    hsl(0 80% 60%),
+    hsl(45 80% 60%),
+    hsl(90 70% 50%),
+    hsl(180 70% 50%),
+    hsl(240 70% 65%),
+    hsl(300 70% 60%),
+    hsl(360 80% 60%)
+  );
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.qs-accent-input {
+  opacity: 0;
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  pointer-events: none;
+  top: 0;
+  left: 0;
+}
+
 /* ── Custom theme import (distinct from the theme segments) ── */
 
 .qs-theme-import {

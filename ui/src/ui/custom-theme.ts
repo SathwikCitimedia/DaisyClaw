@@ -610,6 +610,205 @@ export function buildCustomThemeStyles(theme: ImportedCustomTheme) {
   ].join("\n");
 }
 
+// ── Accent theme builder ──
+
+function hexToRgbParts(hex: string): [number, number, number] | null {
+  const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+  return m ? [parseInt(m[1], 16), parseInt(m[2], 16), parseInt(m[3], 16)] : null;
+}
+
+function rgbToHsl(r: number, g: number, b: number): [number, number, number] {
+  r /= 255;
+  g /= 255;
+  b /= 255;
+  const max = Math.max(r, g, b),
+    min = Math.min(r, g, b);
+  const l = (max + min) / 2;
+  if (max === min) return [0, 0, l * 100];
+  const d = max - min;
+  const s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+  let h = 0;
+  if (max === r) h = ((g - b) / d + (g < b ? 6 : 0)) / 6;
+  else if (max === g) h = ((b - r) / d + 2) / 6;
+  else h = ((r - g) / d + 4) / 6;
+  return [h * 360, s * 100, l * 100];
+}
+
+function hslToHex(h: number, s: number, l: number): string {
+  s /= 100;
+  l /= 100;
+  const a = s * Math.min(l, 1 - l);
+  const f = (n: number) => {
+    const k = (n + h / 30) % 12;
+    const c = l - a * Math.max(-1, Math.min(k - 3, 9 - k, 1));
+    return Math.round(255 * c)
+      .toString(16)
+      .padStart(2, "0");
+  };
+  return `#${f(0)}${f(8)}${f(4)}`;
+}
+
+function adjustLightness(hex: string, delta: number): string {
+  const rgb = hexToRgbParts(hex);
+  if (!rgb) return hex;
+  const [h, s, l] = rgbToHsl(...rgb);
+  return hslToHex(h, s, Math.max(0, Math.min(100, l + delta)));
+}
+
+function toRgba(hex: string, alpha: number): string {
+  const rgb = hexToRgbParts(hex);
+  if (!rgb) return hex;
+  return `rgba(${rgb[0]},${rgb[1]},${rgb[2]},${alpha})`;
+}
+
+function relativeLuminance(hex: string): number {
+  const rgb = hexToRgbParts(hex);
+  if (!rgb) return 0;
+  return rgb
+    .map((v) => {
+      const s = v / 255;
+      return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
+    })
+    .reduce((sum, c, i) => sum + c * [0.2126, 0.7152, 0.0722][i], 0);
+}
+
+export function buildAccentTheme(accentHex: string): ImportedCustomTheme {
+  const hex = accentHex.startsWith("#") ? accentHex : `#${accentHex}`;
+  const rgb = hexToRgbParts(hex) ?? [94, 106, 210];
+  const [r, g, b] = rgb;
+  const fg = relativeLuminance(hex) > 0.35 ? "#000000" : "#ffffff";
+  const hoverDark = adjustLightness(hex, 10);
+  const hoverLight = adjustLightness(hex, -8);
+  const muted = toRgba(hex, 0.7);
+  const subtleDark = toRgba(hex, 0.15);
+  const subtleLight = toRgba(hex, 0.12);
+  const focus = toRgba(hex, 0.4);
+  const ring = `0 0 0 1px var(--bg), 0 0 0 3px rgba(${r},${g},${b},0.4)`;
+  const ringLight = `0 0 0 1px var(--bg), 0 0 0 3px rgba(${r},${g},${b},0.35)`;
+  const FONT = '"Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+  const MONO =
+    '"JetBrains Mono", ui-monospace, SFMono-Regular, "SF Mono", Menlo, Monaco, Consolas, monospace';
+
+  const dark: ThemeTokenMap = {
+    bg: "#08090a",
+    "bg-accent": "#0c0d0f",
+    "bg-elevated": "#131416",
+    "bg-hover": "#17181b",
+    "bg-muted": "#131416",
+    "bg-content": "#0e0f11",
+    card: "#0e0f11",
+    "card-foreground": "#f7f8f8",
+    "card-highlight": "rgba(255,255,255,0.025)",
+    popover: "#131416",
+    "popover-foreground": "#f7f8f8",
+    panel: "#08090a",
+    "panel-strong": "#0e0f11",
+    "panel-hover": "#17181b",
+    chrome: "rgba(8,9,10,0.85)",
+    "chrome-strong": "rgba(8,9,10,0.96)",
+    text: "#d4d6db",
+    "text-strong": "#f7f8f8",
+    "chat-text": "#d4d6db",
+    muted: "#8a8f98",
+    "muted-strong": "#6e7178",
+    "muted-foreground": "#8a8f98",
+    border: "#1c1d20",
+    "border-strong": "#26272b",
+    "border-hover": "#34353a",
+    input: "#26272b",
+    ring: hex,
+    accent: hex,
+    "accent-hover": hoverDark,
+    "accent-muted": muted,
+    "accent-subtle": subtleDark,
+    "accent-foreground": fg,
+    "accent-glow": "transparent",
+    primary: hex,
+    "primary-foreground": fg,
+    secondary: "#131416",
+    "secondary-foreground": "#f7f8f8",
+    "accent-2": hex,
+    "accent-2-muted": muted,
+    "accent-2-subtle": subtleDark,
+    destructive: "#eb5757",
+    "destructive-foreground": "#ffffff",
+    danger: "#eb5757",
+    "danger-muted": "rgba(235,87,87,0.75)",
+    "danger-subtle": "rgba(235,87,87,0.1)",
+    focus: focus,
+    "focus-ring": ring,
+    "focus-glow": ring,
+    "font-body": FONT,
+    "font-display": FONT,
+    mono: MONO,
+    "grid-line": "rgba(255,255,255,0.03)",
+  };
+
+  const light: ThemeTokenMap = {
+    bg: "#fbfbfc",
+    "bg-accent": "#f5f5f7",
+    "bg-elevated": "#ffffff",
+    "bg-hover": "#f0f1f3",
+    "bg-muted": "#f5f5f7",
+    "bg-content": "#ffffff",
+    card: "#ffffff",
+    "card-foreground": "#1c1d1f",
+    "card-highlight": "rgba(0,0,0,0.015)",
+    popover: "#ffffff",
+    "popover-foreground": "#1c1d1f",
+    panel: "#fbfbfc",
+    "panel-strong": "#ffffff",
+    "panel-hover": "#f0f1f3",
+    chrome: "rgba(251,251,252,0.9)",
+    "chrome-strong": "rgba(251,251,252,0.97)",
+    text: "#3c3f44",
+    "text-strong": "#1c1d1f",
+    "chat-text": "#3c3f44",
+    muted: "#6b7280",
+    "muted-strong": "#4b5563",
+    "muted-foreground": "#6b7280",
+    border: "#e6e7e9",
+    "border-strong": "#d1d2d6",
+    "border-hover": "#b8b9be",
+    input: "#e6e7e9",
+    ring: hex,
+    accent: hex,
+    "accent-hover": hoverLight,
+    "accent-muted": muted,
+    "accent-subtle": subtleLight,
+    "accent-foreground": fg,
+    "accent-glow": "transparent",
+    primary: hex,
+    "primary-foreground": fg,
+    secondary: "#f5f5f7",
+    "secondary-foreground": "#1c1d1f",
+    "accent-2": hex,
+    "accent-2-muted": muted,
+    "accent-2-subtle": subtleLight,
+    destructive: "#dc2626",
+    "destructive-foreground": "#ffffff",
+    danger: "#dc2626",
+    "danger-muted": "rgba(220,38,38,0.75)",
+    "danger-subtle": "rgba(220,38,38,0.1)",
+    focus: focus,
+    "focus-ring": ringLight,
+    "focus-glow": ringLight,
+    "font-body": FONT,
+    "font-display": FONT,
+    mono: MONO,
+    "grid-line": "rgba(0,0,0,0.035)",
+  };
+
+  return {
+    sourceUrl: "daisyclaw://accent-picker",
+    themeId: `accent-${hex.replace("#", "")}`,
+    label: "Custom",
+    importedAt: new Date().toISOString(),
+    dark,
+    light,
+  };
+}
+
 export function syncCustomThemeStyleTag(theme: ImportedCustomTheme | null | undefined) {
   if (typeof document === "undefined") {
     return;

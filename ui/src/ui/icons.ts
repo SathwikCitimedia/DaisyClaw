@@ -116,9 +116,9 @@ export const icons = {
   // UI icons
   menu: html`
     <svg viewBox="0 0 24 24">
-      <line x1="4" x2="20" y1="12" y2="12" />
-      <line x1="4" x2="20" y1="6" y2="6" />
-      <line x1="4" x2="20" y1="18" y2="18" />
+      <path d="M4 6h16" stroke-linecap="round" />
+      <path d="M4 12h11" stroke-linecap="round" />
+      <path d="M4 18h13" stroke-linecap="round" />
     </svg>
   `,
   x: html`
@@ -298,16 +298,21 @@ export const icons = {
   `,
   panelLeftClose: html`
     <svg viewBox="0 0 24 24">
-      <rect x="3" y="3" width="18" height="18" rx="2" />
-      <path d="M9 3v18" stroke-linecap="round" />
-      <path d="M16 10l-3 2 3 2" stroke-linecap="round" stroke-linejoin="round" />
+      <rect x="2.5" y="2.5" width="19" height="19" rx="3" />
+      <path
+        class="panel-fill"
+        d="M2.5 5.5a3 3 0 0 1 3-3H9v19H5.5a3 3 0 0 1-3-3z"
+        style="fill:currentColor;opacity:0.15;stroke:none"
+      />
+      <path d="M9 2.5v19" />
+      <path d="M15.5 9.5l-2.5 2.5 2.5 2.5" stroke-linecap="round" stroke-linejoin="round" />
     </svg>
   `,
   panelLeftOpen: html`
     <svg viewBox="0 0 24 24">
-      <rect x="3" y="3" width="18" height="18" rx="2" />
-      <path d="M9 3v18" stroke-linecap="round" />
-      <path d="M14 10l3 2-3 2" stroke-linecap="round" stroke-linejoin="round" />
+      <rect x="2.5" y="2.5" width="19" height="19" rx="3" />
+      <path d="M9 2.5v19" stroke-dasharray="2 1.5" />
+      <path d="M12.5 9.5l2.5 2.5-2.5 2.5" stroke-linecap="round" stroke-linejoin="round" />
     </svg>
   `,
   chevronDown: html`

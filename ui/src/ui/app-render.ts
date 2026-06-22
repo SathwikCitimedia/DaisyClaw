@@ -151,6 +151,7 @@ import {
 } from "./controllers/skills.ts";
 import { captureSessionToWorkboard, getWorkboardState } from "./controllers/workboard.ts";
 import { getCronJobPayload } from "./cron-payload.ts";
+import { buildAccentTheme } from "./custom-theme.ts";
 import { buildExternalLinkRel, EXTERNAL_LINK_TARGET } from "./external-link.ts";
 import { formatTimeMs } from "./format.ts";
 import { formatRelativeTimestamp } from "./format.ts";
@@ -168,8 +169,8 @@ import {
   type Tab,
 } from "./navigation.ts";
 import { isPluginEnabledInConfigSnapshot } from "./plugin-activation.ts";
-import { isCronSessionKey, resolveSessionDisplayName } from "./session-display.ts";
 import "./components/dashboard-header.ts";
+import { isCronSessionKey, resolveSessionDisplayName } from "./session-display.ts";
 import {
   buildAgentMainSessionKey,
   isSessionKeyTiedToAgent,
@@ -619,6 +620,30 @@ function renderSidebarRecentSession(state: AppViewState, row: GatewaySessionRow)
   const label = resolveSessionDisplayName(row.key, row);
   const meta = row.updatedAt ? formatRelativeTimestamp(row.updatedAt) : "n/a";
   const href = `${pathForTab("chat", state.basePath)}?session=${encodeURIComponent(row.key)}`;
+
+  const startEditing = (e: MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const btn = e.currentTarget as HTMLElement;
+    const anchor = btn.closest(".sidebar-recent-session") as HTMLElement | null;
+    const input = anchor?.querySelector(
+      ".sidebar-recent-session__rename",
+    ) as HTMLInputElement | null;
+    if (!anchor || !input) return;
+    input.value = label;
+    anchor.classList.add("sidebar-recent-session--editing");
+    input.focus();
+    input.select();
+  };
+
+  const commitRename = (input: HTMLInputElement, anchor: HTMLElement | null) => {
+    const newLabel = input.value.trim();
+    anchor?.classList.remove("sidebar-recent-session--editing");
+    if (newLabel && newLabel !== label) {
+      void patchSession(state, row.key, { label: newLabel }).then(() => pendingUpdate?.());
+    }
+  };
+
   return html`
     <a
       href=${href}
@@ -646,14 +671,47 @@ function renderSidebarRecentSession(state: AppViewState, row: GatewaySessionRow)
       <span class="sidebar-recent-session__dot" aria-hidden="true"></span>
       <span class="sidebar-recent-session__body">
         <span class="sidebar-recent-session__name">${label}</span>
+        <input
+          class="sidebar-recent-session__rename"
+          type="text"
+          @click=${(e: Event) => e.preventDefault()}
+          @keydown=${(e: KeyboardEvent) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              const input = e.target as HTMLInputElement;
+              commitRename(input, input.closest(".sidebar-recent-session"));
+            } else if (e.key === "Escape") {
+              const input = e.target as HTMLInputElement;
+              input.value = label;
+              (input.closest(".sidebar-recent-session") as HTMLElement | null)?.classList.remove(
+                "sidebar-recent-session--editing",
+              );
+            }
+          }}
+          @blur=${(e: FocusEvent) => {
+            const input = e.target as HTMLInputElement;
+            commitRename(input, input.closest(".sidebar-recent-session"));
+          }}
+        />
         <span class="sidebar-recent-session__meta">${meta}</span>
       </span>
-      ${row.hasActiveRun
-        ? html`<span
-            class="sidebar-recent-session__live"
-            aria-label=${t("sessions.sessionDetails.activeRun")}
-          ></span>`
-        : nothing}
+      <div class="sidebar-recent-session__actions">
+        ${row.hasActiveRun
+          ? html`<span
+              class="sidebar-recent-session__live"
+              aria-label=${t("sessions.sessionDetails.activeRun")}
+            ></span>`
+          : nothing}
+        <button
+          class="sidebar-recent-session__edit-btn"
+          type="button"
+          title="Rename"
+          aria-label="Rename session"
+          @click=${startEditing}
+        >
+          ${icons.penLine}
+        </button>
+      </div>
     </a>
   `;
 }
@@ -1786,6 +1844,21 @@ export function renderApp(state: AppViewState) {
             borderRadius: state.settings.borderRadius,
             textScale: state.settings.textScale ?? 100,
             setTheme: (theme, context) => state.setTheme(theme, context),
+            customAccentColor: (() => {
+              const t = state.theme;
+              if (t === "claw") return "#5e6ad2";
+              if (t === "knot") return "#4f8ff5";
+              if (t === "dash") return "#3aa8a0";
+              const id = state.settings.customTheme?.themeId ?? "";
+              return id.startsWith("accent-") ? `#${id.slice(7)}` : null;
+            })(),
+            onSetAccentColor: (hex) => {
+              state.applySettings({
+                ...state.settings,
+                theme: "custom",
+                customTheme: buildAccentTheme(hex),
+              });
+            },
             onOpenCustomThemeImport: () => {
               state.setTab("appearance");
               state.appearanceFormMode = "form";

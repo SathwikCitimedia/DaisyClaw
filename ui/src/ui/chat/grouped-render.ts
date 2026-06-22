@@ -430,6 +430,7 @@ export function renderMessageGroup(
     allowExternalEmbedUrls?: boolean;
     contextWindow?: number | null;
     onDelete?: () => void;
+    onEdit?: (text: string) => void;
   },
 ) {
   const normalizedRole = normalizeRoleForGrouping(group.role);
@@ -618,6 +619,25 @@ export function renderMessageGroup(
         <div class="chat-group-footer">
           <span class="chat-sender-name">${who}</span>
           ${renderChatTimestamp(group.timestamp)} ${renderMessageMeta(meta)}
+          ${normalizedRole === "user" && opts.onEdit
+            ? renderEditButton(() => {
+                const text = group.messages
+                  .map((item) => {
+                    const c = (item.message as { content?: unknown }).content;
+                    if (typeof c === "string") return c;
+                    if (Array.isArray(c)) {
+                      return c
+                        .filter((p: unknown) => (p as { type?: string }).type === "text")
+                        .map((p: unknown) => (p as { text?: string }).text ?? "")
+                        .join("");
+                    }
+                    return "";
+                  })
+                  .join("\n")
+                  .trim();
+                opts.onEdit!(text);
+              })
+            : nothing}
           ${opts.onDelete
             ? renderDeleteButton(opts.onDelete, normalizedRole === "user" ? "left" : "right")
             : nothing}
@@ -841,6 +861,23 @@ function placeDeleteConfirmPopover(
   popover.style.left = `${Math.round(left)}px`;
   popover.style.top = `${Math.round(top)}px`;
   popover.dataset.placement = placeBelow ? "below" : "above";
+}
+
+function renderEditButton(onEdit: () => void) {
+  return html`
+    <button
+      class="chat-group-edit"
+      title="Edit message"
+      aria-label="Edit message"
+      type="button"
+      @click=${(e: Event) => {
+        e.stopPropagation();
+        onEdit();
+      }}
+    >
+      ${icons.penLine}
+    </button>
+  `;
 }
 
 function renderDeleteButton(onDelete: () => void, side: DeleteConfirmSide) {

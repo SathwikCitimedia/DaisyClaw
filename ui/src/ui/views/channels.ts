@@ -43,83 +43,125 @@ export function renderChannels(props: ChannelsProps) {
   const signal = (channels?.signal ?? null) as SignalStatus | null;
   const imessage = (channels?.imessage ?? null) as IMessageStatus | null;
   const nostr = (channels?.nostr ?? null) as NostrStatus | null;
+  const channelData: ChannelsChannelData = {
+    whatsapp,
+    telegram,
+    discord,
+    googlechat,
+    slack,
+    signal,
+    imessage,
+    nostr,
+    channelAccounts: props.snapshot?.channelAccounts ?? null,
+  };
+
   const channelOrder = resolveChannelOrder(props.snapshot);
-  const orderedChannels = channelOrder
-    .map((key, index) => ({
-      key,
-      enabled: channelEnabled(key, props),
-      order: index,
-    }))
-    .toSorted((a, b) => {
-      if (a.enabled !== b.enabled) {
-        return a.enabled ? -1 : 1;
-      }
-      return a.order - b.order;
-    });
+  const configured = channelOrder.filter((k) => channelEnabled(k, props));
+  const unconfigured = channelOrder.filter((k) => !channelEnabled(k, props));
+
   const showingStaleSnapshot = Boolean(props.loading && props.snapshot && props.lastSuccessAt);
   const partialWarnings = props.snapshot?.warnings?.filter((warning) => warning.trim()) ?? [];
 
   return html`
-    <section class="grid grid-cols-2">
-      ${orderedChannels.map((channel) =>
-        renderChannel(channel.key, props, {
-          whatsapp,
-          telegram,
-          discord,
-          googlechat,
-          slack,
-          signal,
-          imessage,
-          nostr,
-          channelAccounts: props.snapshot?.channelAccounts ?? null,
-        }),
-      )}
-    </section>
-
-    <section class="card" style="margin-top: 18px;">
-      <div class="row" style="justify-content: space-between;">
-        <div>
-          <div class="card-title">${t("channels.health.title")}</div>
-          <div class="card-sub">${t("channels.health.subtitle")}</div>
-        </div>
-        <div class="muted">
-          ${props.lastSuccessAt ? formatRelativeTimestamp(props.lastSuccessAt) : t("common.na")}
-        </div>
-      </div>
-      ${showingStaleSnapshot
+    <div class="ch-groups">
+      ${configured.length > 0
         ? html`
-            <div class="callout info" style="margin-top: 12px;">
-              Refreshing channel status in the background; showing the last successful snapshot.
-            </div>
+            <details class="ch-group" open>
+              <summary class="ch-group__summary">
+                <span class="ch-group__title">Configured</span>
+                <span class="ch-group__badge ch-group__badge--ok">${configured.length}</span>
+                <span class="ch-group__chevron"></span>
+              </summary>
+              <div class="ch-group__body">
+                ${configured.map((key) => renderChannelAccordion(key, props, channelData, true))}
+              </div>
+            </details>
           `
         : nothing}
-      ${props.snapshot?.partial
-        ? html`
-            <div class="callout warn" style="margin-top: 12px;">
+
+      <details class="ch-group" ?open=${configured.length === 0}>
+        <summary class="ch-group__summary">
+          <span class="ch-group__title">Unconfigured</span>
+          <span class="ch-group__badge">${unconfigured.length}</span>
+          <span class="ch-group__chevron"></span>
+        </summary>
+        <div class="ch-group__body">
+          ${unconfigured.length === 0
+            ? html`<div class="ch-group__empty muted">All channels are configured.</div>`
+            : unconfigured.map((key) => renderChannelAccordion(key, props, channelData, false))}
+        </div>
+      </details>
+    </div>
+
+    <details class="ch-group ch-group--health" style="margin-top: 18px;">
+      <summary class="ch-group__summary">
+        <span class="ch-group__title">${t("channels.health.title")}</span>
+        <span class="muted" style="font-size:12px;margin-left:auto;margin-right:8px;">
+          ${props.lastSuccessAt ? formatRelativeTimestamp(props.lastSuccessAt) : t("common.na")}
+        </span>
+        <span class="ch-group__chevron"></span>
+      </summary>
+      <div class="ch-group__body">
+        ${showingStaleSnapshot
+          ? html`<div class="callout info" style="margin-bottom:12px;">
+              Refreshing channel status in the background; showing the last successful snapshot.
+            </div>`
+          : nothing}
+        ${props.snapshot?.partial
+          ? html`<div class="callout warn" style="margin-bottom:12px;">
               Some channel checks did not finish before the UI budget.
               ${partialWarnings.length > 0 ? partialWarnings.slice(0, 3).join("; ") : ""}
-            </div>
-          `
-        : nothing}
-      ${props.lastError
-        ? html`<div class="callout danger" style="margin-top: 12px;">${props.lastError}</div>`
-        : nothing}
-      <pre class="code-block" style="margin-top: 12px;">
-${props.snapshot ? JSON.stringify(props.snapshot, null, 2) : t("channels.health.noSnapshotYet")}
-      </pre
-      >
-    </section>
+            </div>`
+          : nothing}
+        ${props.lastError
+          ? html`<div class="callout danger" style="margin-bottom:12px;">${props.lastError}</div>`
+          : nothing}
+        <pre class="code-block">
+${props.snapshot
+            ? JSON.stringify(props.snapshot, null, 2)
+            : t("channels.health.noSnapshotYet")}</pre
+        >
+      </div>
+    </details>
+  `;
+}
+
+function renderChannelAccordion(
+  key: ChannelKey,
+  props: ChannelsProps,
+  data: ChannelsChannelData,
+  open: boolean,
+) {
+  const label = resolveChannelLabel(props.snapshot, key);
+  return html`
+    <details class="ch-item" ?open=${open}>
+      <summary class="ch-item__summary">
+        <span class="ch-item__name">${label}</span>
+        <span class="ch-item__chevron"></span>
+      </summary>
+      <div class="ch-item__body">${renderChannel(key, props, data)}</div>
+    </details>
   `;
 }
 
 function resolveChannelOrder(snapshot: ChannelsStatusSnapshot | null): ChannelKey[] {
-  if (snapshot?.channelMeta?.length) {
-    return snapshot.channelMeta.map((entry) => entry.id);
-  }
-  if (snapshot?.channelOrder?.length) {
-    return snapshot.channelOrder;
-  }
-  return ["whatsapp", "telegram", "discord", "googlechat", "slack", "signal", "imessage", "nostr"];
+  const ALL: ChannelKey[] = [
+    "whatsapp",
+    "telegram",
+    "discord",
+    "googlechat",
+    "slack",
+    "signal",
+    "imessage",
+    "nostr",
+  ];
+  const configured: ChannelKey[] = snapshot?.channelMeta?.length
+    ? (snapshot.channelMeta.map((entry) => entry.id) as ChannelKey[])
+    : snapshot?.channelOrder?.length
+      ? (snapshot.channelOrder as ChannelKey[])
+      : [];
+  const configuredSet = new Set(configured);
+  return [...configured, ...ALL.filter((k) => !configuredSet.has(k))];
 }
 
 function renderChannel(key: ChannelKey, props: ChannelsProps, data: ChannelsChannelData) {

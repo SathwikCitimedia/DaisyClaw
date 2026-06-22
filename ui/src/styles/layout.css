@@ -853,7 +853,7 @@
   display: block;
 }
 
-.sidebar-recent-session__edit-btn {
+.sidebar-recent-session__menu-btn {
   display: none;
   align-items: center;
   justify-content: center;
@@ -871,23 +871,145 @@
     background var(--duration-fast) ease;
 }
 
-.sidebar-recent-session:hover .sidebar-recent-session__edit-btn {
+.sidebar-recent-session:hover .sidebar-recent-session__menu-btn,
+.sidebar-recent-session--active .sidebar-recent-session__menu-btn {
   display: flex;
 }
 
-.sidebar-recent-session__edit-btn:hover {
+.sidebar-recent-session__menu-btn:hover {
   color: var(--text);
   background: color-mix(in srgb, var(--border-strong) 50%, transparent);
 }
 
-.sidebar-recent-session__edit-btn svg {
-  width: 11px;
-  height: 11px;
+.sidebar-recent-session__menu-btn svg {
+  width: 13px;
+  height: 13px;
   stroke: currentColor;
   fill: none;
   stroke-width: 1.75;
   stroke-linecap: round;
   stroke-linejoin: round;
+}
+
+/* 3-dot dropdown menu */
+.sidebar-session-menu {
+  position: absolute;
+  right: 6px;
+  top: calc(100% - 4px);
+  z-index: 100;
+  background: var(--card);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg, 0 8px 24px rgba(0,0,0,0.18));
+  padding: 4px;
+  min-width: 140px;
+  animation: rise 0.12s var(--ease-out) backwards;
+}
+
+.sidebar-recent-session {
+  position: relative;
+}
+
+.sidebar-session-menu__item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 10px;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  transition: background var(--duration-fast) ease;
+}
+
+.sidebar-session-menu__item:hover {
+  background: var(--bg-hover);
+}
+
+.sidebar-session-menu__item--danger {
+  color: var(--danger);
+}
+
+.sidebar-session-menu__item--danger:hover {
+  background: color-mix(in srgb, var(--danger) 10%, transparent);
+}
+
+.sidebar-session-menu__item svg {
+  width: 13px;
+  height: 13px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.75;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  flex-shrink: 0;
+}
+
+/* Inline delete confirmation */
+.sidebar-session-delete-confirm {
+  position: absolute;
+  right: 6px;
+  top: calc(100% - 4px);
+  z-index: 100;
+  background: var(--card);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg, 0 8px 24px rgba(0,0,0,0.18));
+  padding: 12px 14px;
+  min-width: 200px;
+  animation: rise 0.12s var(--ease-out) backwards;
+}
+
+.sidebar-session-delete-confirm__text {
+  font-size: 13px;
+  color: var(--text);
+  margin: 0 0 10px;
+  line-height: 1.4;
+}
+
+.sidebar-session-delete-confirm__text strong {
+  color: var(--text-strong);
+}
+
+.sidebar-session-delete-confirm__actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.sidebar-session-delete-confirm__cancel {
+  padding: 5px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.sidebar-session-delete-confirm__cancel:hover {
+  background: var(--bg-hover);
+}
+
+.sidebar-session-delete-confirm__yes {
+  padding: 5px 12px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: var(--danger);
+  color: #fff;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.sidebar-session-delete-confirm__yes:hover {
+  background: color-mix(in srgb, var(--danger) 85%, #000);
 }
 
 .sidebar-nav::-webkit-scrollbar {

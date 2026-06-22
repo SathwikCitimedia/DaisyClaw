@@ -1263,6 +1263,7 @@ export async function createSessionAndRefresh(
 export async function deleteSessionsAndRefresh(
   state: SessionsState,
   keys: string[],
+  options: { skipConfirm?: boolean } = {},
 ): Promise<string[]> {
   if (!state.client || !state.connected || keys.length === 0) {
     return [];
@@ -1271,11 +1272,13 @@ export async function deleteSessionsAndRefresh(
   if (state.sessionsLoading) {
     return [];
   }
-  const confirmed = window.confirm(
-    `Delete ${keys.length} ${keys.length === 1 ? "session" : "sessions"}?\n\nThis will delete the session entries and archive their transcripts.`,
-  );
-  if (!confirmed) {
-    return [];
+  if (!options.skipConfirm) {
+    const confirmed = window.confirm(
+      `Delete ${keys.length} ${keys.length === 1 ? "session" : "sessions"}?\n\nThis will delete the session entries and archive their transcripts.`,
+    );
+    if (!confirmed) {
+      return [];
+    }
   }
   const deleted: string[] = [];
   const deleteErrors: string[] = [];

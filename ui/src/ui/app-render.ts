@@ -621,15 +621,11 @@ function renderSidebarRecentSession(state: AppViewState, row: GatewaySessionRow)
   const meta = row.updatedAt ? formatRelativeTimestamp(row.updatedAt) : "n/a";
   const href = `${pathForTab("chat", state.basePath)}?session=${encodeURIComponent(row.key)}`;
 
-  const startEditing = (e: MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    const btn = e.currentTarget as HTMLElement;
-    const anchor = btn.closest(".sidebar-recent-session") as HTMLElement | null;
-    const input = anchor?.querySelector(
+  const startEditing = (anchor: HTMLElement) => {
+    const input = anchor.querySelector(
       ".sidebar-recent-session__rename",
     ) as HTMLInputElement | null;
-    if (!anchor || !input) return;
+    if (!input) return;
     input.value = label;
     anchor.classList.add("sidebar-recent-session--editing");
     input.focus();
@@ -642,6 +638,78 @@ function renderSidebarRecentSession(state: AppViewState, row: GatewaySessionRow)
     if (newLabel && newLabel !== label) {
       void patchSession(state, row.key, { label: newLabel }).then(() => pendingUpdate?.());
     }
+  };
+
+  const openMenu = (e: MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const btn = e.currentTarget as HTMLElement;
+    const anchor = btn.closest(".sidebar-recent-session") as HTMLElement | null;
+    if (!anchor) return;
+    const existing = anchor.querySelector(".sidebar-session-menu");
+    if (existing) {
+      existing.remove();
+      return;
+    }
+    const menu = document.createElement("div");
+    menu.className = "sidebar-session-menu";
+    menu.innerHTML = `
+      <button type="button" class="sidebar-session-menu__item" data-action="rename">${icons.penLine.strings.join("")} Rename</button>
+      <button type="button" class="sidebar-session-menu__item sidebar-session-menu__item--danger" data-action="delete">${icons.trash.strings.join("")} Delete</button>
+    `;
+    anchor.appendChild(menu);
+    const closeMenu = (ev?: MouseEvent) => {
+      if (!ev || !(ev.target instanceof Node) || !menu.contains(ev.target as Node)) {
+        menu.remove();
+        document.removeEventListener("click", closeMenu as EventListener, true);
+      }
+    };
+    requestAnimationFrame(() =>
+      document.addEventListener("click", closeMenu as EventListener, true),
+    );
+    menu.querySelector("[data-action=rename]")?.addEventListener("click", (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      menu.remove();
+      document.removeEventListener("click", closeMenu as EventListener, true);
+      startEditing(anchor);
+    });
+    menu.querySelector("[data-action=delete]")?.addEventListener("click", (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      menu.remove();
+      document.removeEventListener("click", closeMenu as EventListener, true);
+      // inline delete confirmation
+      const confirm = document.createElement("div");
+      confirm.className = "sidebar-session-delete-confirm";
+      confirm.innerHTML = `
+        <p class="sidebar-session-delete-confirm__text">Delete "<strong>${label}</strong>"?</p>
+        <div class="sidebar-session-delete-confirm__actions">
+          <button class="sidebar-session-delete-confirm__cancel" type="button">Cancel</button>
+          <button class="sidebar-session-delete-confirm__yes" type="button">Delete</button>
+        </div>
+      `;
+      anchor.appendChild(confirm);
+      confirm
+        .querySelector(".sidebar-session-delete-confirm__cancel")
+        ?.addEventListener("click", (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          confirm.remove();
+        });
+      confirm
+        .querySelector(".sidebar-session-delete-confirm__yes")
+        ?.addEventListener("click", (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          confirm.remove();
+          void deleteSessionsAndRefresh(
+            state as Parameters<typeof deleteSessionsAndRefresh>[0],
+            [row.key],
+            { skipConfirm: true },
+          ).then(() => pendingUpdate?.());
+        });
+    });
   };
 
   return html`
@@ -703,13 +771,13 @@ function renderSidebarRecentSession(state: AppViewState, row: GatewaySessionRow)
             ></span>`
           : nothing}
         <button
-          class="sidebar-recent-session__edit-btn"
+          class="sidebar-recent-session__menu-btn"
           type="button"
-          title="Rename"
-          aria-label="Rename session"
-          @click=${startEditing}
+          title="More options"
+          aria-label="More options"
+          @click=${openMenu}
         >
-          ${icons.penLine}
+          ${icons.moreHorizontal}
         </button>
       </div>
     </a>

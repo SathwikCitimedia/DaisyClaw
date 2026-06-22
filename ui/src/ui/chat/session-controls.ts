@@ -689,34 +689,103 @@ function renderChatSessionPickerPopover(
             const { row, label } = entry;
             const meta = formatChatSessionPickerMeta(row);
             const selected = row.key === state.sessionKey;
+
+            const startPickerRename = (e: MouseEvent) => {
+              e.preventDefault();
+              e.stopPropagation();
+              const wrap = (e.currentTarget as HTMLElement).closest(
+                ".chat-session-picker__option-wrap",
+              ) as HTMLElement | null;
+              if (!wrap) return;
+              const input = wrap.querySelector(
+                ".chat-session-picker__option-rename",
+              ) as HTMLInputElement | null;
+              if (!input) return;
+              input.value = label;
+              wrap.classList.add("chat-session-picker__option-wrap--renaming");
+              input.focus();
+              input.select();
+            };
+
+            const commitPickerRename = (input: HTMLInputElement) => {
+              const wrap = input.closest(".chat-session-picker__option-wrap") as HTMLElement | null;
+              wrap?.classList.remove("chat-session-picker__option-wrap--renaming");
+              const newLabel = input.value.trim();
+              if (newLabel && newLabel !== label && state.client) {
+                void state.client
+                  .request("sessions.patch", {
+                    key: row.key,
+                    ...scopedAgentParamsForSession(state, row.key),
+                    label: newLabel,
+                  })
+                  .then(() => void refreshSessionOptions(state));
+              }
+            };
+
             return html`
-              <button
-                class="chat-session-picker__option ${selected
-                  ? "chat-session-picker__option--selected"
+              <div
+                class="chat-session-picker__option-wrap ${selected
+                  ? "chat-session-picker__option-wrap--selected"
                   : ""}"
-                data-chat-session-picker-option="true"
-                data-session-key=${row.key}
-                role="option"
-                aria-selected=${selected ? "true" : "false"}
-                title=${label}
-                type="button"
-                @click=${() => {
-                  closeChatSessionPicker(state);
-                  if (row.key !== state.sessionKey) {
-                    onSwitchSession(state, row.key);
-                  }
-                }}
               >
-                <span class="chat-session-picker__option-main">
-                  <span class="chat-session-picker__option-label">${label}</span>
-                  ${meta ? html`<span class="chat-session-picker__option-meta">${meta}</span>` : ""}
-                </span>
-                ${selected
-                  ? html`<span class="chat-session-picker__option-check" aria-hidden="true">
-                      ${icons.check}
-                    </span>`
-                  : ""}
-              </button>
+                <button
+                  class="chat-session-picker__option ${selected
+                    ? "chat-session-picker__option--selected"
+                    : ""}"
+                  data-chat-session-picker-option="true"
+                  data-session-key=${row.key}
+                  role="option"
+                  aria-selected=${selected ? "true" : "false"}
+                  title=${label}
+                  type="button"
+                  @click=${() => {
+                    closeChatSessionPicker(state);
+                    if (row.key !== state.sessionKey) {
+                      onSwitchSession(state, row.key);
+                    }
+                  }}
+                >
+                  <span class="chat-session-picker__option-main">
+                    <span class="chat-session-picker__option-label">${label}</span>
+                    ${meta
+                      ? html`<span class="chat-session-picker__option-meta">${meta}</span>`
+                      : ""}
+                  </span>
+                  ${selected
+                    ? html`<span class="chat-session-picker__option-check" aria-hidden="true">
+                        ${icons.check}
+                      </span>`
+                    : ""}
+                </button>
+                <button
+                  class="chat-session-picker__option-rename-btn"
+                  type="button"
+                  title="Rename session"
+                  aria-label="Rename session"
+                  @click=${startPickerRename}
+                >
+                  ${icons.penLine}
+                </button>
+                <input
+                  class="chat-session-picker__option-rename"
+                  type="text"
+                  placeholder="Session name"
+                  @click=${(e: Event) => e.stopPropagation()}
+                  @keydown=${(e: KeyboardEvent) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      commitPickerRename(e.target as HTMLInputElement);
+                    } else if (e.key === "Escape") {
+                      const input = e.target as HTMLInputElement;
+                      const wrap = input.closest(
+                        ".chat-session-picker__option-wrap",
+                      ) as HTMLElement | null;
+                      wrap?.classList.remove("chat-session-picker__option-wrap--renaming");
+                    }
+                  }}
+                  @blur=${(e: FocusEvent) => commitPickerRename(e.target as HTMLInputElement)}
+                />
+              </div>
             `;
           },
         )}

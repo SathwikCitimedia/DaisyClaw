@@ -1843,6 +1843,19 @@ export function renderChat(props: ChatProps) {
                       deleted.delete(item.key);
                       requestUpdate();
                     },
+                    onEdit: (text: string) => {
+                      props.onDraftChange(text);
+                      requestUpdate();
+                      requestAnimationFrame(() => {
+                        const ta = document.querySelector<HTMLTextAreaElement>(
+                          "textarea[data-chat-composer], .chat-composer textarea, .agent-chat textarea",
+                        );
+                        if (ta) {
+                          ta.focus();
+                          ta.setSelectionRange(ta.value.length, ta.value.length);
+                        }
+                      });
+                    },
                   });
                 }
                 return nothing;

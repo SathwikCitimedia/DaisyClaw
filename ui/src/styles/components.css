@@ -434,6 +434,172 @@
 }
 
 /* ===========================================
+   Channel Groups (accordion layout)
+   =========================================== */
+
+.ch-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.ch-group {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--card);
+  overflow: hidden;
+}
+
+.ch-group__summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 18px;
+  cursor: pointer;
+  user-select: none;
+  list-style: none;
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--text-strong);
+  transition: background var(--duration-normal) var(--ease-out);
+}
+
+.ch-group__summary::-webkit-details-marker {
+  display: none;
+}
+
+.ch-group__summary:hover {
+  background: var(--bg-hover);
+}
+
+.ch-group__title {
+  flex: 1;
+}
+
+.ch-group__badge {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 99px;
+  background: var(--bg-subtle);
+  color: var(--muted);
+  border: 1px solid var(--border);
+}
+
+.ch-group__badge--ok {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 25%, transparent);
+}
+
+.ch-group__chevron {
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform var(--duration-normal) var(--ease-out);
+  flex-shrink: 0;
+}
+
+.ch-group__chevron::after {
+  content: "";
+  display: block;
+  width: 8px;
+  height: 8px;
+  border-right: 1.5px solid var(--muted);
+  border-bottom: 1.5px solid var(--muted);
+  transform: rotate(45deg) translate(-2px, -2px);
+  transition: transform var(--duration-normal) var(--ease-out);
+}
+
+.ch-group[open] > .ch-group__summary .ch-group__chevron::after {
+  transform: rotate(-135deg) translate(-2px, -2px);
+}
+
+.ch-group__body {
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+}
+
+.ch-group__empty {
+  padding: 16px 18px;
+  font-size: 13px;
+}
+
+/* Channel item (inner accordion per channel) */
+
+.ch-item {
+  border-bottom: 1px solid var(--border);
+}
+
+.ch-item:last-child {
+  border-bottom: none;
+}
+
+.ch-item__summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 13px 18px;
+  cursor: pointer;
+  user-select: none;
+  list-style: none;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text);
+  transition: background var(--duration-normal) var(--ease-out);
+}
+
+.ch-item__summary::-webkit-details-marker {
+  display: none;
+}
+
+.ch-item__summary:hover {
+  background: var(--bg-hover);
+}
+
+.ch-item__name {
+  flex: 1;
+}
+
+.ch-item__chevron {
+  width: 14px;
+  height: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.ch-item__chevron::after {
+  content: "";
+  display: block;
+  width: 7px;
+  height: 7px;
+  border-right: 1.5px solid var(--muted);
+  border-bottom: 1.5px solid var(--muted);
+  transform: rotate(45deg) translate(-1px, -1px);
+  transition: transform var(--duration-normal) var(--ease-out);
+}
+
+.ch-item[open] > .ch-item__summary .ch-item__chevron::after {
+  transform: rotate(-135deg) translate(-1px, -1px);
+}
+
+.ch-item__body {
+  padding: 18px;
+  border-top: 1px solid var(--border);
+  background: var(--bg-subtle);
+}
+
+.ch-item__body .card {
+  margin: 0;
+  background: var(--card);
+}
+
+/* ===========================================
    Labels & Pills
    =========================================== */
 

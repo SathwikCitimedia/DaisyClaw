@@ -74,6 +74,18 @@ export const icons = {
       <path d="M12 3a6.5 6.5 0 0 0 9 9 9 9 0 1 1-9-9Z" />
     </svg>
   `,
+  palette: html`
+    <svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round">
+      <path
+        fill="none"
+        stroke="currentColor"
+        d="M12 21a9 9 0 1 1 0-18c4.97 0 9 3.58 9 8 0 2.21-1.79 4-4 4h-1.5a1.5 1.5 0 0 0-1.06 2.56A1.5 1.5 0 0 1 12 21Z"
+      />
+      <circle cx="7.5" cy="11" r="1" fill="currentColor" stroke="none" />
+      <circle cx="12" cy="7.5" r="1" fill="currentColor" stroke="none" />
+      <circle cx="16.5" cy="11" r="1" fill="currentColor" stroke="none" />
+    </svg>
+  `,
   settings: html`
     <svg viewBox="0 0 24 24">
       <path
@@ -499,6 +511,18 @@ export const icons = {
       <rect x="3" y="3" width="18" height="18" rx="2" />
       <path d="M15 3v18" stroke-linecap="round" />
       <path d="M10 10l-3 2 3 2" stroke-linecap="round" stroke-linejoin="round" />
+    </svg>
+  `,
+  panelRightClose: html`
+    <svg viewBox="0 0 24 24">
+      <rect x="2.5" y="2.5" width="19" height="19" rx="3" />
+      <path
+        class="panel-fill"
+        d="M21.5 5.5a3 3 0 0 0-3-3H15v19h3.5a3 3 0 0 0 3-3z"
+        style="fill:currentColor;opacity:0.15;stroke:none"
+      />
+      <path d="M15 2.5v19" />
+      <path d="M8.5 9.5l2.5 2.5-2.5 2.5" stroke-linecap="round" stroke-linejoin="round" />
     </svg>
   `,
   maximize: html`

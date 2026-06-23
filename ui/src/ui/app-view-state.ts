@@ -459,6 +459,8 @@ export type AppViewState = {
     updateAvailable: import("./types.js").UpdateAvailable | null;
     attentionItems: AttentionItem[];
     paletteOpen: boolean;
+    themePopoverOpen: boolean;
+    chatWorkspaceRailCollapsed: boolean;
     paletteQuery: string;
     paletteActiveIndex: number;
     streamMode: boolean;

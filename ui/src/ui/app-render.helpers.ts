@@ -28,6 +28,7 @@ import {
   loadSessions,
   syncSelectedSessionMessageSubscription,
 } from "./controllers/sessions.ts";
+import { buildAccentTheme } from "./custom-theme.ts";
 import { icons } from "./icons.ts";
 import { iconForTab, isSettingsTab, pathForTab, titleForTab, type Tab } from "./navigation.ts";
 import { isCronSessionKey, parseSessionKey, resolveSessionDisplayName } from "./session-display.ts";
@@ -39,7 +40,7 @@ import {
 } from "./session-key.ts";
 import { normalizeChatAutoScrollMode, type ChatAutoScrollMode } from "./storage.ts";
 import { normalizeLowercaseStringOrEmpty, normalizeOptionalString } from "./string-coerce.ts";
-import type { ThemeMode } from "./theme.ts";
+import type { ThemeMode, ThemeName } from "./theme.ts";
 import type { SessionsListResult } from "./types.ts";
 import type { ChatQueueItem } from "./ui-types.ts";
 
@@ -845,6 +846,120 @@ export function renderTopbarThemeModeToggle(state: AppViewState) {
           </button>
         `;
       })}
+    </div>
+  `;
+}
+
+type ThemePresetOption = { id: ThemeName; label: string; hex: string };
+// Preset accent hexes mirror the resolved accent for each built-in theme so the
+// swatches read true before the theme is applied. Keep in sync with resolveTheme.
+const THEME_PRESET_OPTIONS: ThemePresetOption[] = [
+  { id: "claw", label: "Graphite", hex: "#5e6ad2" },
+  { id: "knot", label: "Midnight", hex: "#4f8ff5" },
+  { id: "dash", label: "Slate", hex: "#3aa8a0" },
+];
+
+function resolveActiveAccentHex(state: AppViewState): string {
+  for (const preset of THEME_PRESET_OPTIONS) {
+    if (preset.id === state.theme) {
+      return preset.hex;
+    }
+  }
+  // Custom themes encode their accent in the theme id (`accent-RRGGBB`).
+  const id = state.settings.customTheme?.themeId ?? "";
+  return id.startsWith("accent-") ? `#${id.slice(7)}` : "#5e6ad2";
+}
+
+export function renderTopbarThemePicker(state: AppViewState) {
+  const open = state.themePopoverOpen;
+  const isCustom = state.theme === "custom";
+  const activeHex = resolveActiveAccentHex(state);
+  const close = () => {
+    state.themePopoverOpen = false;
+  };
+  const applyCustom = (hex: string) => {
+    state.applySettings({
+      ...state.settings,
+      theme: "custom",
+      customTheme: buildAccentTheme(hex),
+    });
+  };
+
+  return html`
+    <div class="theme-orb ${open ? "theme-orb--open" : ""}">
+      <button
+        type="button"
+        class="theme-orb__trigger"
+        title=${t("common.theme")}
+        aria-label=${t("common.theme")}
+        aria-haspopup="menu"
+        aria-expanded=${open}
+        style="color: ${activeHex}"
+        @click=${() => {
+          state.themePopoverOpen = !state.themePopoverOpen;
+        }}
+      >
+        ${icons.palette}
+      </button>
+      ${open
+        ? html`<button
+            type="button"
+            class="theme-orb__backdrop"
+            aria-hidden="true"
+            tabindex="-1"
+            @click=${close}
+          ></button>`
+        : nothing}
+      <div
+        class="theme-orb__menu"
+        role="menu"
+        aria-label=${t("common.theme")}
+        @keydown=${(event: KeyboardEvent) => {
+          if (event.key === "Escape") {
+            event.preventDefault();
+            close();
+          }
+        }}
+      >
+        ${THEME_PRESET_OPTIONS.map(
+          (opt) => html`
+            <button
+              type="button"
+              role="menuitemradio"
+              aria-checked=${opt.id === state.theme}
+              class="theme-orb__option ${opt.id === state.theme ? "theme-orb__option--active" : ""}"
+              title=${opt.label}
+              aria-label=${opt.label}
+              @click=${(e: Event) => {
+                if (opt.id !== state.theme) {
+                  state.setTheme(opt.id, { element: e.currentTarget as HTMLElement });
+                }
+                close();
+              }}
+            >
+              <span class="theme-orb__swatch" style="background: ${opt.hex}"></span>
+            </button>
+          `,
+        )}
+        <label
+          class="theme-orb__option theme-orb__option--custom ${isCustom
+            ? "theme-orb__option--active"
+            : ""}"
+          title="Custom color"
+        >
+          <span
+            class="theme-orb__swatch ${isCustom ? "" : "theme-orb__swatch--rainbow"}"
+            style=${isCustom ? `background: ${activeHex}` : ""}
+          ></span>
+          <input
+            type="color"
+            class="theme-orb__color-input"
+            aria-label="Custom color"
+            .value=${activeHex}
+            @input=${(e: Event) => applyCustom((e.target as HTMLInputElement).value)}
+          />
+        </label>
+      </div>
     </div>
   `;
 }

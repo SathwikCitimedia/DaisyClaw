@@ -21,6 +21,7 @@ import {
   resolveDashboardHeaderContext,
   renderSidebarConnectionStatus,
   renderTopbarThemeModeToggle,
+  renderTopbarThemePicker,
   createChatSession,
   dismissChatError,
   switchChatSession,
@@ -151,7 +152,6 @@ import {
 } from "./controllers/skills.ts";
 import { captureSessionToWorkboard, getWorkboardState } from "./controllers/workboard.ts";
 import { getCronJobPayload } from "./cron-payload.ts";
-import { buildAccentTheme } from "./custom-theme.ts";
 import { buildExternalLinkRel, EXTERNAL_LINK_TARGET } from "./external-link.ts";
 import { formatTimeMs } from "./format.ts";
 import { formatRelativeTimestamp } from "./format.ts";
@@ -1905,37 +1905,9 @@ export function renderApp(state: AppViewState) {
               updateConfigFormValue(state, ["tools", "profile"], profile);
               requestHostUpdate?.();
             },
-            theme: state.theme,
             themeMode: state.themeMode,
-            hasCustomTheme: Boolean(state.settings.customTheme),
-            customThemeLabel: state.settings.customTheme?.label ?? null,
             borderRadius: state.settings.borderRadius,
             textScale: state.settings.textScale ?? 100,
-            setTheme: (theme, context) => state.setTheme(theme, context),
-            customAccentColor: (() => {
-              const t = state.theme;
-              if (t === "claw") return "#5e6ad2";
-              if (t === "knot") return "#4f8ff5";
-              if (t === "dash") return "#3aa8a0";
-              const id = state.settings.customTheme?.themeId ?? "";
-              return id.startsWith("accent-") ? `#${id.slice(7)}` : null;
-            })(),
-            onSetAccentColor: (hex) => {
-              state.applySettings({
-                ...state.settings,
-                theme: "custom",
-                customTheme: buildAccentTheme(hex),
-              });
-            },
-            onOpenCustomThemeImport: () => {
-              state.setTab("appearance");
-              state.appearanceFormMode = "form";
-              state.appearanceSearchQuery = "";
-              state.appearanceActiveSection = "__appearance__";
-              state.appearanceActiveSubsection = null;
-              state.openCustomThemeImport();
-              requestHostUpdate?.();
-            },
             setThemeMode: (mode, context) => state.setThemeMode(mode, context),
             setBorderRadius: (value) => state.setBorderRadius(value),
             setTextScale: (value) => state.setTextScale(value),
@@ -2429,6 +2401,7 @@ export function renderApp(state: AppViewState) {
               <span class="topbar-search__label">${t("common.search")}</span>
               <kbd class="topbar-search__kbd">⌘K</kbd>
             </button>
+            ${renderTopbarThemePicker(state)}
             <div class="topbar-status">${renderTopbarThemeModeToggle(state)}</div>
           </div>
         </div>
@@ -3682,8 +3655,12 @@ export function renderApp(state: AppViewState) {
                     loading: chatWorkspaceFiles.loading,
                     error: chatWorkspaceFiles.error,
                     activeName: chatWorkspaceFiles.activeName,
+                    collapsed: state.chatWorkspaceRailCollapsed,
                     onRefresh: refreshChatWorkspaceFiles,
                     onOpenFile: openChatWorkspaceFile,
+                    onToggleCollapsed: () => {
+                      state.chatWorkspaceRailCollapsed = !state.chatWorkspaceRailCollapsed;
+                    },
                   },
                   autoExpandToolCalls: false,
                   onRefresh: () => {

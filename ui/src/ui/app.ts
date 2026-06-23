@@ -599,6 +599,8 @@ export class DaisyClawApp extends LitElement {
   // Overview dashboard state
   @state() attentionItems: import("./types.js").AttentionItem[] = [];
   @state() paletteOpen = false;
+  @state() themePopoverOpen = false;
+  @state() chatWorkspaceRailCollapsed = false;
   @state() paletteQuery = "";
   @state() paletteActiveIndex = 0;
   @state() overviewShowGatewayToken = false;

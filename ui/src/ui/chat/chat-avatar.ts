@@ -31,9 +31,18 @@ export function renderChatAvatar(
   const initial =
     normalized === "user"
       ? html`
-          <svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18">
-            <circle cx="12" cy="8" r="4" />
-            <path d="M20 21a8 8 0 1 0-16 0" />
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.8"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            width="18"
+            height="18"
+          >
+            <circle cx="12" cy="7.5" r="3.6" />
+            <path d="M5.5 20v-.8a5 5 0 0 1 5-5h3a5 5 0 0 1 5 5v.8" />
           </svg>
         `
       : normalized === "assistant"

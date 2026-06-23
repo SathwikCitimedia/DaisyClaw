@@ -11,7 +11,7 @@ import { icons } from "../icons.ts";
 import type { BorderRadiusStop, TextScaleStop } from "../storage.ts";
 import { normalizeOptionalString } from "../string-coerce.ts";
 import type { ThemeTransitionContext } from "../theme-transition.ts";
-import type { ThemeMode, ThemeName } from "../theme.ts";
+import type { ThemeMode } from "../theme.ts";
 import {
   normalizeLocalUserIdentity,
   resolveLocalUserAvatarText,
@@ -78,16 +78,9 @@ export type QuickSettingsProps = {
   onToolProfileChange?: (profile: string) => void;
 
   // Appearance
-  theme: ThemeName;
   themeMode: ThemeMode;
-  hasCustomTheme: boolean;
-  customThemeLabel?: string | null;
   borderRadius: number;
   textScale: number;
-  customAccentColor?: string | null;
-  setTheme: (theme: ThemeName, context?: ThemeTransitionContext) => void;
-  onOpenCustomThemeImport?: () => void;
-  onSetAccentColor?: (hex: string) => void;
   setThemeMode: (mode: ThemeMode, context?: ThemeTransitionContext) => void;
   setBorderRadius: (value: number) => void;
   setTextScale: (value: number) => void;
@@ -126,26 +119,6 @@ export type QuickSettingsProps = {
   basePath?: string | null;
   version: string;
 };
-
-// ── Theme options ──
-
-type ThemeOption = { id: ThemeName; label: string };
-const BUILTIN_THEME_OPTIONS: ThemeOption[] = [
-  { id: "claw", label: "Graphite" },
-  { id: "knot", label: "Midnight" },
-  { id: "dash", label: "Slate" },
-];
-
-const ACCENT_PRESETS: Array<{ label: string; hex: string }> = [
-  { label: "Indigo", hex: "#5e6ad2" },
-  { label: "Blue", hex: "#4f8ff5" },
-  { label: "Teal", hex: "#3aa8a0" },
-  { label: "Purple", hex: "#8b5cf6" },
-  { label: "Rose", hex: "#e44d6e" },
-  { label: "Amber", hex: "#d97706" },
-  { label: "Emerald", hex: "#10b981" },
-  { label: "Cyan", hex: "#06b6d4" },
-];
 
 const BORDER_RADIUS_STOPS: Array<{ value: BorderRadiusStop; label: string }> = [
   { value: 0, label: "None" },
@@ -603,81 +576,10 @@ function renderSecurityCard(props: QuickSettingsProps) {
 }
 
 function renderAppearanceCard(props: QuickSettingsProps) {
-  // Only surface the imported theme as a selectable segment once one exists.
-  // The "Import" action gets its own row below so it is never mistaken for a theme.
-  const themeOptions: ThemeOption[] = props.hasCustomTheme
-    ? [
-        ...BUILTIN_THEME_OPTIONS,
-        { id: "custom", label: props.customThemeLabel ?? "Imported theme" },
-      ]
-    : [...BUILTIN_THEME_OPTIONS];
   return html`
     <div class="qs-card qs-card--appearance">
       ${renderCardHeader(icons.spark, "Appearance")}
       <div class="qs-card__body">
-        <div class="qs-row">
-          <span class="qs-row__label">Theme</span>
-          <div class="qs-segmented">
-            ${themeOptions.map(
-              (opt) => html`
-                <button
-                  class="qs-segmented__btn ${opt.id === props.theme
-                    ? "qs-segmented__btn--active"
-                    : ""}"
-                  @click=${(e: Event) => {
-                    if (opt.id === "custom" && !props.hasCustomTheme) {
-                      props.onOpenCustomThemeImport?.();
-                      return;
-                    }
-                    if (opt.id !== props.theme) {
-                      props.setTheme(opt.id, {
-                        element: (e.currentTarget as HTMLElement) ?? undefined,
-                      });
-                    }
-                  }}
-                >
-                  ${opt.label}
-                </button>
-              `,
-            )}
-          </div>
-        </div>
-        <div class="qs-row qs-row--accent">
-          <span class="qs-row__label">Accent</span>
-          <div class="qs-accent-swatches">
-            ${ACCENT_PRESETS.map(
-              (preset) => html`
-                <button
-                  class="qs-accent-swatch ${props.customAccentColor?.toLowerCase() ===
-                  preset.hex.toLowerCase()
-                    ? "qs-accent-swatch--active"
-                    : ""}"
-                  style="--swatch: ${preset.hex}"
-                  title=${preset.label}
-                  type="button"
-                  @click=${() => props.onSetAccentColor?.(preset.hex)}
-                ></button>
-              `,
-            )}
-            <label
-              class="qs-accent-swatch qs-accent-swatch--custom ${props.theme === "custom" &&
-              !ACCENT_PRESETS.some(
-                (p) => p.hex.toLowerCase() === props.customAccentColor?.toLowerCase(),
-              )
-                ? "qs-accent-swatch--active"
-                : ""}"
-              title="Custom color"
-            >
-              <input
-                type="color"
-                class="qs-accent-input"
-                .value=${props.customAccentColor ?? "#5e6ad2"}
-                @change=${(e: Event) =>
-                  props.onSetAccentColor?.((e.target as HTMLInputElement).value)}
-              />
-            </label>
-          </div>
-        </div>
         <div class="qs-row">
           <span class="qs-row__label">Mode</span>
           <div class="qs-segmented">

@@ -59,14 +59,9 @@ function createProps(overrides: Partial<QuickSettingsProps> = {}): QuickSettings
     onSecurityConfigure: vi.fn(),
     onBrowserEnabledToggle: vi.fn(),
     onToolProfileChange: vi.fn(),
-    theme: "claw",
     themeMode: "system",
-    hasCustomTheme: false,
-    customThemeLabel: null,
     borderRadius: 50,
     textScale: 100,
-    setTheme: vi.fn(),
-    onOpenCustomThemeImport: vi.fn(),
     setThemeMode: vi.fn(),
     setBorderRadius: vi.fn(),
     setTextScale: vi.fn(),
@@ -442,64 +437,5 @@ describe("renderQuickSettings", () => {
     } finally {
       vi.unstubAllGlobals();
     }
-  });
-
-  it("shows an import theme option in quick settings before a theme is imported", () => {
-    const container = document.createElement("div");
-
-    render(renderQuickSettings(createProps()), container);
-
-    expect(
-      Array.from(container.querySelectorAll("button")).some(
-        (button) => button.textContent?.trim() === "Import theme…",
-      ),
-    ).toBe(true);
-  });
-
-  it("routes custom clicks into the tweakcn importer until a custom theme exists", () => {
-    const setTheme = vi.fn();
-    const onOpenCustomThemeImport = vi.fn();
-    const container = document.createElement("div");
-
-    render(
-      renderQuickSettings(
-        createProps({
-          hasCustomTheme: false,
-          setTheme,
-          onOpenCustomThemeImport,
-        }),
-      ),
-      container,
-    );
-
-    expectButtonByText(container, "Import theme…").click();
-
-    expect(onOpenCustomThemeImport).toHaveBeenCalledTimes(1);
-    expect(setTheme).not.toHaveBeenCalled();
-  });
-
-  it("applies the imported custom theme from quick settings once it exists", () => {
-    const setTheme = vi.fn();
-    const onOpenCustomThemeImport = vi.fn();
-    const container = document.createElement("div");
-
-    render(
-      renderQuickSettings(
-        createProps({
-          theme: "claw",
-          hasCustomTheme: true,
-          customThemeLabel: "Light Green",
-          setTheme,
-          onOpenCustomThemeImport,
-        }),
-      ),
-      container,
-    );
-
-    const customThemeButton = expectButtonByText(container, "Light Green");
-    customThemeButton.click();
-
-    expect(setTheme).toHaveBeenCalledWith("custom", { element: customThemeButton });
-    expect(onOpenCustomThemeImport).not.toHaveBeenCalled();
   });
 });

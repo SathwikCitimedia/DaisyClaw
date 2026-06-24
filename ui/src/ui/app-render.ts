@@ -3655,11 +3655,14 @@ export function renderApp(state: AppViewState) {
                     loading: chatWorkspaceFiles.loading,
                     error: chatWorkspaceFiles.error,
                     activeName: chatWorkspaceFiles.activeName,
-                    collapsed: state.chatWorkspaceRailCollapsed,
+                    collapsed: state.settings.workspaceRailCollapsed,
                     onRefresh: refreshChatWorkspaceFiles,
                     onOpenFile: openChatWorkspaceFile,
                     onToggleCollapsed: () => {
-                      state.chatWorkspaceRailCollapsed = !state.chatWorkspaceRailCollapsed;
+                      state.applySettings({
+                        ...state.settings,
+                        workspaceRailCollapsed: !state.settings.workspaceRailCollapsed,
+                      });
                     },
                   },
                   autoExpandToolCalls: false,

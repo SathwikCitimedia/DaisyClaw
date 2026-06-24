@@ -460,7 +460,6 @@ export type AppViewState = {
     attentionItems: AttentionItem[];
     paletteOpen: boolean;
     themePopoverOpen: boolean;
-    chatWorkspaceRailCollapsed: boolean;
     paletteQuery: string;
     paletteActiveIndex: number;
     streamMode: boolean;

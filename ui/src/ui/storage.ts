@@ -91,6 +91,7 @@ export type UiSettings = {
   chatAutoScroll?: ChatAutoScrollMode;
   splitRatio: number; // Sidebar split ratio (0.4 to 0.7, default 0.6)
   navCollapsed: boolean; // Collapsible sidebar state
+  workspaceRailCollapsed: boolean; // Collapsible workspace files rail state
   navWidth: number; // Sidebar width when expanded (240–400px)
   navGroupsCollapsed: Record<string, boolean>; // Which nav groups are collapsed
   recentSessionsCollapsed?: boolean; // Collapse recent sessions list in sidebar
@@ -234,6 +235,7 @@ export function loadSettings(): UiSettings {
     chatAutoScroll: "near-bottom",
     splitRatio: 0.6,
     navCollapsed: false,
+    workspaceRailCollapsed: false,
     navWidth: 220,
     navGroupsCollapsed: {},
     recentSessionsCollapsed: false,
@@ -285,6 +287,10 @@ export function loadSettings(): UiSettings {
           : defaults.splitRatio,
       navCollapsed:
         typeof parsed.navCollapsed === "boolean" ? parsed.navCollapsed : defaults.navCollapsed,
+      workspaceRailCollapsed:
+        typeof parsed.workspaceRailCollapsed === "boolean"
+          ? parsed.workspaceRailCollapsed
+          : defaults.workspaceRailCollapsed,
       navWidth:
         typeof parsed.navWidth === "number" && parsed.navWidth >= 200 && parsed.navWidth <= 400
           ? parsed.navWidth
@@ -420,6 +426,7 @@ function persistSettings(next: UiSettings) {
     chatAutoScroll: normalizeChatAutoScrollMode(next.chatAutoScroll),
     splitRatio: next.splitRatio,
     navCollapsed: next.navCollapsed,
+    workspaceRailCollapsed: next.workspaceRailCollapsed,
     navWidth: next.navWidth,
     navGroupsCollapsed: next.navGroupsCollapsed,
     recentSessionsCollapsed: next.recentSessionsCollapsed ?? false,

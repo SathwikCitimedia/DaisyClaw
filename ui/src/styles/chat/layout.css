@@ -53,13 +53,11 @@
 /* Chat thread - scrollable middle section, transparent */
 .chat-thread {
   flex: 1 1 0;
-  /* Grow, shrink, and use 0 base for proper scrolling */
   overflow-y: auto;
   overflow-x: hidden;
   padding: 0 clamp(6px, 1vw, 12px) 6px;
-  margin: 0 0 0 0;
+  margin: 0;
   min-height: 0;
-  /* Allow shrinking for flex scroll behavior */
   border-radius: var(--radius-md);
   background: transparent;
 }
@@ -582,6 +580,7 @@
     -webkit-backdrop-filter: blur(12px) saturate(1.6);
   }
 }
+
 
 .agent-chat__composer-combobox {
   display: flex;

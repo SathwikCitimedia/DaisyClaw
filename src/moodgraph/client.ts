@@ -338,6 +338,19 @@ class MoodgraphClient {
 
     return { text: null, errors };
   }
+
+  /**
+   * Feed a turn to moodgraph purely so its stateful emotional engine advances
+   * (Option B: moodgraph observes; the DaisyClaw agent still produces the actual
+   * reply with full capabilities). The generated text is intentionally discarded —
+   * we only care that the session's emotional/coherence trajectory keeps tracking,
+   * which is then queryable via /v1/emotions and /v1/coherence. Best-effort: a
+   * failure here must never affect the user's reply.
+   */
+  async observe(params: MoodgraphGenerateParams): Promise<{ ok: boolean }> {
+    const result = await this.generate(params);
+    return { ok: "via" in result };
+  }
 }
 
 async function readErrorDetail(response: Response): Promise<string> {

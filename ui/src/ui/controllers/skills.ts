@@ -79,6 +79,12 @@ export type SkillsState = {
   clawhubDetailError: string | null;
   clawhubInstallSlug: string | null;
   clawhubInstallMessage: { kind: "success" | "error"; text: string } | null;
+  clawhubAmbiguousMatches: Array<{
+    ownerHandle: string;
+    slug: string;
+    ref: string;
+    url: string;
+  }> | null;
   clawhubVerdicts: Record<string, ClawHubSkillSecurityVerdict>;
   clawhubVerdictsLoading: boolean;
   clawhubVerdictsError: string | null;
@@ -161,6 +167,7 @@ async function runStaleAwareRequest<T>(
 export function setClawHubSearchQuery(state: SkillsState, query: string) {
   state.clawhubSearchQuery = query;
   state.clawhubInstallMessage = null;
+  state.clawhubAmbiguousMatches = null;
   state.clawhubSearchResults = null;
   state.clawhubSearchError = null;
   state.clawhubSearchLoading = false;
@@ -433,10 +440,40 @@ export async function installFromClawHub(state: SkillsState, slug: string) {
   }
   state.clawhubInstallSlug = slug;
   state.clawhubInstallMessage = null;
+  state.clawhubAmbiguousMatches = null;
   try {
-    await state.client.request("skills.install", { source: "clawhub", slug });
+    const result = (await state.client.request("skills.install", { source: "clawhub", slug })) as
+      | { ok: true }
+      | {
+          ok: false;
+          code: string;
+          matches: Array<{ ownerHandle: string; slug: string; ref: string; url: string }>;
+        }
+      | null;
+    if (result && !result.ok && "code" in result && result.code === "AMBIGUOUS_SKILL_SLUG") {
+      state.clawhubAmbiguousMatches = result.matches;
+    } else {
+      await loadSkills(state);
+      state.clawhubInstallMessage = { kind: "success", text: `Installed ${slug}` };
+    }
+  } catch (err) {
+    state.clawhubInstallMessage = { kind: "error", text: getErrorMessage(err) };
+  } finally {
+    state.clawhubInstallSlug = null;
+  }
+}
+
+export async function installFromClawHubRef(state: SkillsState, ref: string) {
+  if (!state.client || !state.connected) {
+    return;
+  }
+  state.clawhubInstallSlug = ref;
+  state.clawhubInstallMessage = null;
+  state.clawhubAmbiguousMatches = null;
+  try {
+    await state.client.request("skills.install", { source: "clawhub", slug: ref });
     await loadSkills(state);
-    state.clawhubInstallMessage = { kind: "success", text: `Installed ${slug}` };
+    state.clawhubInstallMessage = { kind: "success", text: `Installed ${ref}` };
   } catch (err) {
     state.clawhubInstallMessage = { kind: "error", text: getErrorMessage(err) };
   } finally {

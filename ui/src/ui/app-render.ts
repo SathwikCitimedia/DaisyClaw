@@ -140,6 +140,7 @@ import {
 import {
   closeClawHubDetail,
   installFromClawHub,
+  installFromClawHubRef,
   loadSkillCard,
   installSkill,
   loadClawHubDetail,
@@ -3383,6 +3384,7 @@ export function renderApp(state: AppViewState) {
                 clawhubDetailError: state.clawhubDetailError,
                 clawhubInstallSlug: state.clawhubInstallSlug,
                 clawhubInstallMessage: state.clawhubInstallMessage,
+                clawhubAmbiguousMatches: state.clawhubAmbiguousMatches ?? null,
                 onFilterChange: (next) => (state.skillsFilter = next),
                 onStatusFilterChange: (next) => (state.skillsStatusFilter = next),
                 onRefresh: () => void loadSkills(state, { clearMessages: true }),
@@ -3414,6 +3416,7 @@ export function renderApp(state: AppViewState) {
                 onClawHubDetailOpen: (slug) => void loadClawHubDetail(state, slug),
                 onClawHubDetailClose: () => closeClawHubDetail(state),
                 onClawHubInstall: (slug) => void installFromClawHub(state, slug),
+                onClawHubInstallRef: (ref) => void installFromClawHubRef(state, ref),
               }),
             )
           : nothing}

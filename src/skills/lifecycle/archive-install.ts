@@ -14,6 +14,7 @@ import {
 import type { InstallPolicyOrigin, InstallPolicySource } from "../../security/install-policy.js";
 
 const VALID_SLUG_PATTERN = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/i;
+const OWNER_QUALIFIED_SLUG_PATTERN = /^@[a-z0-9][a-z0-9-]*\/[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/i;
 const DEFAULT_SKILL_ARCHIVE_ROOT_MARKERS = ["SKILL.md"] as const;
 /** Accepted root marker names for ClawHub skill archive uploads. */
 export const CLAWHUB_SKILL_ARCHIVE_ROOT_MARKERS = [
@@ -57,18 +58,30 @@ export function normalizeTrackedSkillSlug(raw: string): string {
 }
 
 export function validateRequestedSkillSlug(raw: string): string {
-  const slug = normalizeTrackedSkillSlug(raw);
-  if (hasNonAscii(slug) || !VALID_SLUG_PATTERN.test(slug)) {
+  const trimmed = raw.trim();
+  if (hasNonAscii(trimmed)) {
+    throw new Error(`Invalid skill slug: ${raw}`);
+  }
+  if (OWNER_QUALIFIED_SLUG_PATTERN.test(trimmed)) {
+    return trimmed;
+  }
+  const slug = normalizeTrackedSkillSlug(trimmed);
+  if (!VALID_SLUG_PATTERN.test(slug)) {
     throw new Error(`Invalid skill slug: ${raw}`);
   }
   return slug;
 }
 
+export function ownerQualifiedSlugToDir(slug: string): string {
+  return slug.replace(/^@/, "").replace("/", "--");
+}
+
 export function resolveWorkspaceSkillInstallDir(workspaceDir: string, slug: string): string {
   const skillsDir = path.join(path.resolve(workspaceDir), "skills");
+  const dirId = OWNER_QUALIFIED_SLUG_PATTERN.test(slug) ? ownerQualifiedSlugToDir(slug) : slug;
   const target = resolveSafeInstallDir({
     baseDir: skillsDir,
-    id: slug,
+    id: dirId,
     invalidNameMessage: "invalid skill target path",
   });
   if (!target.ok) {

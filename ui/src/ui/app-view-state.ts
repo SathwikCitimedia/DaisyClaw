@@ -421,6 +421,12 @@ export type AppViewState = {
     clawhubDetailError: string | null;
     clawhubInstallSlug: string | null;
     clawhubInstallMessage: { kind: "success" | "error"; text: string } | null;
+    clawhubAmbiguousMatches: Array<{
+      ownerHandle: string;
+      slug: string;
+      ref: string;
+      url: string;
+    }> | null;
     clawhubVerdicts: Record<string, ClawHubSkillSecurityVerdict>;
     clawhubVerdictsLoading: boolean;
     clawhubVerdictsError: string | null;

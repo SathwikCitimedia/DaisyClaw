@@ -627,6 +627,12 @@ export class DaisyClawApp extends LitElement {
   @state() clawhubDetailError: string | null = null;
   @state() clawhubInstallSlug: string | null = null;
   @state() clawhubInstallMessage: { kind: "success" | "error"; text: string } | null = null;
+  @state() clawhubAmbiguousMatches: Array<{
+    ownerHandle: string;
+    slug: string;
+    ref: string;
+    url: string;
+  }> | null = null;
   @state() clawhubVerdicts: Record<string, ClawHubSkillSecurityVerdict> = {};
   @state() clawhubVerdictsLoading = false;
   @state() clawhubVerdictsError: string | null = null;

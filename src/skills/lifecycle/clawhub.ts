@@ -6,12 +6,14 @@ import {
   downloadClawHubGitHubSkillArchive,
   downloadClawHubSkillArchive,
   downloadClawHubSkillArchiveUrl,
+  fetchClawHubAmbiguousMatches,
   fetchClawHubSkillDetail,
   fetchClawHubSkillInstallResolution,
   isDefaultClawHubBaseUrl,
   reportClawHubSkillInstallTelemetry,
   resolveClawHubBaseUrl,
   searchClawHubSkills,
+  ClawHubRequestError,
   type ClawHubSkillDetail,
   type ClawHubSkillInstallResolutionResponse,
   type ClawHubSkillSearchResult,
@@ -92,6 +94,13 @@ type LocalSkillCardRead = LocalSkillCardStatus & {
   content?: string;
 };
 
+export type ClawHubAmbiguousMatch = {
+  ownerHandle: string;
+  slug: string;
+  ref: string;
+  url: string;
+};
+
 export type InstallClawHubSkillResult =
   | {
       ok: true;
@@ -100,7 +109,8 @@ export type InstallClawHubSkillResult =
       targetDir: string;
       detail?: ClawHubSkillDetail;
     }
-  | { ok: false; error: string };
+  | { ok: false; error: string }
+  | { ok: false; error: "AMBIGUOUS_SKILL_SLUG"; matches: ClawHubAmbiguousMatch[] };
 
 export type UpdateClawHubSkillResult =
   | {
@@ -874,6 +884,9 @@ function assertInstallResolutionAllowed(
   if (resolution.ok) {
     return resolution;
   }
+  if ("code" in resolution && resolution.code === "AMBIGUOUS_SKILL_SLUG") {
+    throw Object.assign(new Error("AMBIGUOUS_SKILL_SLUG"), { matches: resolution.matches });
+  }
   throw new Error(resolution.message || `Skill "${resolution.slug}" is not installable.`);
 }
 
@@ -1014,6 +1027,27 @@ async function performClawHubSkillInstall(
       await archive.cleanup().catch(() => undefined);
     }
   } catch (err) {
+    if (
+      err instanceof Error &&
+      err.message === "AMBIGUOUS_SKILL_SLUG" &&
+      "matches" in err &&
+      Array.isArray(err.matches)
+    ) {
+      return {
+        ok: false,
+        error: "AMBIGUOUS_SKILL_SLUG",
+        matches: err.matches as ClawHubAmbiguousMatch[],
+      };
+    }
+    if (err instanceof ClawHubRequestError && err.status === 404) {
+      const matches = await fetchClawHubAmbiguousMatches({
+        slug: params.slug,
+        baseUrl: params.baseUrl,
+      });
+      if (matches && matches.length > 0) {
+        return { ok: false, error: "AMBIGUOUS_SKILL_SLUG", matches };
+      }
+    }
     return {
       ok: false,
       error: formatErrorMessage(err),

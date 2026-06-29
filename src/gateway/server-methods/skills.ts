@@ -541,22 +541,26 @@ export const skillsHandlers: GatewayRequestHandlers = {
         force: Boolean(p.force),
         config: cfg,
       });
-      respond(
-        result.ok,
-        result.ok
-          ? {
-              ok: true,
-              message: `Installed ${result.slug}@${result.version}`,
-              stdout: "",
-              stderr: "",
-              code: 0,
-              slug: result.slug,
-              version: result.version,
-              targetDir: result.targetDir,
-            }
-          : result,
-        result.ok ? undefined : errorShape(ErrorCodes.UNAVAILABLE, result.error),
-      );
+      if (result.ok) {
+        respond(true, {
+          ok: true,
+          message: `Installed ${result.slug}@${result.version}`,
+          stdout: "",
+          stderr: "",
+          code: 0,
+          slug: result.slug,
+          version: result.version,
+          targetDir: result.targetDir,
+        });
+      } else if (!result.ok && result.error === "AMBIGUOUS_SKILL_SLUG" && "matches" in result) {
+        respond(true, {
+          ok: false,
+          code: "AMBIGUOUS_SKILL_SLUG",
+          matches: result.matches,
+        });
+      } else {
+        respond(false, result, errorShape(ErrorCodes.UNAVAILABLE, result.error));
+      }
       return;
     }
     if (params && typeof params === "object" && "source" in params && params.source === "upload") {

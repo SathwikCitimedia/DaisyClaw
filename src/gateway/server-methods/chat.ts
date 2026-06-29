@@ -39,6 +39,7 @@ import {
 } from "../../agents/agent-scope.js";
 import { rewriteTranscriptEntriesInSessionFile } from "../../agents/embedded-agent-runner/transcript-rewrite.js";
 import { runAgentHarnessBeforeMessageWriteHook } from "../../agents/harness/hook-helpers.js";
+import { resolveApiKeyForProvider } from "../../agents/model-auth.js";
 import { modelCatalogBrowseRequiresFullDiscovery } from "../../agents/model-catalog-browse.js";
 import type { ModelCatalogEntry } from "../../agents/model-catalog.types.js";
 import { resolveProviderIdForAuth } from "../../agents/provider-auth-aliases.js";
@@ -80,6 +81,7 @@ import {
   type SavedMedia,
   saveMediaBuffer,
 } from "../../media/store.js";
+import { moodgraphClient } from "../../moodgraph/index.js";
 import { createChannelMessageReplyPipeline } from "../../plugin-sdk/channel-outbound.js";
 import type { ChannelRouteRef } from "../../plugin-sdk/channel-route.js";
 import { isPluginOwnedSessionBindingRecord } from "../../plugins/conversation-binding.js";
@@ -3792,6 +3794,135 @@ export const chatHandlers: GatewayRequestHandlers = {
         }
         emitServerTiming("first-assistant-event", undefined, dispatchStartedAtMs);
       };
+
+      if (moodgraphClient.isConfigured()) {
+        try {
+          const providerAuth = await resolveApiKeyForProvider({
+            provider: resolvedSessionModel.provider,
+            cfg,
+          });
+          const sessionBaseUrl =
+            cfg.models?.providers?.[resolvedSessionModel.provider]?.baseUrl ?? "";
+          const moodSystemPrompt =
+            process.env["MOODGRAPH_SYSTEM_PROMPT"] ?? "You are a helpful assistant.";
+          const moodSessionId = entry?.sessionId ?? clientRunId;
+
+          // moodgraph generates THROUGH the user's configured LLM when its cloud
+          // can reach it; otherwise it falls back to a configured cloud LLM. Either
+          // way the reply is moodgraph-styled. A null result (no path worked) drops
+          // through to the raw LLM dispatch below, logged loudly so it's not silent.
+          const moodResult = await moodgraphClient.generate({
+            session: {
+              provider: resolvedSessionModel.provider,
+              model: resolvedSessionModel.model,
+              apiKey: providerAuth.apiKey ?? "",
+              baseUrl: sessionBaseUrl,
+            },
+            sessionId: moodSessionId,
+            message: parsedMessage,
+            systemPrompt: moodSystemPrompt,
+          });
+
+          if (moodResult.text === null) {
+            context.logGateway.warn(
+              `moodgraph produced no styled response, using raw LLM — tried: ${moodResult.errors.join("; ")}`,
+            );
+          } else {
+            const moodText = moodResult.text;
+            if (moodResult.via === "fallback") {
+              context.logGateway.info(
+                "moodgraph: user LLM unreachable, generated via configured fallback LLM",
+              );
+            }
+            emitFirstAssistantServerTiming();
+            // The full moodgraph response is already in hand, so streaming it back
+            // is purely cosmetic. The previous implementation slept 15ms per word,
+            // which added seconds of latency to long responses (e.g. 300 words =
+            // ~4.5s) AFTER generation was already complete. Emit in a bounded number
+            // of chunks with a tiny inter-chunk delay so the "typing" feel survives
+            // while the artificial latency stays under ~200ms regardless of length.
+            const moodWords = moodText.split(/\s+/).filter(Boolean);
+            const MOOD_MAX_DELTAS = 24;
+            const MOOD_CHUNK_DELAY_MS = 8;
+            const moodChunkSize = Math.max(1, Math.ceil(moodWords.length / MOOD_MAX_DELTAS));
+            let moodAccumulated = "";
+            for (let wi = 0; wi < moodWords.length; wi += moodChunkSize) {
+              const chunkText = moodWords.slice(wi, wi + moodChunkSize).join(" ");
+              const gap = wi === 0 ? "" : " ";
+              moodAccumulated += gap + chunkText;
+              const deltaSeq = nextChatSeq({ agentRunSeq: context.agentRunSeq }, clientRunId);
+              const moodDelta = {
+                runId: clientRunId,
+                sessionKey,
+                ...(sessionKey === "global" && agentId ? { agentId } : {}),
+                seq: deltaSeq,
+                state: "delta" as const,
+                deltaText: gap + chunkText,
+                message: {
+                  role: "assistant",
+                  content: [{ type: "text", text: moodAccumulated }],
+                  timestamp: Date.now(),
+                },
+              };
+              context.broadcast("chat", moodDelta);
+              sendGlobalAwareNodeChatPayload({
+                context,
+                sessionKey,
+                agentId,
+                event: "chat",
+                payload: moodDelta,
+              });
+              if (wi + moodChunkSize < moodWords.length) {
+                await new Promise<void>((resolve) => {
+                  setTimeout(resolve, MOOD_CHUNK_DELAY_MS);
+                });
+              }
+            }
+            // Broadcast final first — any transcript write emits a session update
+            // that the UI misreads as hasActiveRun=false, causing a blank flash.
+            // Doing all persistence after the broadcast avoids this.
+            broadcastChatFinal({
+              context,
+              runId: clientRunId,
+              sessionKey,
+              agentId,
+            });
+            // Persist user turn and assistant response after UI already has message.
+            void (async () => {
+              await persistGatewayUserTurnTranscriptBestEffort();
+              const { storePath: moodStorePath, entry: moodEntry } = loadSessionEntry(
+                sessionKey,
+                sessionLoadOptions,
+              );
+              const moodFinalSessionId = moodEntry?.sessionId ?? backingSessionId ?? clientRunId;
+              await appendAssistantTranscriptMessage({
+                sessionKey,
+                message: moodText,
+                sessionId: moodFinalSessionId,
+                storePath: moodStorePath,
+                sessionFile: moodEntry?.sessionFile ?? entry?.sessionFile,
+                agentId,
+                createIfMissing: true,
+                idempotencyKey: clientRunId,
+                cfg,
+              });
+            })().catch((err) => {
+              context.logGateway.warn(
+                `moodgraph transcript persistence failed: ${formatForLog(err)}`,
+              );
+            });
+            activeRunAbort.cleanup();
+            clearActiveChatSendDedupeRun(context.dedupe, activeChatSendDedupeKey, clientRunId);
+            context.removeChatRun(clientRunId, clientRunId, sessionKey);
+            return;
+          }
+        } catch (moodErr) {
+          context.logGateway.warn(
+            `moodgraph layer errored, falling back to LLM: ${formatForLog(moodErr)}`,
+          );
+        }
+      }
+
       void measureDiagnosticsTimelineSpan(
         "gateway.chat_send.dispatch_inbound",
         async () => {

@@ -335,6 +335,13 @@ export type ClawHubSkillInstallResolutionResponse =
       reason: string;
       message: string;
       status: number;
+    }
+  | {
+      ok: false;
+      code: "AMBIGUOUS_SKILL_SLUG";
+      slug: string;
+      message: string;
+      matches: Array<{ ownerHandle: string; slug: string; ref: string; url: string }>;
     };
 
 export type ClawHubSkillVerificationDecision = "pass" | "fail" | (string & {});
@@ -1060,6 +1067,25 @@ export async function fetchClawHubSkillDetail(params: {
   });
 }
 
+export async function fetchClawHubAmbiguousMatches(params: {
+  slug: string;
+  baseUrl?: string;
+}): Promise<Array<{ ownerHandle: string; slug: string; ref: string; url: string }> | null> {
+  try {
+    const { response } = await clawhubRequest({
+      baseUrl: params.baseUrl,
+      path: `/api/v1/skills/${encodeURIComponent(params.slug)}`,
+    });
+    const data = (await response.json()) as { code?: string; matches?: unknown[] };
+    if (data?.code === "AMBIGUOUS_SKILL_SLUG" && Array.isArray(data.matches)) {
+      return data.matches as Array<{ ownerHandle: string; slug: string; ref: string; url: string }>;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 export async function fetchClawHubSkillInstallResolution(params: {
   slug: string;
   baseUrl?: string;
@@ -1078,15 +1104,27 @@ export async function fetchClawHubSkillInstallResolution(params: {
       forceInstall: params.forceInstall ? "1" : undefined,
     },
   });
-  const isStructuredBlock = [403, 409, 410, 423].includes(response.status);
+  const isStructuredBlock = [403, 404, 409, 410, 423].includes(response.status);
   if (!response.ok && !isStructuredBlock) {
     throw await buildClawHubError(response, url, hasToken);
   }
+  let data: unknown;
   try {
-    return (await response.json()) as ClawHubSkillInstallResolutionResponse;
-  } catch (cause) {
-    throw new Error(`ClawHub ${url.pathname} returned malformed JSON`, { cause });
+    data = await response.json();
+  } catch {
+    // Non-JSON body: construct error from status code directly (body already consumed)
+    throw new ClawHubRequestError({
+      path: url.pathname,
+      status: response.status,
+      body: response.status === 404 ? "Skill not found" : `HTTP ${response.status}`,
+    });
   }
+  const parsed = data as { code?: string; message?: string };
+  if (response.status === 404 && parsed?.code !== "AMBIGUOUS_SKILL_SLUG") {
+    const body = typeof parsed?.message === "string" ? parsed.message : "Skill not found";
+    throw new ClawHubRequestError({ path: url.pathname, status: 404, body });
+  }
+  return data as ClawHubSkillInstallResolutionResponse;
 }
 
 export async function fetchClawHubSkillVerification(params: {

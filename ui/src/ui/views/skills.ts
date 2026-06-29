@@ -76,6 +76,13 @@ export type SkillsProps = {
   clawhubDetailError: string | null;
   clawhubInstallSlug: string | null;
   clawhubInstallMessage: { kind: "success" | "error"; text: string } | null;
+  clawhubAmbiguousMatches: Array<{
+    ownerHandle: string;
+    slug: string;
+    ref: string;
+    url: string;
+  }> | null;
+  onClawHubInstallRef: (ref: string) => void;
   onFilterChange: (next: string) => void;
   onStatusFilterChange: (next: SkillsStatusFilter) => void;
   onRefresh: () => void;
@@ -283,6 +290,25 @@ export function renderSkills(props: SkillsProps) {
               style="margin-top: 8px;"
             >
               ${props.clawhubInstallMessage.text}
+            </div>`
+          : nothing}
+        ${props.clawhubAmbiguousMatches && props.clawhubAmbiguousMatches.length > 0
+          ? html`<div class="callout" style="margin-top: 8px;">
+              <div style="margin-bottom: 6px; font-weight: 500;">
+                Multiple versions found — choose one to install:
+              </div>
+              ${props.clawhubAmbiguousMatches.map(
+                (m) => html`
+                  <button
+                    class="btn btn--sm"
+                    style="margin-right: 6px; margin-top: 4px;"
+                    ?disabled=${props.clawhubInstallSlug !== null}
+                    @click=${() => props.onClawHubInstallRef(m.ref)}
+                  >
+                    ${m.ref}
+                  </button>
+                `,
+              )}
             </div>`
           : nothing}
         ${renderClawHubResults(props)}

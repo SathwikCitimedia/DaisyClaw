@@ -146,6 +146,7 @@ import { getMaxChatHistoryMessagesBytes, MAX_PAYLOAD_BYTES } from "../server-con
 import {
   MAX_SESSION_TITLE_LENGTH,
   SESSION_TITLE_SYSTEM_PROMPT,
+  isAutoTitleEligibleSessionKey,
   maybeAutoTitleSession,
 } from "../session-auto-title.js";
 import { resolveSessionHistoryTailReadOptions } from "../session-history-state.js";
@@ -1574,6 +1575,32 @@ function resolveTranscriptPath(params: {
     );
   } catch {
     return null;
+  }
+}
+
+/**
+ * Counts user/assistant messages already in a session transcript. Used to gate
+ * "first message" auto-titling so an existing (never-titled) session is not
+ * renamed when it is reopened and continued. Returns 0 on any read failure or
+ * when the transcript does not yet exist (a genuinely new session).
+ */
+async function countPriorTranscriptConversationMessages(
+  transcriptPath: string | null,
+): Promise<number> {
+  if (!transcriptPath) {
+    return 0;
+  }
+  try {
+    const index = await readSessionTranscriptIndex(transcriptPath);
+    if (!index) {
+      return 0;
+    }
+    return index.entries.filter((entry) => {
+      const role = (entry.record.message as { role?: unknown } | undefined)?.role;
+      return role === "user" || role === "assistant";
+    }).length;
+  } catch {
+    return 0;
   }
 }
 
@@ -3427,33 +3454,53 @@ export const chatHandlers: GatewayRequestHandlers = {
       respond(true, ackPayload, undefined, { runId: clientRunId });
       // ChatGPT-style auto-title: name new control-UI chats from the first user
       // message. Fire-and-forget so it never blocks or fails the send; no-ops
-      // unless the session is eligible and has no title yet.
+      // unless the session is eligible, has no title yet, AND has no prior
+      // conversation (so reopening an old, never-titled session never renames it).
       if (rawMessage && !stopCommand && !systemInputProvenance && !systemProvenanceReceipt) {
         const autoTitleAgentId = selectedAgent.agentId;
-        void maybeAutoTitleSession({
-          sessionKey,
-          existingLabel: entry?.label ?? null,
-          existingDisplayName: entry?.displayName ?? null,
-          message: rawMessage,
-          applyLabel: (label) =>
-            applyAutoSessionLabel({
-              context,
-              cfg,
-              key: sessionKey,
-              ...(autoTitleAgentId ? { agentId: autoTitleAgentId } : {}),
-              label,
-            }),
-          generateLabel: (userMessage) =>
-            generateConversationLabel({
-              userMessage,
-              prompt: SESSION_TITLE_SYSTEM_PROMPT,
-              cfg,
-              ...(autoTitleAgentId ? { agentId: autoTitleAgentId } : {}),
-              maxLength: MAX_SESSION_TITLE_LENGTH,
-            }),
-          onError: (err) =>
-            context.logGateway.warn(`auto session title failed: ${formatForLog(err)}`),
-        }).catch(() => {});
+        const alreadyTitled = Boolean(
+          (entry?.label ?? "").trim() || (entry?.displayName ?? "").trim(),
+        );
+        // Resolve the pre-turn transcript so we can detect existing conversation.
+        // The user message for THIS turn is appended later in the run pipeline,
+        // so a read started here reflects the session's prior state.
+        const autoTitleTranscriptPath =
+          isAutoTitleEligibleSessionKey(sessionKey) && !alreadyTitled && entry?.sessionId
+            ? resolveTranscriptPath({
+                sessionId: entry.sessionId,
+                storePath: sessionLoadResult.storePath,
+                agentId,
+              })
+            : null;
+        void (async () => {
+          const priorMessageCount =
+            await countPriorTranscriptConversationMessages(autoTitleTranscriptPath);
+          await maybeAutoTitleSession({
+            sessionKey,
+            existingLabel: entry?.label ?? null,
+            existingDisplayName: entry?.displayName ?? null,
+            priorMessageCount,
+            message: rawMessage,
+            applyLabel: (label) =>
+              applyAutoSessionLabel({
+                context,
+                cfg,
+                key: sessionKey,
+                ...(autoTitleAgentId ? { agentId: autoTitleAgentId } : {}),
+                label,
+              }),
+            generateLabel: (userMessage) =>
+              generateConversationLabel({
+                userMessage,
+                prompt: SESSION_TITLE_SYSTEM_PROMPT,
+                cfg,
+                ...(autoTitleAgentId ? { agentId: autoTitleAgentId } : {}),
+                maxLength: MAX_SESSION_TITLE_LENGTH,
+              }),
+            onError: (err) =>
+              context.logGateway.warn(`auto session title failed: ${formatForLog(err)}`),
+          });
+        })().catch(() => {});
       }
       const chatSendAckedAtMs = chatSendTiming?.ackedAtMs ?? performance.now();
       const persistedImagesPromise = persistChatSendImages({

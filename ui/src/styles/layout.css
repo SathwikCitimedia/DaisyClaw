@@ -1379,6 +1379,36 @@
   margin-left: auto;
 }
 
+/* Brand wordmark (replaces the version label/number) — "daisy intelligence". */
+.sidebar-brand__wordmark {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  line-height: 1;
+  min-width: 0;
+}
+
+.sidebar-brand__name {
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  background: linear-gradient(96deg, var(--accent) 0%, #8b5cf6 55%, #a855f7 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+}
+
+.sidebar-brand__sub {
+  font-size: 8px;
+  font-weight: 600;
+  letter-spacing: 0.34em;
+  text-transform: uppercase;
+  color: var(--muted);
+  /* trim trailing tracking so the subtitle optically left-aligns with "daisy" */
+  margin-right: -0.34em;
+}
+
 .sidebar-version__status.sidebar-connection-status--online {
   background: var(--ok);
   box-shadow: 0 0 0 4px color-mix(in srgb, var(--ok) 14%, transparent);

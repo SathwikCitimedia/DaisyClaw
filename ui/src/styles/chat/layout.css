@@ -2045,6 +2045,42 @@
   stroke-linejoin: round;
 }
 
+.chat-session-picker__option-delete-btn {
+  display: none;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  padding: 0;
+  margin-right: 6px;
+  transition: color var(--duration-fast) ease, background var(--duration-fast) ease;
+}
+
+.chat-session-picker__option-wrap:hover .chat-session-picker__option-delete-btn {
+  display: flex;
+}
+
+.chat-session-picker__option-delete-btn:hover {
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
+}
+
+.chat-session-picker__option-delete-btn svg {
+  width: 12px;
+  height: 12px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.75;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
 .chat-session-picker__option-rename {
   display: none;
   position: absolute;
@@ -2066,7 +2102,8 @@
 }
 
 .chat-session-picker__option-wrap--renaming .chat-session-picker__option,
-.chat-session-picker__option-wrap--renaming .chat-session-picker__option-rename-btn {
+.chat-session-picker__option-wrap--renaming .chat-session-picker__option-rename-btn,
+.chat-session-picker__option-wrap--renaming .chat-session-picker__option-delete-btn {
   visibility: hidden;
 }
 

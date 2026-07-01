@@ -722,6 +722,36 @@ function renderChatSessionPickerPopover(
               }
             };
 
+            const deletePickerSession = async (e: MouseEvent) => {
+              e.preventDefault();
+              e.stopPropagation();
+              if (!state.client) return;
+              const confirmed = globalThis.confirm(
+                `Delete session "${label}"? This permanently removes it and can't be undone.`,
+              );
+              if (!confirmed) return;
+              try {
+                await state.client.request("sessions.delete", {
+                  key: row.key,
+                  ...scopedAgentParamsForSession(state, row.key),
+                });
+                // If the deleted session was the active one, switch away to a
+                // remaining session (falling back to the main session).
+                if (row.key === state.sessionKey) {
+                  const fallback =
+                    pickerRows.find((entry) => entry.row.key !== row.key)?.row.key ?? "main";
+                  onSwitchSession(state, fallback);
+                }
+                await refreshSessionOptions(state);
+                if (state.chatSessionPickerOpen) {
+                  void loadChatSessionPickerPage(state);
+                }
+              } catch (err) {
+                setChatError(state, `Failed to delete session: ${String(err)}`);
+                requestHostUpdate(state);
+              }
+            };
+
             return html`
               <div
                 class="chat-session-picker__option-wrap ${selected
@@ -765,6 +795,15 @@ function renderChatSessionPickerPopover(
                   @click=${startPickerRename}
                 >
                   ${icons.penLine}
+                </button>
+                <button
+                  class="chat-session-picker__option-delete-btn"
+                  type="button"
+                  title="Delete session"
+                  aria-label="Delete session"
+                  @click=${deletePickerSession}
+                >
+                  ${icons.trash}
                 </button>
                 <input
                   class="chat-session-picker__option-rename"

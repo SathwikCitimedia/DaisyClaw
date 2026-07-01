@@ -215,6 +215,20 @@ export function handleChatScroll(host: ScrollHost, event: Event) {
   }
   const distanceFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
   host.chatUserNearBottom = distanceFromBottom < NEAR_BOTTOM_THRESHOLD;
+  // When the user is deliberately scrolling UP and away from the bottom (e.g. to
+  // reach the top and load older history during a live reply), abandon any
+  // pending auto-scroll re-pin. Otherwise the retry timer yanks them back to the
+  // bottom ~120ms later and they can never climb up to see old messages.
+  if (delta < 0 && !host.chatUserNearBottom) {
+    if (host.chatScrollFrame) {
+      cancelAnimationFrame(host.chatScrollFrame);
+      host.chatScrollFrame = null;
+    }
+    if (host.chatScrollTimeout != null) {
+      clearTimeout(host.chatScrollTimeout);
+      host.chatScrollTimeout = null;
+    }
+  }
   const hasUsefulScroll = container.scrollHeight - container.clientHeight > NEAR_BOTTOM_THRESHOLD;
 
   if (!hasUsefulScroll || scrollTop <= HEADER_SHOW_TOP_THRESHOLD || host.chatUserNearBottom) {

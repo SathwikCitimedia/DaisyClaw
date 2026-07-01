@@ -80,12 +80,13 @@ describe("maybeAutoTitleSession", () => {
     generateLabel: vi.fn(async () => "Login Redirect Loop Fix"),
   });
 
-  it("applies heuristic then refined label for an eligible, untitled session", async () => {
+  it("applies the refined model title for an eligible, untitled session", async () => {
     const p = baseParams();
     await maybeAutoTitleSession(p);
-    expect(p.applyLabel).toHaveBeenCalledTimes(2);
-    expect(p.applyLabel).toHaveBeenNthCalledWith(1, "Help me fix the login redirect loop");
-    expect(p.applyLabel).toHaveBeenNthCalledWith(2, "Login Redirect Loop Fix");
+    // Refined model title is applied directly; the raw first message is never
+    // surfaced as the session name when a generator is available.
+    expect(p.applyLabel).toHaveBeenCalledTimes(1);
+    expect(p.applyLabel).toHaveBeenCalledWith("Login Redirect Loop Fix");
   });
 
   it("skips ineligible sessions", async () => {
@@ -98,6 +99,20 @@ describe("maybeAutoTitleSession", () => {
     const p = { ...baseParams(), existingLabel: "Existing" };
     await maybeAutoTitleSession(p);
     expect(p.applyLabel).not.toHaveBeenCalled();
+  });
+
+  it("skips sessions that already have prior conversation (continuing an old chat)", async () => {
+    const p = { ...baseParams(), priorMessageCount: 4 };
+    await maybeAutoTitleSession(p);
+    expect(p.applyLabel).not.toHaveBeenCalled();
+    expect(p.generateLabel).not.toHaveBeenCalled();
+  });
+
+  it("titles a new session whose prior message count is zero", async () => {
+    const p = { ...baseParams(), priorMessageCount: 0 };
+    await maybeAutoTitleSession(p);
+    expect(p.applyLabel).toHaveBeenCalledTimes(1);
+    expect(p.applyLabel).toHaveBeenCalledWith("Login Redirect Loop Fix");
   });
 
   it("applies only the heuristic when no generator is provided", async () => {

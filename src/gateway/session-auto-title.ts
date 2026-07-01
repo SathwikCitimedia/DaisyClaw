@@ -121,6 +121,14 @@ export type MaybeAutoTitleSessionParams = {
   existingLabel?: string | null;
   /** Existing display name on the session, if any (skips when present). */
   existingDisplayName?: string | null;
+  /**
+   * Number of user/assistant messages already in the session BEFORE this send.
+   * Auto-titling is a "first message" behavior: when the session already has
+   * prior conversation (> 0), it must not be retitled — otherwise reopening an
+   * old, never-titled session and continuing it would rename it from the latest
+   * message. Omit/leave null only for genuinely new sessions.
+   */
+  priorMessageCount?: number | null;
   message: string;
   /** Persists a label onto the session. */
   applyLabel: (label: string) => Promise<unknown>;
@@ -135,32 +143,44 @@ export type MaybeAutoTitleSessionParams = {
  * unless the session is eligible and has no title yet.
  */
 export async function maybeAutoTitleSession(params: MaybeAutoTitleSessionParams): Promise<void> {
-  const { sessionKey, existingLabel, existingDisplayName, message } = params;
+  const { sessionKey, existingLabel, existingDisplayName, priorMessageCount, message } = params;
   if (!isAutoTitleEligibleSessionKey(sessionKey)) {
     return;
   }
   if ((existingLabel ?? "").trim() || (existingDisplayName ?? "").trim()) {
     return;
   }
+  // Only title brand-new sessions, on their first message. A session that
+  // already has prior conversation must keep its name even if it was never
+  // titled (e.g. created before auto-titling existed).
+  if (typeof priorMessageCount === "number" && priorMessageCount > 0) {
+    return;
+  }
   const heuristic = buildHeuristicSessionTitle(message);
-  if (!heuristic) {
-    return;
-  }
-  try {
-    await params.applyLabel(heuristic);
-  } catch (err) {
-    params.onError?.(err);
-    return;
-  }
-  if (!params.generateLabel) {
-    return;
-  }
-  try {
-    const refined = sanitizeGeneratedTitle(await params.generateLabel(message));
-    if (refined && refined.toLowerCase() !== heuristic.toLowerCase()) {
-      await params.applyLabel(refined);
+
+  // ChatGPT/Claude-style: prefer a proper model-generated title and NEVER surface
+  // the user's raw first message as the session name. The raw-message heuristic is
+  // used only as a fallback when no generator is configured or the model call
+  // fails — so the session stays on its default name briefly while the title is
+  // generated, then flips to a clean Title-Case topic.
+  if (params.generateLabel) {
+    try {
+      const refined = sanitizeGeneratedTitle(await params.generateLabel(message));
+      if (refined) {
+        await params.applyLabel(refined);
+        return;
+      }
+    } catch (err) {
+      params.onError?.(err);
     }
-  } catch (err) {
-    params.onError?.(err);
+  }
+
+  // Fallback path: no LLM generator, or generation failed/returned nothing.
+  if (heuristic) {
+    try {
+      await params.applyLabel(heuristic);
+    } catch (err) {
+      params.onError?.(err);
+    }
   }
 }

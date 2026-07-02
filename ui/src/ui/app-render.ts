@@ -29,6 +29,7 @@ import {
 } from "./app-render.helpers.ts";
 import { hasOperatorAdminAccess, hasOperatorWriteAccess, warnQueryToken } from "./app-settings.ts";
 import type { AppViewState } from "./app-view-state.ts";
+import { actionPromptFor, resolveAssistantActionChips } from "./chat/action-recommendations.ts";
 import { reconcileChatRunLifecycle } from "./chat/run-lifecycle.ts";
 import {
   renderChatSessionSelect,
@@ -3652,6 +3653,21 @@ export function renderApp(state: AppViewState) {
                   onDismissError: () => dismissChatError(state),
                   sessions: state.sessionsResult,
                   composerControls: renderGuardedChatControls(state),
+                  actionChips: resolveAssistantActionChips({
+                    client: state.client,
+                    connected: state.connected,
+                    busy:
+                      state.chatLoading ||
+                      state.chatSending ||
+                      Boolean(state.chatRunId) ||
+                      state.chatStream !== null,
+                    sessionKey: state.sessionKey,
+                    ...(chatAgentId ? { agentId: chatAgentId } : {}),
+                    messages: state.chatMessages,
+                    onRequestUpdate: () => requestHostUpdate?.(),
+                    onRun: (id) =>
+                      void state.handleSendChat(actionPromptFor(id), { restoreDraft: true }),
+                  }),
                   workspaceFiles: {
                     agentId: chatAgentId,
                     list:

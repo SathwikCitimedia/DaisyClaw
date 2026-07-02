@@ -1,5 +1,5 @@
 // Control UI chat module implements grouped render behavior.
-import { html, nothing } from "lit";
+import { html, nothing, type TemplateResult } from "lit";
 import { unsafeHTML } from "lit/directives/unsafe-html.js";
 import { until } from "lit/directives/until.js";
 import { getSafeLocalStorage } from "../../local-storage.ts";
@@ -431,6 +431,8 @@ export function renderMessageGroup(
     contextWindow?: number | null;
     onDelete?: () => void;
     onEdit?: (text: string) => void;
+    /** Next-action chips rendered inline in the footer of the latest assistant group. */
+    actionChips?: TemplateResult | typeof nothing;
   },
 ) {
   const normalizedRole = normalizeRoleForGrouping(group.role);
@@ -456,9 +458,6 @@ export function renderMessageGroup(
         : normalizedRole === "tool"
           ? "tool"
           : "other";
-
-  // Aggregate usage/cost/model across all messages in the group
-  const meta = extractGroupMeta(group, opts.contextWindow ?? null);
 
   if (normalizedRole === "tool" && opts.showToolCalls === false) {
     return nothing;
@@ -618,7 +617,8 @@ export function renderMessageGroup(
         )}
         <div class="chat-group-footer">
           <span class="chat-sender-name">${who}</span>
-          ${renderChatTimestamp(group.timestamp)} ${renderMessageMeta(meta)}
+          ${renderChatTimestamp(group.timestamp)}
+          ${normalizedRole === "assistant" ? (opts.actionChips ?? nothing) : nothing}
           ${normalizedRole === "user" && opts.onEdit
             ? renderEditButton(() => {
                 const text = group.messages
@@ -644,140 +644,6 @@ export function renderMessageGroup(
         </div>
       </div>
     </div>
-  `;
-}
-
-// ── Per-message metadata (tokens, cost, model, context %) ──
-
-type GroupMeta = {
-  input: number;
-  output: number;
-  cacheRead: number;
-  cacheWrite: number;
-  cost: number;
-  model: string | null;
-  contextPercent: number | null;
-};
-
-function extractGroupMeta(group: MessageGroup, contextWindow: number | null): GroupMeta | null {
-  let input = 0;
-  let output = 0;
-  let cacheRead = 0;
-  let cacheWrite = 0;
-  let cost = 0;
-  let model: string | null = null;
-  let hasUsage = false;
-  let maxPromptTokens = 0;
-
-  for (const { message } of group.messages) {
-    const m = message as Record<string, unknown>;
-    if (m.role !== "assistant") {
-      continue;
-    }
-    const usage = m.usage as Record<string, number> | undefined;
-    if (usage) {
-      hasUsage = true;
-      const callInput = usage.input ?? usage.inputTokens ?? 0;
-      const callOutput = usage.output ?? usage.outputTokens ?? 0;
-      const callCacheRead = usage.cacheRead ?? usage.cache_read_input_tokens ?? 0;
-      const callCacheWrite = usage.cacheWrite ?? usage.cache_creation_input_tokens ?? 0;
-      input += callInput;
-      output += callOutput;
-      cacheRead += callCacheRead;
-      cacheWrite += callCacheWrite;
-      maxPromptTokens = Math.max(maxPromptTokens, callInput + callCacheRead + callCacheWrite);
-    }
-    const c = m.cost as Record<string, number> | undefined;
-    if (c?.total) {
-      cost += c.total;
-    }
-    if (typeof m.model === "string" && m.model !== "gateway-injected") {
-      model = m.model;
-    }
-  }
-
-  if (!hasUsage && !model) {
-    return null;
-  }
-
-  const contextPercent =
-    contextWindow && maxPromptTokens > 0
-      ? Math.min(Math.round((maxPromptTokens / contextWindow) * 100), 100)
-      : null;
-
-  return { input, output, cacheRead, cacheWrite, cost, model, contextPercent };
-}
-
-/** Compact token count formatter (e.g. 128000 → "128k"). */
-function fmtTokens(n: number): string {
-  if (n >= 1_000_000) {
-    return `${(n / 1_000_000).toFixed(1).replace(/\.0$/, "")}M`;
-  }
-  if (n >= 1_000) {
-    return `${(n / 1_000).toFixed(1).replace(/\.0$/, "")}k`;
-  }
-  return String(n);
-}
-
-function renderMessageMeta(meta: GroupMeta | null) {
-  if (!meta) {
-    return nothing;
-  }
-
-  const parts: Array<ReturnType<typeof html>> = [];
-
-  // Token counts: ↑input ↓output
-  if (meta.input) {
-    parts.push(html`<span class="msg-meta__tokens">↑${fmtTokens(meta.input)}</span>`);
-  }
-  if (meta.output) {
-    parts.push(html`<span class="msg-meta__tokens">↓${fmtTokens(meta.output)}</span>`);
-  }
-
-  // Cache: R/W
-  if (meta.cacheRead) {
-    parts.push(html`<span class="msg-meta__cache">R${fmtTokens(meta.cacheRead)}</span>`);
-  }
-  if (meta.cacheWrite) {
-    parts.push(html`<span class="msg-meta__cache">W${fmtTokens(meta.cacheWrite)}</span>`);
-  }
-
-  // Cost
-  if (meta.cost > 0) {
-    parts.push(html`<span class="msg-meta__cost">$${meta.cost.toFixed(4)}</span>`);
-  }
-
-  // Context %
-  if (meta.contextPercent !== null) {
-    const pct = meta.contextPercent;
-    const cls =
-      pct >= 90
-        ? "msg-meta__ctx msg-meta__ctx--danger"
-        : pct >= 75
-          ? "msg-meta__ctx msg-meta__ctx--warn"
-          : "msg-meta__ctx";
-    parts.push(html`<span class="${cls}">${pct}% ctx</span>`);
-  }
-
-  // Model
-  if (meta.model) {
-    // Shorten model name: strip provider prefix if present (e.g. "anthropic/claude-3.5-sonnet" → "claude-3.5-sonnet")
-    const shortModel = meta.model.includes("/") ? meta.model.split("/").pop()! : meta.model;
-    parts.push(html`<span class="msg-meta__model">${shortModel}</span>`);
-  }
-
-  if (parts.length === 0) {
-    return nothing;
-  }
-
-  return html`
-    <details class="msg-meta">
-      <summary class="msg-meta__summary" title="Show message context details">
-        <span class="msg-meta__summary-icon" aria-hidden="true">${icons.chevronRight}</span>
-        <span>Context</span>
-      </summary>
-      <span class="msg-meta__details">${parts}</span>
-    </details>
   `;
 }
 

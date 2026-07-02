@@ -132,6 +132,12 @@ import {
   ChatMetadataParamsSchema,
   ChatMessageGetResultSchema,
   ChatMessageGetParamsSchema,
+  type ChatRecommendActionsParams,
+  ChatRecommendActionsParamsSchema,
+  type ChatRecommendActionsResult,
+  ChatRecommendActionsResultSchema,
+  type RecommendableActionId,
+  RECOMMENDABLE_ACTION_IDS,
   type ChatInjectParams,
   ChatInjectParamsSchema,
   ChatSendParamsSchema,
@@ -872,6 +878,12 @@ export const validateLogsTailParams = lazyCompile<LogsTailParams>(LogsTailParams
 export const validateChatHistoryParams = lazyCompile(ChatHistoryParamsSchema);
 export const validateChatMetadataParams = lazyCompile<ChatMetadataParams>(ChatMetadataParamsSchema);
 export const validateChatMessageGetParams = lazyCompile(ChatMessageGetParamsSchema);
+export const validateChatRecommendActionsParams = lazyCompile<ChatRecommendActionsParams>(
+  ChatRecommendActionsParamsSchema,
+);
+export const validateChatRecommendActionsResult = lazyCompile<ChatRecommendActionsResult>(
+  ChatRecommendActionsResultSchema,
+);
 export const validateChatSendParams = lazyCompile(ChatSendParamsSchema);
 export const validateChatAbortParams = lazyCompile<ChatAbortParams>(ChatAbortParamsSchema);
 export const validateChatInjectParams = lazyCompile<ChatInjectParams>(ChatInjectParamsSchema);
@@ -972,6 +984,9 @@ export {
   AgentEventSchema,
   MessageActionParamsSchema,
   ChatEventSchema,
+  ChatRecommendActionsParamsSchema,
+  ChatRecommendActionsResultSchema,
+  RECOMMENDABLE_ACTION_IDS,
   SendParamsSchema,
   PollParamsSchema,
   AgentParamsSchema,
@@ -1178,6 +1193,9 @@ export type {
   AgentIdentityResult,
   AgentWaitParams,
   ChatEvent,
+  ChatRecommendActionsParams,
+  ChatRecommendActionsResult,
+  RecommendableActionId,
   TickEvent,
   ShutdownEvent,
   WakeParams,

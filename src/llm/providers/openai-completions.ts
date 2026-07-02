@@ -1253,6 +1253,10 @@ function detectCompat(model: Model<"openai-completions">): ResolvedOpenAIComplet
     provider === "cloudflare-workers-ai" || baseUrl.includes("api.cloudflare.com");
   const isCloudflareAiGateway =
     provider === "cloudflare-ai-gateway" || baseUrl.includes("gateway.ai.cloudflare.com");
+  // LiteLLM is a proxy fronting arbitrary backends (Anthropic/Vertex/Bedrock),
+  // which reject the OpenAI-only `store` field ("Extra inputs are not permitted").
+  // `store` defaults to false upstream, so never sending it is safe for any backend.
+  const isLiteLLM = provider === "litellm";
 
   const isNonStandard =
     provider === "cerebras" ||
@@ -1279,7 +1283,7 @@ function detectCompat(model: Model<"openai-completions">): ResolvedOpenAIComplet
     provider === "openrouter" && model.id.startsWith("anthropic/") ? "anthropic" : undefined;
 
   return {
-    supportsStore: !isNonStandard,
+    supportsStore: !isNonStandard && !isLiteLLM,
     supportsDeveloperRole: !isNonStandard,
     supportsReasoningEffort:
       !isGrok && !isZai && !isMoonshot && !isTogether && !isCloudflareAiGateway,

@@ -205,6 +205,7 @@ export const CORE_GATEWAY_METHOD_SPECS: readonly CoreGatewayMethodSpec[] = [
   { name: "chat.startup", scope: "operator.read", startup: true },
   { name: "chat.metadata", scope: "operator.read", startup: true },
   { name: "chat.message.get", scope: "operator.read", startup: true },
+  { name: "chat.recommendActions", scope: "operator.read", advertise: false },
   { name: "chat.abort", scope: "operator.write" },
   { name: "chat.send", scope: "operator.write" },
   { name: "assistant.media.get", scope: "operator.read", advertise: false },

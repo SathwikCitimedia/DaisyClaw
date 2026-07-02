@@ -7042,6 +7042,42 @@ public struct ChatMessageGetResult: Codable, Sendable {
     }
 }
 
+public struct ChatRecommendActionsParams: Codable, Sendable {
+    public let sessionkey: String
+    public let agentid: String?
+    public let messagetext: String
+
+    public init(
+        sessionkey: String,
+        agentid: String? = nil,
+        messagetext: String)
+    {
+        self.sessionkey = sessionkey
+        self.agentid = agentid
+        self.messagetext = messagetext
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case sessionkey = "sessionKey"
+        case agentid = "agentId"
+        case messagetext = "messageText"
+    }
+}
+
+public struct ChatRecommendActionsResult: Codable, Sendable {
+    public let actions: [AnyCodable]
+
+    public init(
+        actions: [AnyCodable])
+    {
+        self.actions = actions
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case actions
+    }
+}
+
 public struct ChatSendParams: Codable, Sendable {
     public let sessionkey: String
     public let agentid: String?

@@ -284,6 +284,7 @@ export const coreGatewayHandlers: GatewayRequestHandlers = {
       "chat.startup",
       "chat.metadata",
       "chat.message.get",
+      "chat.recommendActions",
       "chat.abort",
       "chat.send",
       "chat.inject",

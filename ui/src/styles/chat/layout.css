@@ -581,7 +581,6 @@
   }
 }
 
-
 .agent-chat__composer-combobox {
   display: flex;
   flex-direction: column;
@@ -2023,7 +2022,9 @@
   border-radius: var(--radius-sm);
   padding: 0;
   margin-right: 4px;
-  transition: color var(--duration-fast) ease, background var(--duration-fast) ease;
+  transition:
+    color var(--duration-fast) ease,
+    background var(--duration-fast) ease;
 }
 
 .chat-session-picker__option-wrap:hover .chat-session-picker__option-rename-btn {
@@ -2059,7 +2060,9 @@
   border-radius: var(--radius-sm);
   padding: 0;
   margin-right: 6px;
-  transition: color var(--duration-fast) ease, background var(--duration-fast) ease;
+  transition:
+    color var(--duration-fast) ease,
+    background var(--duration-fast) ease;
 }
 
 .chat-session-picker__option-wrap:hover .chat-session-picker__option-delete-btn {
@@ -2798,6 +2801,73 @@
 .agent-chat__suggestion:hover {
   background: var(--panel-strong);
   border-color: var(--accent);
+}
+
+/* Next-action recommendation chips, rendered inline in the latest assistant
+   reply's footer (beside the sender name / timestamp). */
+.chat-action-chips {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0 0 0 2px;
+}
+
+.chat-action-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  font-size: 12px;
+  line-height: 1;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 22%, transparent);
+  border-radius: var(--radius-full);
+  cursor: pointer;
+  transition:
+    background 0.12s ease,
+    border-color 0.12s ease;
+}
+
+.chat-action-chip:hover {
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 40%, transparent);
+}
+
+.chat-action-chip:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.chat-action-chip__icon {
+  display: inline-flex;
+  width: 14px;
+  height: 14px;
+}
+
+.chat-action-chip__icon svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* The chips live inside .chat-group-footer, whose generic `button` rule hides
+   footer buttons until hover. Re-assert the chip appearance and keep them
+   always visible and interactive. */
+.chat-group-footer .chat-action-chip {
+  opacity: 1 !important;
+  pointer-events: auto;
+  min-width: 0;
+  min-height: 0;
+  padding: 4px 10px;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 22%, transparent);
+}
+
+.chat-group-footer .chat-action-chip:hover {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 40%, transparent);
 }
 
 /* Mobile dropdown toggle — hidden on desktop */

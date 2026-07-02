@@ -125,6 +125,10 @@ import {
   WebLoginWaitParamsSchema,
 } from "./channels.js";
 import {
+  ChatRecommendActionsParamsSchema,
+  ChatRecommendActionsResultSchema,
+} from "./chat-actions.js";
+import {
   CommandEntrySchema,
   CommandsListParamsSchema,
   CommandsListResultSchema,
@@ -567,6 +571,8 @@ export const ProtocolSchemas = {
   ChatMetadataParams: ChatMetadataParamsSchema,
   ChatMessageGetParams: ChatMessageGetParamsSchema,
   ChatMessageGetResult: ChatMessageGetResultSchema,
+  ChatRecommendActionsParams: ChatRecommendActionsParamsSchema,
+  ChatRecommendActionsResult: ChatRecommendActionsResultSchema,
   ChatSendParams: ChatSendParamsSchema,
   ChatAbortParams: ChatAbortParamsSchema,
   ChatInjectParams: ChatInjectParamsSchema,

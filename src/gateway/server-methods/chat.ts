@@ -28,6 +28,7 @@ import {
   validateChatInjectParams,
   validateChatMetadataParams,
   validateChatMessageGetParams,
+  validateChatRecommendActionsParams,
   validateChatSendParams,
 } from "../../../packages/gateway-protocol/src/index.js";
 import { CHAT_SEND_SESSION_KEY_MAX_LENGTH } from "../../../packages/gateway-protocol/src/schema.js";
@@ -106,6 +107,7 @@ import {
   isWebchatClient,
   normalizeMessageChannel,
 } from "../../utils/message-channel.js";
+import { generateActionRecommendations } from "../action-recommender.js";
 import {
   abortChatRunById,
   boundInFlightRunSnapshotForChatHistory,
@@ -2718,6 +2720,55 @@ export const chatHandlers: GatewayRequestHandlers = {
     });
   },
   "chat.metadata": handleChatMetadataRequest,
+  "chat.recommendActions": async ({ params, respond, context }) => {
+    if (!validateChatRecommendActionsParams(params)) {
+      respond(
+        false,
+        undefined,
+        errorShape(
+          ErrorCodes.INVALID_REQUEST,
+          `invalid chat.recommendActions params: ${formatValidationErrors(validateChatRecommendActionsParams.errors)}`,
+        ),
+      );
+      return;
+    }
+    const { sessionKey, messageText } = params as {
+      sessionKey: string;
+      agentId?: string;
+      messageText: string;
+    };
+    const agentIdOverride = normalizeOptionalText((params as { agentId?: string }).agentId);
+    const requestedAgentId = resolveRequestedChatAgentId({
+      cfg: (context as { getRuntimeConfig?: () => DaisyClawConfig }).getRuntimeConfig?.(),
+      requestedSessionKey: sessionKey,
+      agentId: agentIdOverride,
+    });
+    const sessionLoadOptions = requestedAgentId ? { agentId: requestedAgentId } : undefined;
+    const { cfg } = loadSessionEntry(sessionKey, sessionLoadOptions);
+    const selectedAgent = validateChatSelectedAgent({
+      cfg,
+      requestedSessionKey: sessionKey,
+      agentId: requestedAgentId,
+    });
+    if (!selectedAgent.ok) {
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, selectedAgent.error));
+      return;
+    }
+    // Best-effort: a failed recommendation must never surface an error to the
+    // chat UI, it just means no chips for this reply.
+    try {
+      const actions = await generateActionRecommendations({
+        messageText,
+        cfg,
+        ...(selectedAgent.agentId ? { agentId: selectedAgent.agentId } : {}),
+        debug: (message) => context.logGateway.info(`[recommendActions] ${message}`),
+      });
+      respond(true, { actions });
+    } catch (err) {
+      context.logGateway.warn(`chat.recommendActions failed: ${formatForLog(err)}`);
+      respond(true, { actions: [] });
+    }
+  },
   "chat.message.get": async ({ params, respond, context }) => {
     if (!validateChatMessageGetParams(params)) {
       respond(

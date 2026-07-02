@@ -197,6 +197,8 @@ export type ChatProps = {
   onSplitRatioChange?: (ratio: number) => void;
   onChatScroll?: (event: Event) => void;
   basePath?: string;
+  /** Next-action chips for the latest assistant reply; `nothing` when unavailable. */
+  actionChips?: TemplateResult | typeof nothing;
   composerControls?: TemplateResult | typeof nothing | ReturnType<typeof guard>;
   workspaceFiles?: {
     agentId: string;
@@ -1703,6 +1705,17 @@ export function renderChat(props: ChatProps) {
   const threadContextWindow =
     activeSession?.contextTokens ?? props.sessions?.defaults?.contextTokens ?? null;
 
+  // The next-action chips belong to the latest assistant reply; render them inline
+  // in that group's footer instead of as a detached block below the thread.
+  let lastAssistantGroupKey: string | undefined;
+  for (let i = chatItems.length - 1; i >= 0; i--) {
+    const it = chatItems[i];
+    if (it.kind === "group" && String(it.role).toLowerCase() === "assistant") {
+      lastAssistantGroupKey = it.key;
+      break;
+    }
+  }
+
   const thread = html`
     <div
       class="chat-thread"
@@ -1785,6 +1798,11 @@ export function renderChat(props: ChatProps) {
             props.embedSandboxMode ?? "scripts",
             props.allowExternalEmbedUrls ?? false,
             threadContextWindow,
+            // Re-render the thread when the latest reply's action chips arrive
+            // (async) or move to a different assistant group. Use stable tokens,
+            // not the TemplateResult identity, which changes every render.
+            lastAssistantGroupKey ?? "",
+            props.actionChips && props.actionChips !== nothing ? "1" : "0",
           ],
           () =>
             repeat(
@@ -1877,6 +1895,8 @@ export function renderChat(props: ChatProps) {
                     embedSandboxMode: props.embedSandboxMode ?? "scripts",
                     allowExternalEmbedUrls: props.allowExternalEmbedUrls ?? false,
                     contextWindow: threadContextWindow,
+                    actionChips:
+                      item.key === lastAssistantGroupKey ? (props.actionChips ?? nothing) : nothing,
                     onDelete: () => {
                       deleted.delete(item.key);
                       requestUpdate();

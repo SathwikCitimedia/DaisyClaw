@@ -66,6 +66,7 @@ type LifecycleHost = {
   chatComposerPersistSnapshot?: PendingChatComposerPersistSnapshot | null;
   pendingGatewayUrl?: string | null;
   realtimeTalkSession?: { stop: () => void } | null;
+  browserVoiceSession?: { stop: () => void } | null;
   realtimeTalkActive?: boolean;
   realtimeTalkStatus?: string;
   realtimeTalkDetail?: string | null;
@@ -213,6 +214,7 @@ export function handleDisconnected(host: LifecycleHost) {
   host.sessionsChangedReloadTimer = null;
   host.realtimeTalkSession?.stop();
   host.realtimeTalkSession = null;
+  host.browserVoiceSession = null;
   host.realtimeTalkActive = false;
   host.realtimeTalkStatus = "idle";
   host.realtimeTalkDetail = null;

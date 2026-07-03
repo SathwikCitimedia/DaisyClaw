@@ -695,9 +695,11 @@ export function dismissChatError(state: AppViewState) {
   if (state.realtimeTalkStatus === "error") {
     const talkHost = state as unknown as {
       realtimeTalkSession?: { stop(): void } | null;
+      browserVoiceSession?: { stop(): void } | null;
     };
     talkHost.realtimeTalkSession?.stop();
     talkHost.realtimeTalkSession = null;
+    talkHost.browserVoiceSession = null;
     state.realtimeTalkActive = false;
     state.realtimeTalkStatus = "idle";
     state.realtimeTalkDetail = null;

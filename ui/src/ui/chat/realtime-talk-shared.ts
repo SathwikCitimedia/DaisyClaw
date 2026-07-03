@@ -213,7 +213,7 @@ type AgentWaitResult = {
 
 const EMPTY_FINAL_FALLBACK_GRACE_MS = 500;
 
-function extractTextFromMessage(message: unknown): string {
+export function extractTextFromMessage(message: unknown): string {
   if (!message || typeof message !== "object") {
     return "";
   }

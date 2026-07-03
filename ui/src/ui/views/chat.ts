@@ -57,6 +57,7 @@ import {
   renderFallbackIndicator,
 } from "../chat/status-indicators.ts";
 import { getExpandedToolCards, syncToolCardExpansionState } from "../chat/tool-expansion-state.ts";
+import { describeVoiceError, type VoiceErrorFix } from "../chat/voice-error.ts";
 import type { EmbedSandboxMode } from "../embed-sandbox.ts";
 import { icons } from "../icons.ts";
 import { formatGoalDetail, formatGoalSummary } from "../session-goal.ts";
@@ -179,6 +180,7 @@ export type ChatProps = {
   onRealtimeTalkOptionsChange?: (
     next: Partial<NonNullable<ChatProps["realtimeTalkOptions"]>>,
   ) => void;
+  onRealtimeTalkErrorAction?: (kind: VoiceErrorFix) => void;
   onDismissError?: () => void;
   onAbort?: () => void;
   onQueueRemove: (id: string) => void;
@@ -249,6 +251,7 @@ const TALK_PROVIDER_OPTIONS: TalkSelectOption[] = [
 ];
 const TALK_TRANSPORT_OPTIONS: TalkSelectOption[] = [
   { label: "Auto", value: "" },
+  { label: "Browser (no API key)", value: "browser" },
   { label: "WebRTC", value: "webrtc" },
   { label: "Gateway relay", value: "gateway-relay" },
   { label: "Provider WebSocket", value: "provider-websocket" },
@@ -285,16 +288,10 @@ function renderNativeTalkSelect(params: {
   value: string;
   options: TalkSelectOption[];
   onSelect: (value: string) => void;
-  selectedLabel?: string;
 }) {
-  const selectedLabel =
-    params.selectedLabel ?? params.options.find((entry) => entry.value === params.value)?.label;
   return html`
     <label class="agent-chat__talk-field" data-talk-select=${params.label.toLowerCase()}>
-      <span>${params.label}</span>
-      ${selectedLabel
-        ? html`<span class="agent-chat__talk-select-label">${selectedLabel}</span>`
-        : nothing}
+      <span class="agent-chat__talk-field-label">${params.label}</span>
       <select
         .value=${params.value}
         @change=${(event: Event) =>
@@ -340,8 +337,6 @@ function renderRealtimeTalkOptions(props: ChatProps) {
   const sensitivityOptions = isCustomSensitivity
     ? [...TALK_SENSITIVITY_OPTIONS, { label: "Custom", value: "__custom" }]
     : TALK_SENSITIVITY_OPTIONS;
-  const sensitivityLabel =
-    sensitivityOptions.find((entry) => entry.value === sensitivityValue)?.label ?? "Custom";
   const updateSensitivity = (value: string) => {
     if (value !== "__custom") {
       onChange({ vadThreshold: value });
@@ -357,7 +352,7 @@ function renderRealtimeTalkOptions(props: ChatProps) {
           onSelect: (voice) => onChange({ voice }),
         })}
         <label class="agent-chat__talk-field">
-          <span>Model</span>
+          <span class="agent-chat__talk-field-label">Model</span>
           <input
             .value=${options.model}
             @input=${update("model")}
@@ -369,7 +364,6 @@ function renderRealtimeTalkOptions(props: ChatProps) {
           label: "Sensitivity",
           value: sensitivityValue,
           options: sensitivityOptions,
-          selectedLabel: sensitivityLabel,
           onSelect: updateSensitivity,
         })}
       </div>
@@ -395,7 +389,7 @@ function renderRealtimeTalkOptions(props: ChatProps) {
             onSelect: (reasoningEffort) => onChange({ reasoningEffort }),
           })}
           <label class="agent-chat__talk-field">
-            <span>Exact VAD</span>
+            <span class="agent-chat__talk-field-label">Exact VAD</span>
             <input
               type="number"
               min="0"
@@ -407,7 +401,7 @@ function renderRealtimeTalkOptions(props: ChatProps) {
             />
           </label>
           <label class="agent-chat__talk-field">
-            <span>Pause before send</span>
+            <span class="agent-chat__talk-field-label">Pause before send</span>
             <input
               type="number"
               min="1"
@@ -418,7 +412,7 @@ function renderRealtimeTalkOptions(props: ChatProps) {
             />
           </label>
           <label class="agent-chat__talk-field">
-            <span>Lead-in</span>
+            <span class="agent-chat__talk-field-label">Lead-in</span>
             <input
               type="number"
               min="0"
@@ -432,6 +426,41 @@ function renderRealtimeTalkOptions(props: ChatProps) {
       </details>
     </div>
   `;
+}
+
+function renderRealtimeTalkStatus(props: ChatProps) {
+  const show = props.realtimeTalkActive || props.realtimeTalkDetail || props.realtimeTalkTranscript;
+  if (!show) {
+    return nothing;
+  }
+  // On error, translate the raw message into plain language plus a one-click fix.
+  if (props.realtimeTalkStatus === "error" && props.realtimeTalkDetail) {
+    const described = describeVoiceError(
+      props.realtimeTalkDetail,
+      props.realtimeTalkOptions?.transport,
+    );
+    const fix = described.fix;
+    const onAction = props.onRealtimeTalkErrorAction;
+    return html`
+      <div class="agent-chat__stt-interim agent-chat__talk-status agent-chat__talk-status--error">
+        <span>${described.message}</span>
+        ${fix && onAction
+          ? html`<button type="button" class="chat-action-chip" @click=${() => onAction(fix.kind)}>
+              ${fix.label}
+            </button>`
+          : nothing}
+      </div>
+    `;
+  }
+  const detail =
+    props.realtimeTalkDetail ??
+    ((props.realtimeTalkConversation?.length ?? 0) === 0 ? props.realtimeTalkTranscript : null) ??
+    (props.realtimeTalkStatus === "thinking"
+      ? "Asking DaisyClaw..."
+      : props.realtimeTalkStatus === "connecting"
+        ? "Connecting Talk..."
+        : "Talk live");
+  return html`<div class="agent-chat__stt-interim agent-chat__talk-status">${detail}</div>`;
 }
 
 function renderRealtimeTalkConversation(props: ChatProps) {
@@ -2208,22 +2237,7 @@ export function renderChat(props: ChatProps) {
                 @change=${(e: Event) => handleFileSelect(e, props)}
               />
 
-              ${renderRealtimeTalkOptions(props)}
-              ${props.realtimeTalkActive || props.realtimeTalkDetail || props.realtimeTalkTranscript
-                ? html`
-                    <div class="agent-chat__stt-interim agent-chat__talk-status">
-                      ${props.realtimeTalkDetail ??
-                      ((props.realtimeTalkConversation?.length ?? 0) === 0
-                        ? props.realtimeTalkTranscript
-                        : null) ??
-                      (props.realtimeTalkStatus === "thinking"
-                        ? "Asking DaisyClaw..."
-                        : props.realtimeTalkStatus === "connecting"
-                          ? "Connecting Talk..."
-                          : "Talk live")}
-                    </div>
-                  `
-                : nothing}
+              ${renderRealtimeTalkOptions(props)} ${renderRealtimeTalkStatus(props)}
 
               <div class="agent-chat__composer-combobox">
                 <textarea
@@ -2286,7 +2300,7 @@ export function renderChat(props: ChatProps) {
                             : t("chat.composer.startTalk")}
                           ?disabled=${!props.connected}
                         >
-                          ${props.realtimeTalkActive ? icons.volume2 : icons.radio}
+                          ${icons.mic}
                           <span class="agent-chat__control-label"
                             >${props.realtimeTalkActive
                               ? t("chat.composer.stopTalk")

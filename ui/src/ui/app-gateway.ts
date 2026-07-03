@@ -35,6 +35,7 @@ import {
 } from "./app-tool-stream.ts";
 import { shouldReloadHistoryForFinalEvent } from "./chat-event-reload.ts";
 import { loadChatComposerSnapshot, restoreChatComposerState } from "./chat/composer-persistence.ts";
+import { extractTextFromMessage } from "./chat/realtime-talk-shared.ts";
 import { reconcileChatRunLifecycle } from "./chat/run-lifecycle.ts";
 import { parseChatSideResult, type ChatSideResult } from "./chat/side-result.ts";
 import { formatConnectError } from "./connect-error.ts";
@@ -154,6 +155,12 @@ type GatewayHost = {
   reconcileWebPushState?: () => Promise<void> | void;
   sessionsChangedReloadTimer?: number | ReturnType<typeof globalThis.setTimeout> | null;
   controlUiBootstrapReady?: Promise<void> | null;
+  // Present only while browser-native voice mode is active; the terminal chat
+  // event feeds the finalized reply back so it can be spoken aloud.
+  browserVoiceSession?: {
+    speakReply(text: string): void;
+    replyFailed(detail?: string): void;
+  } | null;
 };
 
 type GatewayHostWithDeferredSessionMessageReload = GatewayHost & {
@@ -986,6 +993,16 @@ function handleTerminalChatEvent(
   }
   if (isEventForDifferentActiveRun(payload, activeRunIdBeforeEvent)) {
     return false;
+  }
+  // Browser voice mode: speak the finalized reply for the active spoken turn,
+  // or resume listening if the turn ended without one. speakReply/replyFailed
+  // are no-ops unless a spoken utterance is currently awaiting a reply.
+  if (host.browserVoiceSession) {
+    if (state === "final") {
+      host.browserVoiceSession.speakReply(extractTextFromMessage(payload?.message));
+    } else {
+      host.browserVoiceSession.replyFailed();
+    }
   }
   // Check if tool events were seen before resetting (resetToolStream clears toolStreamOrder).
   const toolHost = host as unknown as Parameters<typeof resetToolStream>[0];

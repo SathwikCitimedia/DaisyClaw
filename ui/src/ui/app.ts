@@ -75,6 +75,7 @@ import {
 } from "./app-tool-stream.ts";
 import type { AppViewState } from "./app-view-state.ts";
 import { normalizeAssistantIdentity } from "./assistant-identity.ts";
+import { BrowserVoiceSession, isBrowserVoiceSupported } from "./chat/browser-voice.ts";
 import { restoreChatComposerState } from "./chat/composer-persistence.ts";
 import { exportChatMarkdown } from "./chat/export.ts";
 import {
@@ -90,6 +91,7 @@ import {
 } from "./chat/realtime-talk.ts";
 import type { ChatRunUiStatus } from "./chat/run-lifecycle.ts";
 import type { ChatSideResult } from "./chat/side-result.ts";
+import type { VoiceErrorFix } from "./chat/voice-error.ts";
 import {
   loadToolsEffective as loadToolsEffectiveInternal,
   refreshVisibleToolsEffectiveForCurrentSession as refreshVisibleToolsEffectiveForCurrentSessionInternal,
@@ -318,7 +320,10 @@ export class DaisyClawApp extends LitElement {
     prefixPaddingMs: "",
     reasoningEffort: "",
   };
-  private realtimeTalkSession: RealtimeTalkSession | null = null;
+  private realtimeTalkSession: RealtimeTalkSession | BrowserVoiceSession | null = null;
+  // Set only in browser voice mode; read by the terminal chat event handler
+  // (via the host) to feed replies back to be spoken (see app-gateway.ts).
+  browserVoiceSession: BrowserVoiceSession | null = null;
   private realtimeTalkConversationState: RealtimeTalkConversationState =
     createRealtimeTalkConversationState();
   private nativeBridgeCleanup: (() => void) | null = null;
@@ -1210,11 +1215,9 @@ export class DaisyClawApp extends LitElement {
   async toggleRealtimeTalk() {
     if (this.realtimeTalkSession) {
       if (this.realtimeTalkStatus === "error") {
-        this.realtimeTalkSession.stop();
-        this.realtimeTalkSession = null;
+        this.stopActiveVoiceSession();
       } else {
-        this.realtimeTalkSession.stop();
-        this.realtimeTalkSession = null;
+        this.stopActiveVoiceSession();
         this.realtimeTalkActive = false;
         this.realtimeTalkStatus = "idle";
         this.realtimeTalkDetail = null;
@@ -1233,29 +1236,16 @@ export class DaisyClawApp extends LitElement {
     this.realtimeTalkDetail = null;
     this.realtimeTalkTranscript = null;
     this.resetRealtimeTalkConversation();
+    if ((this.realtimeTalkOptions?.transport ?? "").trim() === "browser") {
+      await this.startBrowserVoice();
+      return;
+    }
     const session = new RealtimeTalkSession(
       this.client,
       this.sessionKey,
       {
-        onStatus: (status, detail) => {
-          this.realtimeTalkStatus = status;
-          this.realtimeTalkDetail = detail ?? null;
-          if (status === "idle" || status === "error") {
-            this.realtimeTalkActive = status !== "idle";
-          }
-          if (status === "error" && this.realtimeTalkDetail) {
-            this.lastError = this.realtimeTalkDetail;
-            this.chatError = this.realtimeTalkDetail;
-          }
-        },
-        onTranscript: (entry) => {
-          this.realtimeTalkTranscript = `${entry.role === "user" ? "You" : "DaisyClaw"}: ${entry.text}`;
-          this.realtimeTalkConversationState = updateRealtimeTalkConversation(
-            this.realtimeTalkConversationState,
-            entry,
-          );
-          this.realtimeTalkConversation = this.realtimeTalkConversationState.entries;
-        },
+        onStatus: (status, detail) => this.applyVoiceStatus(status, detail),
+        onTranscript: (entry) => this.applyVoiceTranscript(entry),
       },
       this.buildRealtimeTalkLaunchOptions(),
     );
@@ -1267,12 +1257,82 @@ export class DaisyClawApp extends LitElement {
       if (this.realtimeTalkSession === session) {
         this.realtimeTalkSession = null;
       }
-      this.realtimeTalkActive = false;
-      this.realtimeTalkStatus = "error";
-      this.realtimeTalkDetail = error instanceof Error ? error.message : String(error);
+      this.failVoiceSession(error instanceof Error ? error.message : String(error));
+    }
+  }
+
+  private stopActiveVoiceSession() {
+    this.realtimeTalkSession?.stop();
+    this.realtimeTalkSession = null;
+    this.browserVoiceSession = null;
+  }
+
+  private applyVoiceStatus(status: RealtimeTalkStatus, detail?: string) {
+    this.realtimeTalkStatus = status;
+    this.realtimeTalkDetail = detail ?? null;
+    if (status === "idle" || status === "error") {
+      this.realtimeTalkActive = status !== "idle";
+    }
+    if (status === "error" && this.realtimeTalkDetail) {
       this.lastError = this.realtimeTalkDetail;
       this.chatError = this.realtimeTalkDetail;
     }
+  }
+
+  private applyVoiceTranscript(entry: {
+    role: "user" | "assistant";
+    text: string;
+    final: boolean;
+  }) {
+    this.realtimeTalkTranscript = `${entry.role === "user" ? "You" : "DaisyClaw"}: ${entry.text}`;
+    this.realtimeTalkConversationState = updateRealtimeTalkConversation(
+      this.realtimeTalkConversationState,
+      entry,
+    );
+    this.realtimeTalkConversation = this.realtimeTalkConversationState.entries;
+  }
+
+  private failVoiceSession(detail: string) {
+    this.realtimeTalkActive = false;
+    this.realtimeTalkStatus = "error";
+    this.realtimeTalkDetail = detail;
+    this.lastError = detail;
+    this.chatError = detail;
+  }
+
+  private async startBrowserVoice() {
+    if (!isBrowserVoiceSupported()) {
+      this.failVoiceSession("Voice input is not supported in this browser. Try Chrome or Edge.");
+      return;
+    }
+    const session = new BrowserVoiceSession({
+      onStatus: (status, detail) => this.applyVoiceStatus(status, detail),
+      onTranscript: (entry) => this.applyVoiceTranscript(entry),
+      onUserUtterance: (text) => void this.handleSendChat(text),
+    });
+    this.realtimeTalkSession = session;
+    // The terminal chat event handler reads host.browserVoiceSession to feed
+    // replies back for speaking.
+    this.browserVoiceSession = session;
+    try {
+      await session.start();
+    } catch (error) {
+      session.stop();
+      if (this.realtimeTalkSession === session) {
+        this.stopActiveVoiceSession();
+      }
+      this.failVoiceSession(error instanceof Error ? error.message : String(error));
+    }
+  }
+
+  // Handles the one-click fix offered under a voice error: switch to free
+  // browser voice, or just retry the current transport. Restarting is handled
+  // by toggleRealtimeTalk, which starts a fresh session when none is active.
+  async handleRealtimeTalkErrorAction(kind: VoiceErrorFix) {
+    if (kind === "switch-to-browser") {
+      this.updateRealtimeTalkOptions({ transport: "browser" });
+    }
+    await this.toggleRealtimeTalk();
   }
 
   resetRealtimeTalkConversation() {

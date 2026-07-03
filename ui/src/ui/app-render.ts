@@ -3716,6 +3716,8 @@ export function renderApp(state: AppViewState) {
                     state.realtimeTalkOptionsOpen = !state.realtimeTalkOptionsOpen;
                   },
                   onRealtimeTalkOptionsChange: (next) => state.updateRealtimeTalkOptions(next),
+                  onRealtimeTalkErrorAction: (kind) =>
+                    void state.handleRealtimeTalkErrorAction(kind),
                   canAbort: hasAbortableSessionRun(state),
                   onAbort: () => void state.handleAbortChat({ preserveDraft: true }),
                   onQueueRemove: (id) => state.removeQueuedMessage(id),

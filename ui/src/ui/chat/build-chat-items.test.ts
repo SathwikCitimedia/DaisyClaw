@@ -1,7 +1,11 @@
 // Control UI tests cover build chat items behavior.
 import { describe, expect, it } from "vitest";
 import type { MessageGroup } from "../types/chat-types.ts";
-import { buildChatItems, type BuildChatItemsProps } from "./build-chat-items.ts";
+import {
+  buildChatItems,
+  threadAwaitsAssistantReply,
+  type BuildChatItemsProps,
+} from "./build-chat-items.ts";
 
 const SENDER_METADATA_BLOCK =
   'Sender (untrusted metadata):\n```json\n{"label":"daisyclaw-control-ui","id":"daisyclaw-control-ui"}\n```';
@@ -870,3 +874,37 @@ function createAssistantCanvasBlock(params: { suffix: string }) {
     },
   };
 }
+
+describe("threadAwaitsAssistantReply", () => {
+  it("returns true when the last renderable message is from the user", () => {
+    expect(
+      threadAwaitsAssistantReply([
+        { role: "assistant", content: [{ type: "text", text: "hi" }], timestamp: 1 },
+        { role: "user", content: [{ type: "text", text: "song telusa neeku" }], timestamp: 2 },
+      ]),
+    ).toBe(true);
+  });
+
+  it("returns false once an assistant reply is the last renderable message", () => {
+    expect(
+      threadAwaitsAssistantReply([
+        { role: "user", content: [{ type: "text", text: "song telusa neeku" }], timestamp: 1 },
+        { role: "assistant", content: [{ type: "text", text: "sure" }], timestamp: 2 },
+      ]),
+    ).toBe(false);
+  });
+
+  it("scans past trailing hidden/empty and tool-result messages to the real last turn", () => {
+    expect(
+      threadAwaitsAssistantReply([
+        { role: "user", content: [{ type: "text", text: "hello" }], timestamp: 1 },
+        { role: "toolresult", content: [], timestamp: 2 },
+        { role: "assistant", content: [], timestamp: 3 },
+      ]),
+    ).toBe(true);
+  });
+
+  it("returns false for an empty thread", () => {
+    expect(threadAwaitsAssistantReply([])).toBe(false);
+  });
+});

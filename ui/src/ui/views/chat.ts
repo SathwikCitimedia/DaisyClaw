@@ -15,7 +15,11 @@ import {
   CHAT_ATTACHMENT_ACCEPT,
   isSupportedChatAttachmentFile,
 } from "../chat/attachment-support.ts";
-import { buildChatItems, type BuildChatItemsProps } from "../chat/build-chat-items.ts";
+import {
+  buildChatItems,
+  threadAwaitsAssistantReply,
+  type BuildChatItemsProps,
+} from "../chat/build-chat-items.ts";
 import { renderChatQueue } from "../chat/chat-queue.ts";
 import { buildRawSidebarContent } from "../chat/chat-sidebar-raw.ts";
 import { renderWelcomeState, resolveAssistantDisplayAvatar } from "../chat/chat-welcome.ts";
@@ -566,6 +570,7 @@ function sameChatItemsInput(previous: BuildChatItemsProps, next: BuildChatItemsP
     previous.streamSegments === next.streamSegments &&
     previous.stream === next.stream &&
     previous.streamStartedAt === next.streamStartedAt &&
+    previous.awaitingReply === next.awaitingReply &&
     previous.queue === next.queue &&
     previous.showToolCalls === next.showToolCalls &&
     previous.searchOpen === next.searchOpen &&
@@ -1680,6 +1685,21 @@ export function renderChat(props: ChatProps) {
     props.onChatScroll?.(event);
   };
 
+  // A reply is expected but nothing is streaming yet (agent using tools /
+  // thinking). Mirror the composer's in-progress signal so the thread keeps the
+  // reading indicator up instead of showing dead air.
+  //
+  // The final `finalizeReloadInFlight` term covers the post-terminal hand-off:
+  // once a run ends, the local run/stream state is cleared and the persisted
+  // reply arrives a beat later via a `loadChatHistory` fetch. During that fetch
+  // `sending`/`canAbort` are all false, so without this the dots vanish and the
+  // thread flashes blank right before the reply pops in. We only extend the
+  // indicator when the reload is genuinely waiting on a reply (last turn is an
+  // unanswered user message), so ordinary session-switch/refresh loads are
+  // unaffected.
+  const finalizeReloadInFlight = props.loading && threadAwaitsAssistantReply(props.messages);
+  const awaitingReply =
+    props.sending || showAbortableUi || showSubmittedProgressUi || finalizeReloadInFlight;
   const chatItems = buildCachedChatItems({
     sessionKey: props.sessionKey,
     messages: props.messages,
@@ -1687,6 +1707,7 @@ export function renderChat(props: ChatProps) {
     streamSegments: props.streamSegments,
     stream: displayStream,
     streamStartedAt: props.streamStartedAt,
+    awaitingReply,
     queue: props.queue,
     showToolCalls: props.showToolCalls,
     searchOpen: vs.searchOpen,

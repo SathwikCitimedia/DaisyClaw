@@ -141,6 +141,7 @@ vi.mock("../icons.ts", () => ({
 
 vi.mock("../chat/build-chat-items.ts", () => ({
   buildChatItems: buildChatItemsMock,
+  threadAwaitsAssistantReply: () => false,
 }));
 
 vi.mock("../chat/grouped-render.ts", () => ({

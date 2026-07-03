@@ -21,6 +21,12 @@ export type BuildChatItemsProps = {
   streamSegments: Array<{ text: string; ts: number }>;
   stream: string | null;
   streamStartedAt: number | null;
+  /**
+   * True while a reply is in flight but nothing is streaming yet (the agent is
+   * using tools / thinking, so `stream` is null). Keeps the reading indicator up
+   * so the thread never shows dead air between the request and the reply.
+   */
+  awaitingReply?: boolean;
   queue?: ChatQueueItem[];
   showToolCalls: boolean;
   searchOpen?: boolean;
@@ -295,6 +301,30 @@ function hasRenderableNormalizedMessage(message: unknown): boolean {
   const role = normalizeRoleForGrouping(normalized.role);
   const hasVisibleSenderLabel = role === "assistant" && Boolean(normalized.senderLabel?.trim());
   return normalized.content.length > 0 || Boolean(normalized.replyTarget) || hasVisibleSenderLabel;
+}
+
+/**
+ * True when the thread's most recent renderable message is from the user, i.e.
+ * the latest turn has no assistant reply yet. Used to keep the reading
+ * indicator up during the post-final history-reload window — after a terminal
+ * event clears the local run and stream, the persisted reply arrives via a
+ * `loadChatHistory` fetch a beat later, and without this the thread shows dead
+ * air (dots -> blank -> reply pops in). Scans from the end past hidden/empty
+ * messages so tool results and metadata-only entries do not mask the last turn.
+ */
+export function threadAwaitsAssistantReply(messages: unknown[]): boolean {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (!hasRenderableNormalizedMessage(message)) {
+      continue;
+    }
+    const normalized = safeNormalizeMessage(message);
+    if (!normalized) {
+      continue;
+    }
+    return normalizeRoleForGrouping(normalized.role) === "user";
+  }
+  return false;
 }
 
 function sanitizeStreamText(text: string): string {
@@ -671,6 +701,7 @@ export function buildChatItems(props: BuildChatItemsProps): Array<ChatItem | Mes
     }
   }
 
+  let hasStreamActivity = false;
   if (props.stream !== null) {
     const key = `stream:${props.sessionKey}:${props.streamStartedAt ?? "live"}`;
     const text = sanitizeStreamText(props.stream);
@@ -685,10 +716,19 @@ export function buildChatItems(props: BuildChatItemsProps): Array<ChatItem | Mes
           startedAt,
           isStreaming: true,
         });
+        hasStreamActivity = true;
       }
     } else if (props.stream.trim().length === 0) {
       items.push({ kind: "reading-indicator", key });
+      hasStreamActivity = true;
     }
+  }
+
+  // A reply is in flight but nothing is streaming yet (agent is using tools /
+  // thinking, so `stream` is null). Keep the reading indicator up so the thread
+  // never shows dead air between the request and the reply.
+  if (!hasStreamActivity && props.awaitingReply) {
+    items.push({ kind: "reading-indicator", key: `reading:${props.sessionKey}` });
   }
 
   return groupMessages(collapseSequentialDuplicateMessages(sortChatItemsByVisibleTime(items)));

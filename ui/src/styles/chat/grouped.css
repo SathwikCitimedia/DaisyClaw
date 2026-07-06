@@ -5,9 +5,9 @@
 /* Chat Group Layout - default (assistant/other on left) */
 .chat-group {
   display: flex;
-  gap: 10px;
+  gap: 12px;
   align-items: flex-start;
-  margin-bottom: 14px;
+  margin-bottom: 18px;
   margin-left: 4px;
   margin-right: 16px;
 }
@@ -24,7 +24,7 @@
   gap: 2px;
   flex: 1 1 auto;
   width: 100%;
-  max-width: var(--chat-message-max-width, min(900px, 68%));
+  max-width: var(--chat-message-max-width, min(760px, 74%));
   align-items: flex-start;
   min-width: 0;
 }
@@ -53,9 +53,15 @@
 }
 
 .chat-sender-name {
-  font-weight: 500;
+  font-weight: 550;
   font-size: 12px;
   color: var(--muted);
+}
+
+/* Assistant/agent name carries the accent for a touch of identity; user and
+   tool group names stay neutral. */
+.chat-group:not(.user):not(.tool) .chat-sender-name {
+  color: var(--accent);
 }
 
 .chat-group-timestamp {
@@ -170,9 +176,9 @@
 
 /* Avatar Styles */
 .chat-avatar {
-  width: 36px;
-  height: 36px;
-  border-radius: var(--radius-md);
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
   background: var(--panel-strong);
   display: grid;
   place-items: center;
@@ -216,12 +222,17 @@ img.chat-avatar {
 .chat-bubble {
   position: relative;
   display: block;
-  border: 1px solid var(--border);
-  background: var(--card);
-  border-radius: var(--radius-lg);
-  padding: 10px 14px;
+  border: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+  background: var(--bg-muted);
+  border-radius: 14px;
+  /* Chat-app "tail": assistant bubbles anchor to the bottom-left. */
+  border-bottom-left-radius: var(--radius-md);
+  padding: 12px 16px;
+  line-height: 1.62;
   box-shadow: none;
-  transition: border-color var(--duration-fast) ease-out;
+  transition:
+    border-color var(--duration-fast) ease-out,
+    background var(--duration-fast) ease-out;
   width: auto;
   max-width: 100%;
   box-sizing: border-box;
@@ -405,15 +416,22 @@ img.chat-avatar {
   background: transparent;
 }
 
-/* User bubbles have different styling */
+/* User bubbles: subtle accent gradient, tail anchored bottom-right. Mixing the
+   accent into --card keeps it readable in every theme (light and dark). */
 .chat-group.user .chat-bubble {
-  background: var(--accent-subtle);
-  border-color: transparent;
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--accent) 16%, var(--card)),
+    color-mix(in srgb, var(--accent) 9%, var(--card))
+  );
+  border-color: color-mix(in srgb, var(--accent) 22%, transparent);
+  color: var(--text-strong);
+  border-bottom-left-radius: 14px;
+  border-bottom-right-radius: var(--radius-md);
 }
 
 :root[data-theme-mode="light"] .chat-group.user .chat-bubble {
   border-color: color-mix(in srgb, var(--accent) 20%, transparent);
-  background: var(--accent-subtle);
 }
 
 .chat-group.user .chat-bubble:hover {

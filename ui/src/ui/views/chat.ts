@@ -1652,6 +1652,20 @@ function renderSlashMenu(
   `;
 }
 
+// Focus the chat composer and move the caret to the end — used after edit/quote
+// actions drop text into the draft.
+function focusChatComposerEnd() {
+  requestAnimationFrame(() => {
+    const ta = document.querySelector<HTMLTextAreaElement>(
+      "textarea[data-chat-composer], .chat-composer textarea, .agent-chat textarea",
+    );
+    if (ta) {
+      ta.focus();
+      ta.setSelectionRange(ta.value.length, ta.value.length);
+    }
+  });
+}
+
 export function renderChat(props: ChatProps) {
   const canCompose = props.connected;
   const isBusy = props.sending || props.stream !== null;
@@ -1726,9 +1740,21 @@ export function renderChat(props: ChatProps) {
   // indicator when the reload is genuinely waiting on a reply (last turn is an
   // unanswered user message), so ordinary session-switch/refresh loads are
   // unaffected.
-  const finalizeReloadInFlight = props.loading && threadAwaitsAssistantReply(props.messages);
+  const awaitsAssistantReply = threadAwaitsAssistantReply(props.messages);
+  const finalizeReloadInFlight = props.loading && awaitsAssistantReply;
+  // After a run reports "done", the persisted reply can lag a few seconds (it
+  // arrives via a debounced session reload, not the terminal event). Without
+  // this the dots vanish at "done" and the thread flashes blank until the reply
+  // pops in. runStatus auto-clears after CHAT_RUN_STATUS_TOAST_DURATION_MS and
+  // awaitsAssistantReply flips false the moment the reply renders, so the
+  // indicator is bounded on both ends and cannot get stuck.
+  const replyRenderPending = props.runStatus?.phase === "done" && awaitsAssistantReply;
   const awaitingReply =
-    props.sending || showAbortableUi || showSubmittedProgressUi || finalizeReloadInFlight;
+    props.sending ||
+    showAbortableUi ||
+    showSubmittedProgressUi ||
+    finalizeReloadInFlight ||
+    replyRenderPending;
   const chatItems = buildCachedChatItems({
     sessionKey: props.sessionKey,
     messages: props.messages,
@@ -1954,15 +1980,18 @@ export function renderChat(props: ChatProps) {
                     onEdit: (text: string) => {
                       props.onDraftChange(text);
                       requestUpdate();
-                      requestAnimationFrame(() => {
-                        const ta = document.querySelector<HTMLTextAreaElement>(
-                          "textarea[data-chat-composer], .chat-composer textarea, .agent-chat textarea",
-                        );
-                        if (ta) {
-                          ta.focus();
-                          ta.setSelectionRange(ta.value.length, ta.value.length);
-                        }
-                      });
+                      focusChatComposerEnd();
+                    },
+                    onQuote: (text: string) => {
+                      const quoted = text
+                        .split("\n")
+                        .map((line) => `> ${line}`)
+                        .join("\n");
+                      const existing = props.getDraft?.() ?? "";
+                      const prefix = existing.trim() ? `${existing.trimEnd()}\n\n` : "";
+                      props.onDraftChange(`${prefix}${quoted}\n\n`);
+                      requestUpdate();
+                      focusChatComposerEnd();
                     },
                   });
                 }

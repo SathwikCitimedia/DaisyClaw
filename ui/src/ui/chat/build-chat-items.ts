@@ -719,7 +719,11 @@ export function buildChatItems(props: BuildChatItemsProps): Array<ChatItem | Mes
         hasStreamActivity = true;
       }
     } else if (props.stream.trim().length === 0) {
-      items.push({ kind: "reading-indicator", key });
+      // Stable key across the whole "thinking" phase: the awaiting-reply branch
+      // below uses the same key, so the dots stay one continuous DOM node
+      // instead of remounting (and restarting their animation) when the stream
+      // opens empty. Prevents the flicker between "waiting" and "stream opened".
+      items.push({ kind: "reading-indicator", key: `reading:${props.sessionKey}` });
       hasStreamActivity = true;
     }
   }

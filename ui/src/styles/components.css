@@ -689,9 +689,12 @@
   right: 0;
   top: calc(100% + 6px);
   display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
   gap: 2px;
-  padding: 4px;
-  border-radius: var(--radius-full);
+  padding: 5px;
+  max-width: min(268px, calc(100vw - 24px));
+  border-radius: var(--radius-xl);
   background: var(--card);
   border: 1px solid var(--border);
   box-shadow: var(--shadow-md);

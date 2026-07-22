@@ -461,6 +461,476 @@
   --grid-line: rgba(0, 0, 0, 0.035);
 }
 
+:root[data-theme="aurora"] {
+  /*
+   * Aurora — violet accent on a faint purple-ink canvas.
+   * Elegant dark theme; single accent (violet), subtly hue-tinted surfaces.
+   */
+  --ring: #8b5cf6;
+  --accent: #8b5cf6;
+  --accent-hover: #9d7cf8;
+  --accent-muted: #8b5cf6;
+  --accent-subtle: rgba(139, 92, 246, 0.15);
+  --accent-glow: transparent;
+  --primary: #8b5cf6;
+  --primary-foreground: #ffffff;
+
+  --focus: rgba(139, 92, 246, 0.4);
+  --focus-ring: 0 0 0 1px var(--bg), 0 0 0 3px color-mix(in srgb, var(--ring) 45%, transparent);
+  --focus-glow: 0 0 0 1px var(--bg), 0 0 0 3px color-mix(in srgb, var(--ring) 45%, transparent);
+
+  --bg: #0c0a12;
+  --bg-accent: #100d18;
+  --bg-elevated: #181422;
+  --bg-hover: #1e1a2b;
+  --bg-muted: #181422;
+
+  --card: #131020;
+  --card-foreground: #efecfb;
+  --card-highlight: rgba(255, 255, 255, 0.025);
+  --popover: #181422;
+  --popover-foreground: #efecfb;
+
+  --panel: #0c0a12;
+  --panel-strong: #131020;
+  --panel-hover: #1e1a2b;
+  --chrome: rgba(12, 10, 18, 0.85);
+  --chrome-strong: rgba(12, 10, 18, 0.96);
+
+  --text: #cbc5da;
+  --text-strong: #efecfb;
+  --chat-text: #cbc5da;
+  --muted: #8a83a3;
+  --muted-strong: #6f6989;
+  --muted-foreground: #8a83a3;
+
+  --border: #201a30;
+  --border-strong: #2e2745;
+  --border-hover: #40385c;
+  --input: #2e2745;
+
+  --secondary: #131020;
+  --secondary-foreground: #efecfb;
+  --accent-2: #8b5cf6;
+  --accent-2-muted: rgba(139, 92, 246, 0.7);
+  --accent-2-subtle: rgba(139, 92, 246, 0.1);
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 2px 8px rgba(0, 0, 0, 0.42);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.5);
+
+  --grid-line: rgba(255, 255, 255, 0.025);
+}
+
+:root[data-theme="aurora-light"] {
+  /*
+   * Aurora (light) — deep violet accent on a faint lavender-white.
+   */
+  --ring: #7c3aed;
+  --accent: #7c3aed;
+  --accent-hover: #6d28d9;
+  --accent-muted: #7c3aed;
+  --accent-subtle: rgba(124, 58, 237, 0.1);
+  --accent-glow: transparent;
+  --primary: #7c3aed;
+  --primary-foreground: #ffffff;
+
+  --bg: #faf9fe;
+  --bg-accent: #f3f1fb;
+  --bg-elevated: #ffffff;
+  --bg-hover: #ece8f9;
+  --bg-muted: #f3f1fb;
+  --bg-content: #ffffff;
+
+  --card: #ffffff;
+  --card-foreground: #1c1730;
+  --card-highlight: rgba(0, 0, 0, 0.016);
+  --popover: #ffffff;
+  --popover-foreground: #1c1730;
+
+  --panel: #faf9fe;
+  --panel-strong: #f3f1fb;
+  --panel-hover: #e7e2f6;
+  --chrome: rgba(250, 249, 254, 0.85);
+  --chrome-strong: rgba(250, 249, 254, 0.96);
+
+  --text: #3a3352;
+  --text-strong: #1c1730;
+  --chat-text: #3a3352;
+  --muted: #6b6488;
+  --muted-strong: #4c4667;
+  --muted-foreground: #6b6488;
+
+  --border: #e6e1f2;
+  --border-strong: #d6cfe8;
+  --border-hover: #b7add2;
+  --input: #d6cfe8;
+
+  --secondary: #f3f1fb;
+  --secondary-foreground: #3a3352;
+  --accent-2: #7c3aed;
+  --accent-2-muted: rgba(124, 58, 237, 0.75);
+  --accent-2-subtle: rgba(124, 58, 237, 0.08);
+
+  --shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.05);
+  --shadow-md: 0 2px 8px rgba(16, 24, 40, 0.07);
+  --shadow-lg: 0 8px 24px rgba(16, 24, 40, 0.09);
+
+  --grid-line: rgba(0, 0, 0, 0.035);
+}
+
+:root[data-theme="ember"] {
+  /*
+   * Ember — warm amber accent on a warm near-black.
+   * Amber is bright, so filled controls use near-black text for contrast.
+   */
+  --ring: #f5a524;
+  --accent: #f5a524;
+  --accent-hover: #ffb648;
+  --accent-muted: #f5a524;
+  --accent-subtle: rgba(245, 165, 36, 0.15);
+  --accent-glow: transparent;
+  --primary: #f5a524;
+  --primary-foreground: #241400;
+
+  --focus: rgba(245, 165, 36, 0.4);
+  --focus-ring: 0 0 0 1px var(--bg), 0 0 0 3px color-mix(in srgb, var(--ring) 45%, transparent);
+  --focus-glow: 0 0 0 1px var(--bg), 0 0 0 3px color-mix(in srgb, var(--ring) 45%, transparent);
+
+  --bg: #0f0b08;
+  --bg-accent: #140f0a;
+  --bg-elevated: #1e160f;
+  --bg-hover: #251b12;
+  --bg-muted: #1e160f;
+
+  --card: #17110b;
+  --card-foreground: #f8f0e6;
+  --card-highlight: rgba(255, 255, 255, 0.025);
+  --popover: #1e160f;
+  --popover-foreground: #f8f0e6;
+
+  --panel: #0f0b08;
+  --panel-strong: #17110b;
+  --panel-hover: #251b12;
+  --chrome: rgba(15, 11, 8, 0.85);
+  --chrome-strong: rgba(15, 11, 8, 0.96);
+
+  --text: #d6c9b8;
+  --text-strong: #f8f0e6;
+  --chat-text: #d6c9b8;
+  --muted: #9a8a76;
+  --muted-strong: #7d6e5b;
+  --muted-foreground: #9a8a76;
+
+  --border: #241a12;
+  --border-strong: #34271b;
+  --border-hover: #4a3925;
+  --input: #34271b;
+
+  --secondary: #17110b;
+  --secondary-foreground: #f8f0e6;
+  --accent-2: #f5a524;
+  --accent-2-muted: rgba(245, 165, 36, 0.7);
+  --accent-2-subtle: rgba(245, 165, 36, 0.1);
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 2px 8px rgba(0, 0, 0, 0.42);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.5);
+
+  --grid-line: rgba(255, 255, 255, 0.025);
+}
+
+:root[data-theme="ember-light"] {
+  /*
+   * Ember (light) — burnt-amber accent on a warm cream white.
+   */
+  --ring: #b45309;
+  --accent: #b45309;
+  --accent-hover: #96450a;
+  --accent-muted: #b45309;
+  --accent-subtle: rgba(180, 83, 9, 0.1);
+  --accent-glow: transparent;
+  --primary: #b45309;
+  --primary-foreground: #ffffff;
+
+  --bg: #fcfaf7;
+  --bg-accent: #f6f1ea;
+  --bg-elevated: #ffffff;
+  --bg-hover: #f1e9dd;
+  --bg-muted: #f6f1ea;
+  --bg-content: #ffffff;
+
+  --card: #ffffff;
+  --card-foreground: #26190d;
+  --card-highlight: rgba(0, 0, 0, 0.016);
+  --popover: #ffffff;
+  --popover-foreground: #26190d;
+
+  --panel: #fcfaf7;
+  --panel-strong: #f6f1ea;
+  --panel-hover: #eee3d3;
+  --chrome: rgba(252, 250, 247, 0.85);
+  --chrome-strong: rgba(252, 250, 247, 0.96);
+
+  --text: #453626;
+  --text-strong: #26190d;
+  --chat-text: #453626;
+  --muted: #7a6a54;
+  --muted-strong: #5c4e3b;
+  --muted-foreground: #7a6a54;
+
+  --border: #ece3d5;
+  --border-strong: #ddd0bd;
+  --border-hover: #c4b299;
+  --input: #ddd0bd;
+
+  --secondary: #f6f1ea;
+  --secondary-foreground: #453626;
+  --accent-2: #b45309;
+  --accent-2-muted: rgba(180, 83, 9, 0.75);
+  --accent-2-subtle: rgba(180, 83, 9, 0.08);
+
+  --shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.05);
+  --shadow-md: 0 2px 8px rgba(16, 24, 40, 0.07);
+  --shadow-lg: 0 8px 24px rgba(16, 24, 40, 0.09);
+
+  --grid-line: rgba(0, 0, 0, 0.035);
+}
+
+:root[data-theme="rose"] {
+  /*
+   * Rose — rose accent on a faint blush-ink canvas.
+   */
+  --ring: #f43f5e;
+  --accent: #f43f5e;
+  --accent-hover: #fb5a75;
+  --accent-muted: #f43f5e;
+  --accent-subtle: rgba(244, 63, 94, 0.15);
+  --accent-glow: transparent;
+  --primary: #f43f5e;
+  --primary-foreground: #ffffff;
+
+  --focus: rgba(244, 63, 94, 0.4);
+  --focus-ring: 0 0 0 1px var(--bg), 0 0 0 3px color-mix(in srgb, var(--ring) 45%, transparent);
+  --focus-glow: 0 0 0 1px var(--bg), 0 0 0 3px color-mix(in srgb, var(--ring) 45%, transparent);
+
+  --bg: #0f0a0c;
+  --bg-accent: #140d10;
+  --bg-elevated: #1d1418;
+  --bg-hover: #24191e;
+  --bg-muted: #1d1418;
+
+  --card: #170f13;
+  --card-foreground: #f9ecf0;
+  --card-highlight: rgba(255, 255, 255, 0.025);
+  --popover: #1d1418;
+  --popover-foreground: #f9ecf0;
+
+  --panel: #0f0a0c;
+  --panel-strong: #170f13;
+  --panel-hover: #24191e;
+  --chrome: rgba(15, 10, 12, 0.85);
+  --chrome-strong: rgba(15, 10, 12, 0.96);
+
+  --text: #d8c4cc;
+  --text-strong: #f9ecf0;
+  --chat-text: #d8c4cc;
+  --muted: #9c8189;
+  --muted-strong: #7e6670;
+  --muted-foreground: #9c8189;
+
+  --border: #241820;
+  --border-strong: #34232c;
+  --border-hover: #4a333f;
+  --input: #34232c;
+
+  --secondary: #170f13;
+  --secondary-foreground: #f9ecf0;
+  --accent-2: #f43f5e;
+  --accent-2-muted: rgba(244, 63, 94, 0.7);
+  --accent-2-subtle: rgba(244, 63, 94, 0.1);
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 2px 8px rgba(0, 0, 0, 0.42);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.5);
+
+  --grid-line: rgba(255, 255, 255, 0.025);
+}
+
+:root[data-theme="rose-light"] {
+  /*
+   * Rose (light) — deep rose accent on a faint blush white.
+   */
+  --ring: #e11d48;
+  --accent: #e11d48;
+  --accent-hover: #be123c;
+  --accent-muted: #e11d48;
+  --accent-subtle: rgba(225, 29, 72, 0.1);
+  --accent-glow: transparent;
+  --primary: #e11d48;
+  --primary-foreground: #ffffff;
+
+  --bg: #fdf9fa;
+  --bg-accent: #faf0f3;
+  --bg-elevated: #ffffff;
+  --bg-hover: #f7e8ec;
+  --bg-muted: #faf0f3;
+  --bg-content: #ffffff;
+
+  --card: #ffffff;
+  --card-foreground: #2d1620;
+  --card-highlight: rgba(0, 0, 0, 0.016);
+  --popover: #ffffff;
+  --popover-foreground: #2d1620;
+
+  --panel: #fdf9fa;
+  --panel-strong: #faf0f3;
+  --panel-hover: #f4e2e8;
+  --chrome: rgba(253, 249, 250, 0.85);
+  --chrome-strong: rgba(253, 249, 250, 0.96);
+
+  --text: #4a343c;
+  --text-strong: #2d1620;
+  --chat-text: #4a343c;
+  --muted: #806069;
+  --muted-strong: #614852;
+  --muted-foreground: #806069;
+
+  --border: #f0e0e6;
+  --border-strong: #e3ccd5;
+  --border-hover: #cfaab8;
+  --input: #e3ccd5;
+
+  --secondary: #faf0f3;
+  --secondary-foreground: #4a343c;
+  --accent-2: #e11d48;
+  --accent-2-muted: rgba(225, 29, 72, 0.75);
+  --accent-2-subtle: rgba(225, 29, 72, 0.08);
+
+  --shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.05);
+  --shadow-md: 0 2px 8px rgba(16, 24, 40, 0.07);
+  --shadow-lg: 0 8px 24px rgba(16, 24, 40, 0.09);
+
+  --grid-line: rgba(0, 0, 0, 0.035);
+}
+
+:root[data-theme="emerald"] {
+  /*
+   * Emerald — green accent on a faint green-ink canvas.
+   */
+  --ring: #10b981;
+  --accent: #10b981;
+  --accent-hover: #2dd4a0;
+  --accent-muted: #10b981;
+  --accent-subtle: rgba(16, 185, 129, 0.15);
+  --accent-glow: transparent;
+  --primary: #10b981;
+  --primary-foreground: #04140d;
+
+  --focus: rgba(16, 185, 129, 0.4);
+  --focus-ring: 0 0 0 1px var(--bg), 0 0 0 3px color-mix(in srgb, var(--ring) 45%, transparent);
+  --focus-glow: 0 0 0 1px var(--bg), 0 0 0 3px color-mix(in srgb, var(--ring) 45%, transparent);
+
+  --bg: #08100c;
+  --bg-accent: #0b1510;
+  --bg-elevated: #101e17;
+  --bg-hover: #16251d;
+  --bg-muted: #101e17;
+
+  --card: #0d1712;
+  --card-foreground: #e8f5ee;
+  --card-highlight: rgba(255, 255, 255, 0.025);
+  --popover: #101e17;
+  --popover-foreground: #e8f5ee;
+
+  --panel: #08100c;
+  --panel-strong: #0d1712;
+  --panel-hover: #16251d;
+  --chrome: rgba(8, 16, 12, 0.85);
+  --chrome-strong: rgba(8, 16, 12, 0.96);
+
+  --text: #bfd2c8;
+  --text-strong: #e8f5ee;
+  --chat-text: #bfd2c8;
+  --muted: #7c9187;
+  --muted-strong: #64776d;
+  --muted-foreground: #7c9187;
+
+  --border: #16241d;
+  --border-strong: #223528;
+  --border-hover: #31493a;
+  --input: #223528;
+
+  --secondary: #0d1712;
+  --secondary-foreground: #e8f5ee;
+  --accent-2: #10b981;
+  --accent-2-muted: rgba(16, 185, 129, 0.7);
+  --accent-2-subtle: rgba(16, 185, 129, 0.1);
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 2px 8px rgba(0, 0, 0, 0.42);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.5);
+
+  --grid-line: rgba(255, 255, 255, 0.025);
+}
+
+:root[data-theme="emerald-light"] {
+  /*
+   * Emerald (light) — deep emerald accent on a faint mint white.
+   */
+  --ring: #047857;
+  --accent: #047857;
+  --accent-hover: #036045;
+  --accent-muted: #047857;
+  --accent-subtle: rgba(4, 120, 87, 0.1);
+  --accent-glow: transparent;
+  --primary: #047857;
+  --primary-foreground: #ffffff;
+
+  --bg: #f6faf7;
+  --bg-accent: #eef5f0;
+  --bg-elevated: #ffffff;
+  --bg-hover: #e6f0ea;
+  --bg-muted: #eef5f0;
+  --bg-content: #ffffff;
+
+  --card: #ffffff;
+  --card-foreground: #14231b;
+  --card-highlight: rgba(0, 0, 0, 0.016);
+  --popover: #ffffff;
+  --popover-foreground: #14231b;
+
+  --panel: #f6faf7;
+  --panel-strong: #eef5f0;
+  --panel-hover: #e0ebe4;
+  --chrome: rgba(246, 250, 247, 0.85);
+  --chrome-strong: rgba(246, 250, 247, 0.96);
+
+  --text: #37453e;
+  --text-strong: #14231b;
+  --chat-text: #37453e;
+  --muted: #647a6f;
+  --muted-strong: #4a5c53;
+  --muted-foreground: #647a6f;
+
+  --border: #dde8e1;
+  --border-strong: #cbd9d0;
+  --border-hover: #aac0b3;
+  --input: #cbd9d0;
+
+  --secondary: #eef5f0;
+  --secondary-foreground: #37453e;
+  --accent-2: #047857;
+  --accent-2-muted: rgba(4, 120, 87, 0.75);
+  --accent-2-subtle: rgba(4, 120, 87, 0.08);
+
+  --shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.05);
+  --shadow-md: 0 2px 8px rgba(16, 24, 40, 0.07);
+  --shadow-lg: 0 8px 24px rgba(16, 24, 40, 0.09);
+
+  --grid-line: rgba(0, 0, 0, 0.035);
+}
+
 * {
   box-sizing: border-box;
 }

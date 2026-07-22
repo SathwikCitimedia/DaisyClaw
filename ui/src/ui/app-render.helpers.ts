@@ -859,6 +859,10 @@ const THEME_PRESET_OPTIONS: ThemePresetOption[] = [
   { id: "claw", label: "Graphite", hex: "#5e6ad2" },
   { id: "knot", label: "Midnight", hex: "#4f8ff5" },
   { id: "dash", label: "Slate", hex: "#3aa8a0" },
+  { id: "aurora", label: "Aurora", hex: "#8b5cf6" },
+  { id: "ember", label: "Ember", hex: "#f5a524" },
+  { id: "rose", label: "Rose", hex: "#f43f5e" },
+  { id: "emerald", label: "Emerald", hex: "#10b981" },
 ];
 
 function resolveActiveAccentHex(state: AppViewState): string {

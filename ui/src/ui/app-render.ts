@@ -3773,7 +3773,8 @@ export function renderApp(state: AppViewState) {
                     switchChatSession(state, key);
                   },
                   showNewMessages: state.chatNewMessagesBelow && !state.chatManualRefreshInFlight,
-                  onScrollToBottom: () => state.scrollToBottom(),
+                  showScrollButton: state.chatShowScrollButton && !state.chatNewMessagesBelow,
+                  onScrollToBottom: () => state.scrollToBottom({ smooth: true }),
                   // Sidebar props for tool output viewing
                   sidebarOpen: state.sidebarOpen,
                   sidebarContent: state.sidebarContent,

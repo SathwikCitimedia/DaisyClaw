@@ -164,6 +164,7 @@ export type ChatProps = {
   attachments?: ChatAttachment[];
   onAttachmentsChange?: (attachments: ChatAttachment[]) => void;
   showNewMessages?: boolean;
+  showScrollButton?: boolean;
   onScrollToBottom?: () => void;
   onRefresh: () => void;
   onToggleFocusMode?: () => void;
@@ -509,6 +510,8 @@ interface ChatEphemeralState {
   searchOpen: boolean;
   searchQuery: string;
   pinnedExpanded: boolean;
+  /** Raw text of the message being quoted/replied-to, shown as a chip above the composer. */
+  quotedReply: string | null;
   historyRenderSessionKey: string | null;
   historyRenderMessagesRef: unknown[] | null;
   historyRenderMessageCount: number;
@@ -535,6 +538,7 @@ function createChatEphemeralState(): ChatEphemeralState {
     searchOpen: false,
     searchQuery: "",
     pinnedExpanded: false,
+    quotedReply: null,
     historyRenderSessionKey: null,
     historyRenderMessagesRef: null,
     historyRenderMessageCount: 0,
@@ -1652,6 +1656,37 @@ function renderSlashMenu(
   `;
 }
 
+// Collapse a quoted message into a short single-line preview for the reply
+// chip. Strips leading markdown markers (headings, bullets, blockquotes) and
+// emphasis so the chip reads like plain text, then truncates.
+const QUOTE_PREVIEW_MAX = 90;
+function quotePreviewText(text: string): string {
+  const oneLine = text
+    .replace(/\s+/g, " ")
+    .replace(/^\s*(?:>+\s*|#{1,6}\s+|[-*+]\s+|\d+[.)]\s+)/g, "")
+    .replace(/[*_`~]+/g, "")
+    .trim();
+  return oneLine.length > QUOTE_PREVIEW_MAX ? `${oneLine.slice(0, QUOTE_PREVIEW_MAX)}…` : oneLine;
+}
+
+// If a message is queued for quoting, prepend it to the outgoing body as a
+// markdown blockquote and clear the pending quote. Called at send time so the
+// reference travels with the message (like ChatGPT's quoted reply) without ever
+// living in the visible textarea.
+function consumeQuotedReplyPrefix(body: string): string {
+  const quote = vs.quotedReply;
+  if (!quote) {
+    return body;
+  }
+  vs.quotedReply = null;
+  const blockquote = quote
+    .split("\n")
+    .map((line) => `> ${line}`)
+    .join("\n");
+  const trimmedBody = body.trim();
+  return trimmedBody ? `${blockquote}\n\n${trimmedBody}` : `${blockquote}\n\n`;
+}
+
 // Focus the chat composer and move the caret to the end — used after edit/quote
 // actions drop text into the draft.
 function focusChatComposerEnd() {
@@ -1983,13 +2018,10 @@ export function renderChat(props: ChatProps) {
                       focusChatComposerEnd();
                     },
                     onQuote: (text: string) => {
-                      const quoted = text
-                        .split("\n")
-                        .map((line) => `> ${line}`)
-                        .join("\n");
-                      const existing = props.getDraft?.() ?? "";
-                      const prefix = existing.trim() ? `${existing.trimEnd()}\n\n` : "";
-                      props.onDraftChange(`${prefix}${quoted}\n\n`);
+                      // Stage the quote as a dismissible chip above the composer
+                      // (ChatGPT-style) instead of pasting raw markdown into the
+                      // textarea; it is attached to the message at send time.
+                      vs.quotedReply = text.trim() || null;
                       requestUpdate();
                       focusChatComposerEnd();
                     },
@@ -2136,7 +2168,7 @@ export function renderChat(props: ChatProps) {
       e.preventDefault();
       if (canCompose) {
         const target = e.target as HTMLTextAreaElement;
-        commitComposerDraft(props, target.value);
+        commitComposerDraft(props, consumeQuotedReplyPrefix(target.value));
         props.onSend();
         syncComposerDraftAfterSend(target);
       }
@@ -2158,7 +2190,7 @@ export function renderChat(props: ChatProps) {
     commitComposerDraft(props, target.value);
   };
   const handleSend = () => {
-    commitComposerDraft(props, draftMirror.value);
+    commitComposerDraft(props, consumeQuotedReplyPrefix(draftMirror.value));
     props.onSend();
     syncComposerDraftAfterSend(composerTextarea);
   };
@@ -2235,6 +2267,21 @@ export function renderChat(props: ChatProps) {
                   </button>
                 `
               : nothing}
+            ${props.showScrollButton
+              ? html`
+                  <div class="chat-scroll-anchor">
+                    <button
+                      class="chat-scroll-bottom"
+                      type="button"
+                      aria-label="Scroll to latest"
+                      title="Scroll to latest"
+                      @click=${props.onScrollToBottom}
+                    >
+                      ${icons.arrowDown}
+                    </button>
+                  </div>
+                `
+              : nothing}
 
             <!-- Input bar -->
             <div
@@ -2267,6 +2314,30 @@ export function renderChat(props: ChatProps) {
               />
 
               ${renderRealtimeTalkOptions(props)} ${renderRealtimeTalkStatus(props)}
+              ${vs.quotedReply
+                ? html`
+                    <div class="agent-chat__quote-chip" role="note" aria-label="Quoted message">
+                      <span class="agent-chat__quote-chip-icon" aria-hidden="true"
+                        >${icons.reply}</span
+                      >
+                      <span class="agent-chat__quote-chip-text"
+                        >${quotePreviewText(vs.quotedReply)}</span
+                      >
+                      <button
+                        type="button"
+                        class="agent-chat__quote-chip-dismiss"
+                        title="Remove quoted message"
+                        aria-label="Remove quoted message"
+                        @click=${() => {
+                          vs.quotedReply = null;
+                          requestUpdate();
+                        }}
+                      >
+                        ${icons.x}
+                      </button>
+                    </div>
+                  `
+                : nothing}
 
               <div class="agent-chat__composer-combobox">
                 <textarea

@@ -712,6 +712,7 @@ export class DaisyClawApp extends LitElement {
   chatIsProgrammaticScroll = false;
   chatProgrammaticScrollTarget = 0;
   @state() chatNewMessagesBelow = false;
+  @state() chatShowScrollButton = false;
   nodesPollInterval: number | null = null;
   logsPollInterval: number | null = null;
   debugPollInterval: number | null = null;

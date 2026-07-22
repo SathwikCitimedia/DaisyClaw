@@ -17,6 +17,7 @@ type ScrollHost = {
   chatUserNearBottom: boolean;
   chatHeaderControlsHidden: boolean;
   chatNewMessagesBelow: boolean;
+  chatShowScrollButton?: boolean;
   chatIsProgrammaticScroll: boolean;
   chatProgrammaticScrollTarget: number;
   settings?: {
@@ -115,6 +116,7 @@ export function scheduleChatScroll(
       });
       host.chatUserNearBottom = true;
       host.chatNewMessagesBelow = false;
+      host.chatShowScrollButton = false;
       const retryDelay = effectiveForce ? 150 : 120;
       host.chatScrollTimeout = window.setTimeout(() => {
         host.chatScrollTimeout = null;
@@ -231,6 +233,10 @@ export function handleChatScroll(host: ScrollHost, event: Event) {
   }
   const hasUsefulScroll = container.scrollHeight - container.clientHeight > NEAR_BOTTOM_THRESHOLD;
 
+  // Show the floating "scroll to bottom" affordance whenever the user has
+  // scrolled up away from the bottom of a thread tall enough to scroll.
+  host.chatShowScrollButton = hasUsefulScroll && !host.chatUserNearBottom;
+
   if (!hasUsefulScroll || scrollTop <= HEADER_SHOW_TOP_THRESHOLD || host.chatUserNearBottom) {
     host.chatHeaderControlsHidden = false;
   } else if (delta > HEADER_HIDE_SCROLL_DELTA) {
@@ -269,6 +275,7 @@ export function resetChatScroll(host: ScrollHost) {
   host.chatLastScrollTop = 0;
   host.chatHeaderControlsHidden = false;
   host.chatNewMessagesBelow = false;
+  host.chatShowScrollButton = false;
   host.chatIsProgrammaticScroll = false;
   host.chatProgrammaticScrollTarget = 0;
 }

@@ -1,5 +1,13 @@
 // Control UI module implements theme behavior.
-export type ThemeName = "claw" | "knot" | "dash" | "custom";
+export type ThemeName =
+  | "claw"
+  | "knot"
+  | "dash"
+  | "aurora"
+  | "ember"
+  | "rose"
+  | "emerald"
+  | "custom";
 export type ThemeMode = "system" | "light" | "dark";
 export type ResolvedTheme =
   | "dark"
@@ -8,10 +16,27 @@ export type ResolvedTheme =
   | "openknot-light"
   | "dash"
   | "dash-light"
+  | "aurora"
+  | "aurora-light"
+  | "ember"
+  | "ember-light"
+  | "rose"
+  | "rose-light"
+  | "emerald"
+  | "emerald-light"
   | "custom"
   | "custom-light";
 
-export const VALID_THEME_NAMES = new Set<ThemeName>(["claw", "knot", "dash", "custom"]);
+export const VALID_THEME_NAMES = new Set<ThemeName>([
+  "claw",
+  "knot",
+  "dash",
+  "aurora",
+  "ember",
+  "rose",
+  "emerald",
+  "custom",
+]);
 const VALID_THEME_MODES = new Set<ThemeMode>(["system", "light", "dark"]);
 
 type ThemeSelection = { theme: ThemeName; mode: ThemeMode };
@@ -75,6 +100,18 @@ export function resolveTheme(theme: ThemeName, mode: ThemeMode): ResolvedTheme {
   }
   if (theme === "dash") {
     return resolvedMode === "light" ? "dash-light" : "dash";
+  }
+  if (theme === "aurora") {
+    return resolvedMode === "light" ? "aurora-light" : "aurora";
+  }
+  if (theme === "ember") {
+    return resolvedMode === "light" ? "ember-light" : "ember";
+  }
+  if (theme === "rose") {
+    return resolvedMode === "light" ? "rose-light" : "rose";
+  }
+  if (theme === "emerald") {
+    return resolvedMode === "light" ? "emerald-light" : "emerald";
   }
   return resolvedMode === "light" ? "custom-light" : "custom";
 }

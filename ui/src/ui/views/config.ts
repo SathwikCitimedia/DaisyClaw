@@ -790,6 +790,10 @@ const BUILTIN_THEME_OPTIONS: ThemeOption[] = [
   { id: "claw", label: "Graphite", description: "Neutral dark · indigo accent", icon: icons.zap },
   { id: "knot", label: "Midnight", description: "Deep navy · blue accent", icon: icons.link },
   { id: "dash", label: "Slate", description: "Cool slate · teal accent", icon: icons.barChart },
+  { id: "aurora", label: "Aurora", description: "Violet ink · violet accent", icon: icons.spark },
+  { id: "ember", label: "Ember", description: "Warm charcoal · amber accent", icon: icons.sun },
+  { id: "rose", label: "Rose", description: "Blush ink · rose accent", icon: icons.bookmark },
+  { id: "emerald", label: "Emerald", description: "Green ink · emerald accent", icon: icons.globe },
 ];
 
 function importedThemeName(props: Pick<ConfigProps, "hasCustomTheme" | "customThemeLabel">) {

@@ -1206,20 +1206,10 @@ function formatQuickSettingsLabel(id: string): string {
 }
 
 function goToChannelCard(state: AppViewState, channelId: string) {
+  // Setting the focus channel opens that channel's config dialog on the
+  // channels tab.
   state.channelsFocus = channelId;
   state.setTab("channels");
-  // The channels view is lazy-loaded; retry until its accordion exists.
-  const scrollToChannel = (attempt: number) => {
-    const el = document.querySelector(`.ch-item[data-channel="${CSS.escape(channelId)}"]`);
-    if (el) {
-      el.scrollIntoView({ behavior: "smooth", block: "start" });
-      return;
-    }
-    if (attempt < 20) {
-      setTimeout(() => scrollToChannel(attempt + 1), 100);
-    }
-  };
-  setTimeout(() => scrollToChannel(0), 50);
 }
 
 function countPairingRequests(state: AppViewState, channelId: string): number {
@@ -2101,6 +2091,12 @@ export function renderApp(state: AppViewState) {
               void state.handleDmPolicyChange(channelId, policy),
             onPairingApprove: (entry) => void state.handlePairingApprove(entry),
             onPairingReject: (entry) => void state.handlePairingReject(entry),
+            onOpenChannel: (channelId) => {
+              state.channelsFocus = channelId;
+            },
+            onCloseChannel: () => {
+              state.channelsFocus = null;
+            },
             onRefresh: (probe) => void loadChannels(state, probe),
             onWhatsAppConnect: (force) => void state.handleWhatsAppConnect(force),
             onWhatsAppLogout: () => void state.handleWhatsAppLogout(),

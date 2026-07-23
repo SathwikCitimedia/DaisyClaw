@@ -1,5 +1,6 @@
 // Control UI view renders channels screen content.
 import { html, nothing } from "lit";
+import { ref } from "lit/directives/ref.js";
 import { t } from "../../i18n/index.ts";
 import { formatRelativeTimestamp } from "../format.ts";
 import type {
@@ -20,6 +21,7 @@ import { renderChannelConfigSection } from "./channels.config.ts";
 import { renderAllowedContactsSection } from "./channels.contacts.ts";
 import { renderDiscordCard } from "./channels.discord.ts";
 import { renderGoogleChatCard } from "./channels.googlechat.ts";
+import { renderChannelBrandIcon } from "./channels.icons.ts";
 import { renderIMessageCard } from "./channels.imessage.ts";
 import { renderNostrCard } from "./channels.nostr.ts";
 import {
@@ -57,51 +59,23 @@ export function renderChannels(props: ChannelsProps) {
   };
 
   const channelOrder = resolveChannelOrder(props.snapshot);
-  const configured = channelOrder.filter((k) => channelEnabled(k, props));
-  const unconfigured = channelOrder.filter((k) => !channelEnabled(k, props));
   const focusChannel = props.focusChannel ?? null;
+  const configuredCount = channelOrder.filter((k) => channelEnabled(k, props)).length;
 
   const showingStaleSnapshot = Boolean(props.loading && props.snapshot && props.lastSuccessAt);
   const partialWarnings = props.snapshot?.warnings?.filter((warning) => warning.trim()) ?? [];
 
   return html`
     ${renderAccessRequests(props)}
-    <div class="ch-groups">
-      ${configured.length > 0
-        ? html`
-            <details class="ch-group" open>
-              <summary class="ch-group__summary">
-                <span class="ch-group__title">Configured</span>
-                <span class="ch-group__badge ch-group__badge--ok">${configured.length}</span>
-                <span class="ch-group__chevron"></span>
-              </summary>
-              <div class="ch-group__body">
-                ${configured.map((key) =>
-                  renderChannelAccordion(key, props, channelData, true, key === focusChannel),
-                )}
-              </div>
-            </details>
-          `
-        : nothing}
 
-      <details
-        class="ch-group"
-        ?open=${configured.length === 0 ||
-        (focusChannel != null && unconfigured.includes(focusChannel))}
-      >
-        <summary class="ch-group__summary">
-          <span class="ch-group__title">Unconfigured</span>
-          <span class="ch-group__badge">${unconfigured.length}</span>
-          <span class="ch-group__chevron"></span>
-        </summary>
-        <div class="ch-group__body">
-          ${unconfigured.length === 0
-            ? html`<div class="ch-group__empty muted">All channels are configured.</div>`
-            : unconfigured.map((key) =>
-                renderChannelAccordion(key, props, channelData, false, key === focusChannel),
-              )}
-        </div>
-      </details>
+    <div class="ch-list">
+      <div class="ch-list__head">
+        <span class="ch-list__title">Channels</span>
+        <span class="ch-list__count muted"
+          >${configuredCount} of ${channelOrder.length} configured</span
+        >
+      </div>
+      <div class="ch-list__rows">${channelOrder.map((key) => renderChannelRow(key, props))}</div>
     </div>
 
     <details class="ch-group ch-group--health" style="margin-top: 18px;">
@@ -134,6 +108,107 @@ ${props.snapshot
         >
       </div>
     </details>
+
+    ${focusChannel ? renderChannelDialog(focusChannel, props, channelData) : nothing}
+  `;
+}
+
+function showChannelDialogWhenClosed(el?: Element) {
+  if (!(el instanceof HTMLDialogElement) || el.open) {
+    return;
+  }
+  if (el.isConnected) {
+    el.showModal();
+  } else {
+    queueMicrotask(() => {
+      if (el.isConnected && !el.open) {
+        el.showModal();
+      }
+    });
+  }
+}
+
+type ChannelRowStatus = {
+  label: string;
+  tone: "ok" | "idle" | "off";
+};
+
+function resolveChannelRowStatus(key: ChannelKey, props: ChannelsProps): ChannelRowStatus {
+  const state = resolveChannelDisplayState(key, props);
+  if (state.connected === true || state.running === true || state.hasAnyActiveAccount) {
+    return { label: "Connected", tone: "ok" };
+  }
+  if (state.configured === true) {
+    return { label: "Configured", tone: "idle" };
+  }
+  return { label: "Not configured", tone: "off" };
+}
+
+function renderChannelRow(key: ChannelKey, props: ChannelsProps) {
+  const label = resolveChannelLabel(props.snapshot, key);
+  const status = resolveChannelRowStatus(key, props);
+  const isConfigured = status.tone !== "off";
+  const open = () => props.onOpenChannel(key);
+  return html`
+    <div class="ch-row" data-channel=${key}>
+      <div class="ch-row__main">
+        ${renderChannelBrandIcon(key)}
+        <span class="ch-row__name">${label}</span>
+        <span class="ch-row__dot ch-row__dot--${status.tone}" title=${status.label}></span>
+      </div>
+      <div class="ch-row__meta">
+        <span class="ch-row__status ch-row__status--${status.tone}">${status.label}</span>
+        <button
+          type="button"
+          class="btn btn-sm ${isConfigured ? "" : "primary"} ch-row__action"
+          @click=${open}
+        >
+          ${isConfigured ? "Manage" : "Configure"}
+        </button>
+      </div>
+    </div>
+  `;
+}
+
+function renderChannelDialog(key: ChannelKey, props: ChannelsProps, data: ChannelsChannelData) {
+  const label = resolveChannelLabel(props.snapshot, key);
+  const status = resolveChannelRowStatus(key, props);
+  const close = () => props.onCloseChannel();
+  return html`
+    <dialog
+      class="md-preview-dialog ch-dialog"
+      ${ref(showChannelDialogWhenClosed)}
+      @click=${(e: Event) => {
+        if (e.target === e.currentTarget) {
+          (e.currentTarget as HTMLDialogElement).close();
+        }
+      }}
+      @close=${close}
+    >
+      <div class="md-preview-dialog__panel">
+        <div class="md-preview-dialog__header">
+          <div class="md-preview-dialog__header-main">
+            <span class="md-preview-dialog__eyebrow">Channel</span>
+            <div class="ch-dialog__titlerow">
+              ${renderChannelBrandIcon(key)}
+              <span class="md-preview-dialog__title">${label}</span>
+              <span class="ch-row__status ch-row__status--${status.tone}">${status.label}</span>
+            </div>
+          </div>
+          <button
+            class="btn btn--sm"
+            @click=${(e: Event) => {
+              (e.currentTarget as HTMLElement).closest("dialog")?.close();
+            }}
+          >
+            Close
+          </button>
+        </div>
+        <div class="md-preview-dialog__body ch-dialog__body">
+          ${renderChannel(key, props, data)}
+        </div>
+      </div>
+    </dialog>
   `;
 }
 
@@ -186,25 +261,6 @@ function renderAccessRequests(props: ChannelsProps) {
         `;
       })}
     </div>
-  `;
-}
-
-function renderChannelAccordion(
-  key: ChannelKey,
-  props: ChannelsProps,
-  data: ChannelsChannelData,
-  open: boolean,
-  focused = false,
-) {
-  const label = resolveChannelLabel(props.snapshot, key);
-  return html`
-    <details class="ch-item" data-channel=${key} ?open=${open || focused}>
-      <summary class="ch-item__summary">
-        <span class="ch-item__name">${label}</span>
-        <span class="ch-item__chevron"></span>
-      </summary>
-      <div class="ch-item__body">${renderChannel(key, props, data)}</div>
-    </details>
   `;
 }
 

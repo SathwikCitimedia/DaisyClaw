@@ -39,6 +39,8 @@ function createProps(snapshot: ChannelsProps["snapshot"]): ChannelsProps {
     onDmPolicyChange: () => {},
     onPairingApprove: () => {},
     onPairingReject: () => {},
+    onOpenChannel: () => {},
+    onCloseChannel: () => {},
     onRefresh: () => {},
     onWhatsAppConnect: () => {},
     onWhatsAppLogout: () => {},

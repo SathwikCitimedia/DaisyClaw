@@ -610,6 +610,174 @@
    Channel Groups (accordion layout)
    =========================================== */
 
+/* Flat channel list — every channel shown as a row with a status + action. */
+.ch-list {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--card);
+  overflow: hidden;
+}
+
+.ch-list__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--border);
+}
+
+.ch-list__title {
+  font-size: 14px;
+  font-weight: 650;
+  color: var(--text-strong);
+}
+
+.ch-list__count {
+  font-size: 12px;
+}
+
+.ch-list__rows {
+  display: flex;
+  flex-direction: column;
+}
+
+.ch-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 18px;
+  border-bottom: 1px solid var(--border);
+  transition: background var(--duration-fast) var(--ease-out);
+}
+
+.ch-row:last-child {
+  border-bottom: none;
+}
+
+.ch-row:hover {
+  background: var(--bg-hover);
+}
+
+.ch-row__main {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+/* Brand tile — filled channel glyph on a subtle brand-tinted square. */
+.ch-brand {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  border-radius: 9px;
+  color: var(--ch-brand-color, var(--muted));
+  background: color-mix(in srgb, var(--ch-brand-color, var(--muted)) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ch-brand-color, var(--muted)) 22%, transparent);
+}
+
+.ch-brand__glyph {
+  width: 18px;
+  height: 18px;
+  fill: currentColor;
+}
+
+/* Compact tile for dense contexts (e.g. Quick Settings channel rows). */
+.ch-brand--sm {
+  width: 24px;
+  height: 24px;
+  border-radius: 7px;
+}
+
+.ch-brand--sm .ch-brand__glyph {
+  width: 14px;
+  height: 14px;
+}
+
+.ch-row__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: var(--radius-full);
+  flex-shrink: 0;
+}
+
+.ch-row__dot--ok {
+  background: var(--ok);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--ok) 14%, transparent);
+}
+
+.ch-row__dot--idle {
+  background: var(--accent);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 14%, transparent);
+}
+
+.ch-row__dot--off {
+  background: color-mix(in srgb, var(--muted) 55%, transparent);
+}
+
+.ch-row__name {
+  font-size: 14px;
+  font-weight: 550;
+  color: var(--text-strong);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ch-row__meta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+.ch-row__status {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.ch-row__status--ok {
+  color: var(--ok);
+}
+
+.ch-row__status--idle {
+  color: var(--accent);
+}
+
+.ch-row__status--off {
+  color: var(--muted);
+}
+
+.ch-row__action {
+  min-width: 88px;
+  justify-content: center;
+}
+
+/* Channel config dialog — reuses the md-preview-dialog shell. */
+.ch-dialog__titlerow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.ch-dialog__body {
+  padding: 20px 22px;
+  overflow-y: auto;
+}
+
+.ch-dialog__body .card {
+  margin: 0;
+  border: none;
+  background: transparent;
+  padding: 0;
+}
+
 .ch-groups {
   display: flex;
   flex-direction: column;

@@ -22,6 +22,7 @@ import {
   resolveChatAvatarRenderUrl,
   resolveAssistantTextAvatar,
 } from "./agents-utils.ts";
+import { renderChannelBrandIcon } from "./channels.icons.ts";
 import {
   CONFIG_PRESETS,
   detectActivePreset,
@@ -469,6 +470,7 @@ function renderChannelsCard(props: QuickSettingsProps) {
               return html`
                 <div class="qs-row">
                   <span class="qs-row__label">
+                    ${renderChannelBrandIcon(ch.id, { compact: true })}
                     <span class="qs-status-dot ${ch.connected ? "qs-status-dot--ok" : ""}"></span>
                     ${ch.label}
                     ${ch.requests
@@ -489,7 +491,7 @@ function renderChannelsCard(props: QuickSettingsProps) {
                             class="qs-link-btn"
                             @click=${() => props.onChannelConfigure?.(ch.id)}
                           >
-                            Configure
+                            Manage
                           </button>
                           <button
                             class="qs-link-btn qs-link-btn--danger"

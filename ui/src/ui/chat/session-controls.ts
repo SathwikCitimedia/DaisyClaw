@@ -13,6 +13,7 @@ import {
   resolveChatModelOverrideValue,
   resolveChatModelSelectState,
 } from "../chat-model-select-state.ts";
+import { confirmDialog } from "../confirm-dialog.ts";
 import { refreshVisibleToolsEffectiveForCurrentSession } from "../controllers/agents.ts";
 import { loadSessions } from "../controllers/sessions.ts";
 import { formatDateTimeMs } from "../format.ts";
@@ -41,6 +42,7 @@ import {
   normalizeThinkLevel,
   resolveThinkingDefaultForModel,
 } from "../thinking.ts";
+import { showToast } from "../toast.ts";
 import type { GatewayThinkingLevelOption, SessionsListResult } from "../types.ts";
 
 type ChatSessionSwitchHandler = (state: AppViewState, nextSessionKey: string) => void;
@@ -525,13 +527,18 @@ function resolveSelectedChatSessionLabel(
 }
 
 function formatChatSessionPickerMeta(row: SessionsListResult["sessions"][number]): string {
-  const parts = [
-    normalizeOptionalString(row.surface),
-    [normalizeOptionalString(row.modelProvider), normalizeOptionalString(row.model)]
-      .filter(Boolean)
-      .join("/"),
-  ].filter(Boolean);
-  const updatedAt = formatDateTimeMs(row.updatedAt, undefined, "");
+  const parts = [normalizeOptionalString(row.surface)].filter(Boolean);
+  const updatedAt = formatDateTimeMs(
+    row.updatedAt,
+    {
+      year: "numeric",
+      month: "numeric",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+    },
+    "",
+  );
   if (updatedAt) {
     parts.push(updatedAt);
   }
@@ -725,31 +732,40 @@ function renderChatSessionPickerPopover(
             const deletePickerSession = async (e: MouseEvent) => {
               e.preventDefault();
               e.stopPropagation();
-              if (!state.client) return;
-              const confirmed = globalThis.confirm(
-                `Delete session "${label}"? This permanently removes it and can't be undone.`,
-              );
-              if (!confirmed) return;
-              try {
-                await state.client.request("sessions.delete", {
-                  key: row.key,
-                  ...scopedAgentParamsForSession(state, row.key),
-                });
-                // If the deleted session was the active one, switch away to a
-                // remaining session (falling back to the main session).
-                if (row.key === state.sessionKey) {
-                  const fallback =
-                    pickerRows.find((entry) => entry.row.key !== row.key)?.row.key ?? "main";
-                  onSwitchSession(state, fallback);
-                }
-                await refreshSessionOptions(state);
-                if (state.chatSessionPickerOpen) {
-                  void loadChatSessionPickerPage(state);
-                }
-              } catch (err) {
-                setChatError(state, `Failed to delete session: ${String(err)}`);
-                requestHostUpdate(state);
-              }
+              const client = state.client;
+              if (!client) return;
+              // The confirm button drives the delete: it shows a loading state
+              // while the request runs and only closes on success. Errors keep
+              // the dialog open (thrown from onConfirm) and surface a toast.
+              await confirmDialog({
+                title: "Delete session",
+                message: `Are you sure you want to delete "${label}"? This permanently removes it and can't be undone.`,
+                confirmLabel: "Delete",
+                loadingLabel: "Deleting…",
+                onConfirm: async () => {
+                  try {
+                    await client.request("sessions.delete", {
+                      key: row.key,
+                      ...scopedAgentParamsForSession(state, row.key),
+                    });
+                  } catch (err) {
+                    showToast(`Failed to delete session: ${String(err)}`, { tone: "error" });
+                    throw err;
+                  }
+                  // If the deleted session was the active one, switch away to a
+                  // remaining session (falling back to the main session).
+                  if (row.key === state.sessionKey) {
+                    const fallback =
+                      pickerRows.find((entry) => entry.row.key !== row.key)?.row.key ?? "main";
+                    onSwitchSession(state, fallback);
+                  }
+                  await refreshSessionOptions(state);
+                  if (state.chatSessionPickerOpen) {
+                    void loadChatSessionPickerPage(state);
+                  }
+                  showToast(`Session "${label}" deleted successfully`, { tone: "success" });
+                },
+              });
             };
 
             return html`

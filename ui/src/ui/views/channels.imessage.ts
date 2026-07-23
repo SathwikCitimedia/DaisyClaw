@@ -4,6 +4,7 @@ import { t } from "../../i18n/index.ts";
 import { formatRelativeTimestamp } from "../format.ts";
 import type { IMessageStatus } from "../types.ts";
 import { renderChannelConfigSection } from "./channels.config.ts";
+import { renderAllowedContactsSection } from "./channels.contacts.ts";
 import {
   formatNullableBoolean,
   renderSingleAccountChannelCard,
@@ -46,7 +47,10 @@ export function renderIMessageCard(params: {
           ${imessage.probe.error ?? ""}
         </div>`
       : nothing,
-    configSection: renderChannelConfigSection({ channelId: "imessage", props }),
+    configSection: html`
+      ${renderAllowedContactsSection({ channelId: "imessage", props })}
+      ${renderChannelConfigSection({ channelId: "imessage", props })}
+    `,
     footer: html`<div class="row" style="margin-top: 12px;">
       <button class="btn" @click=${() => props.onRefresh(true)}>${t("common.probe")}</button>
     </div>`,

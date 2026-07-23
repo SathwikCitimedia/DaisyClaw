@@ -29,9 +29,18 @@ function createProps(snapshot: ChannelsProps["snapshot"]): ChannelsProps {
     configFormDirty: false,
     nostrProfileFormState: null,
     nostrProfileAccountId: null,
+    contactsBusy: null,
+    contactsError: null,
+    pairingRequests: null,
+    pairingBusy: null,
+    onContactAdd: () => {},
+    onContactsAdd: () => {},
+    onContactRemove: () => {},
+    onDmPolicyChange: () => {},
+    onPairingApprove: () => {},
+    onPairingReject: () => {},
     onRefresh: () => {},
-    onWhatsAppStart: () => {},
-    onWhatsAppWait: () => {},
+    onWhatsAppConnect: () => {},
     onWhatsAppLogout: () => {},
     onConfigPatch: () => {},
     onConfigSave: () => {},
@@ -59,7 +68,7 @@ function createWhatsAppStatus(overrides: Partial<WhatsAppStatus> = {}): WhatsApp
 function renderWhatsAppButtons(params: {
   linked?: boolean;
   qrDataUrl?: string | null;
-  onWhatsAppStart?: ChannelsProps["onWhatsAppStart"];
+  onWhatsAppConnect?: ChannelsProps["onWhatsAppConnect"];
 }) {
   const whatsapp = createWhatsAppStatus({ linked: params.linked === true });
   const props = createProps({
@@ -71,8 +80,8 @@ function renderWhatsAppButtons(params: {
     channelDefaultAccountId: {},
   });
   props.whatsappQrDataUrl = params.qrDataUrl ?? null;
-  if (params.onWhatsAppStart) {
-    props.onWhatsAppStart = params.onWhatsAppStart;
+  if (params.onWhatsAppConnect) {
+    props.onWhatsAppConnect = params.onWhatsAppConnect;
   }
 
   const container = document.createElement("div");
@@ -163,42 +172,42 @@ describe("channel display selectors", () => {
 });
 
 describe("WhatsApp card actions", () => {
-  it("shows QR as the primary action before WhatsApp is linked", () => {
-    const onWhatsAppStart = vi.fn();
+  it("shows Connect as the single primary action before WhatsApp is linked", () => {
+    const onWhatsAppConnect = vi.fn();
     const { buttons, labels } = renderWhatsAppButtons({
       linked: false,
-      onWhatsAppStart,
+      onWhatsAppConnect,
     });
 
-    expect(labels).toEqual(["Save", "Reload", "Show QR", "Logout", "Refresh"]);
+    expect(labels).toEqual(["Add", "Import…", "Save", "Reload", "Connect", "Logout", "Refresh"]);
 
-    const showQr = buttons.find((button) => button.textContent?.trim() === "Show QR");
-    expect(showQr).toBeInstanceOf(HTMLButtonElement);
-    showQr!.click();
-    expect(onWhatsAppStart).toHaveBeenCalledWith(false);
+    const connect = buttons.find((button) => button.textContent?.trim() === "Connect");
+    expect(connect).toBeInstanceOf(HTMLButtonElement);
+    connect!.click();
+    expect(onWhatsAppConnect).toHaveBeenCalledWith(false);
   });
 
   it("uses relink as the explicit action after WhatsApp is linked", () => {
-    const onWhatsAppStart = vi.fn();
+    const onWhatsAppConnect = vi.fn();
     const { buttons, labels } = renderWhatsAppButtons({
       linked: true,
-      onWhatsAppStart,
+      onWhatsAppConnect,
     });
 
-    expect(labels).toEqual(["Save", "Reload", "Relink", "Logout", "Refresh"]);
+    expect(labels).toEqual(["Add", "Import…", "Save", "Reload", "Relink", "Logout", "Refresh"]);
 
     const relink = buttons.find((button) => button.textContent?.trim() === "Relink");
     expect(relink).toBeInstanceOf(HTMLButtonElement);
     relink!.click();
-    expect(onWhatsAppStart).toHaveBeenCalledWith(true);
+    expect(onWhatsAppConnect).toHaveBeenCalledWith(true);
   });
 
-  it("shows wait for scan only while a QR is displayed", () => {
+  it("keeps a single action while a QR is displayed (no extra wait step)", () => {
     const { labels } = renderWhatsAppButtons({
       linked: false,
       qrDataUrl: "data:image/png;base64,current-qr",
     });
 
-    expect(labels).toEqual(["Save", "Reload", "Show QR", "Wait for scan", "Logout", "Refresh"]);
+    expect(labels).toEqual(["Add", "Import…", "Save", "Reload", "Connect", "Logout", "Refresh"]);
   });
 });

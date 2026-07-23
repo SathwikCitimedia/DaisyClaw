@@ -767,3 +767,55 @@ export async function approveChannelPairingCode(params: {
     },
   );
 }
+
+/**
+ * Removes a pending pairing request without granting access. Matches by code
+ * (case-insensitive) or, when no code matches, by sender id.
+ */
+export async function rejectChannelPairingRequest(params: {
+  channel: PairingChannel;
+  codeOrId: string;
+  accountId?: string;
+  env?: NodeJS.ProcessEnv;
+}): Promise<{ id: string; entry: PairingRequest } | null> {
+  const env = params.env ?? process.env;
+  const needle = normalizeNullableString(params.codeOrId) ?? "";
+  if (!needle) {
+    return null;
+  }
+
+  const filePath = resolvePairingPath(params.channel, env);
+  return await withFileLock(
+    filePath,
+    { version: 1, requests: [] } satisfies PairingStore,
+    async () => {
+      const { requests: pruned, removed } = await readPrunedPairingRequests(filePath);
+      const normalizedAccountId = normalizePairingAccountId(params.accountId);
+      const matchesAccount = (r: PairingRequest) => requestMatchesAccountId(r, normalizedAccountId);
+      const needleUpper = needle.toUpperCase();
+      let idx = pruned.findIndex((r) => r.code.toUpperCase() === needleUpper && matchesAccount(r));
+      if (idx < 0) {
+        idx = pruned.findIndex((r) => r.id === needle && matchesAccount(r));
+      }
+      if (idx < 0) {
+        if (removed) {
+          await writeJsonFile(filePath, {
+            version: 1,
+            requests: pruned,
+          } satisfies PairingStore);
+        }
+        return null;
+      }
+      const entry = pruned[idx];
+      if (!entry) {
+        return null;
+      }
+      pruned.splice(idx, 1);
+      await writeJsonFile(filePath, {
+        version: 1,
+        requests: pruned,
+      } satisfies PairingStore);
+      return { id: entry.id, entry };
+    },
+  );
+}

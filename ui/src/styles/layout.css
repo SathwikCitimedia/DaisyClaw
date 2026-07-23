@@ -321,7 +321,7 @@
   gap: 2px;
   padding: 3px;
   border: 1px solid color-mix(in srgb, var(--border) 84%, transparent);
-  border-radius: var(--radius-full);
+  border-radius: 9px;
   background: color-mix(in srgb, var(--bg-elevated) 78%, transparent);
 }
 
@@ -334,7 +334,7 @@
   justify-content: center;
   padding: 0;
   border: 1px solid transparent;
-  border-radius: var(--radius-full);
+  border-radius: 6px;
   background: transparent;
   color: var(--muted);
   cursor: pointer;
@@ -371,7 +371,9 @@
 }
 
 .topbar-theme-mode__btn[data-tooltip]::before,
-.topbar-theme-mode__btn[data-tooltip]::after {
+.topbar-theme-mode__btn[data-tooltip]::after,
+.theme-orb__trigger[data-tooltip]::before,
+.theme-orb__trigger[data-tooltip]::after {
   position: absolute;
   left: 50%;
   pointer-events: none;
@@ -382,7 +384,8 @@
   z-index: 60;
 }
 
-.topbar-theme-mode__btn[data-tooltip]::before {
+.topbar-theme-mode__btn[data-tooltip]::before,
+.theme-orb__trigger[data-tooltip]::before {
   content: "";
   top: calc(100% + 4px);
   border-width: 6px;
@@ -391,7 +394,8 @@
   transform: translate(-50%, -3px);
 }
 
-.topbar-theme-mode__btn[data-tooltip]::after {
+.topbar-theme-mode__btn[data-tooltip]::after,
+.theme-orb__trigger[data-tooltip]::after {
   content: attr(data-tooltip);
   top: calc(100% + 10px);
   max-width: min(220px, 60vw);
@@ -428,12 +432,10 @@
 
 @media (hover: hover) {
   .topbar-theme-mode__btn[data-tooltip]:hover::before,
-  .topbar-theme-mode__btn[data-tooltip]:hover::after {
+  .topbar-theme-mode__btn[data-tooltip]:hover::after,
+  .theme-orb__trigger[data-tooltip]:hover::before,
+  .theme-orb__trigger[data-tooltip]:hover::after {
     opacity: 1;
-  }
-
-  .topbar-theme-mode__btn[data-tooltip]:hover::before,
-  .topbar-theme-mode__btn[data-tooltip]:hover::after {
     transform: translate(-50%, 0);
   }
 
@@ -444,7 +446,9 @@
 }
 
 .topbar-theme-mode__btn[data-tooltip]:focus-visible::before,
-.topbar-theme-mode__btn[data-tooltip]:focus-visible::after {
+.topbar-theme-mode__btn[data-tooltip]:focus-visible::after,
+.theme-orb__trigger[data-tooltip]:focus-visible::before,
+.theme-orb__trigger[data-tooltip]:focus-visible::after {
   opacity: 1;
   transform: translate(-50%, 0);
 }
@@ -1027,7 +1031,7 @@
   justify-content: center;
   background: color-mix(in srgb, var(--bg-elevated) 92%, transparent);
   border: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
-  border-radius: var(--radius-full);
+  border-radius: 9px;
   cursor: pointer;
   transition:
     background var(--duration-fast) ease,
@@ -1361,11 +1365,47 @@
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  min-height: 40px;
-  padding: 0 12px;
+  min-height: 52px;
+  padding: 0 14px;
   border-radius: var(--radius-lg);
   background: color-mix(in srgb, var(--bg-elevated) 72%, transparent);
   border: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
+}
+
+/* Settings item in the sidebar footer — same card look as the brand block
+   above it (inherits background/border/radius from .sidebar-version).
+   No hover state on purpose: it should stay identical to the brand card. */
+.sidebar-settings-card {
+  justify-content: flex-start;
+  color: var(--text);
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.sidebar-settings-card__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  color: var(--muted);
+  flex-shrink: 0;
+}
+
+.sidebar-settings-card__icon svg {
+  width: 16px;
+  height: 16px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.5px;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.sidebar-settings-card__text {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
 }
 
 .sidebar-version__label {
@@ -1400,17 +1440,17 @@
   margin-left: auto;
 }
 
-/* Brand wordmark (replaces the version label/number) — "daisy intelligence". */
+/* Brand wordmark (replaces the version label/number) — "Daisy intelligence". */
 .sidebar-brand__wordmark {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 3px;
   line-height: 1;
   min-width: 0;
 }
 
 .sidebar-brand__name {
-  font-size: 15px;
+  font-size: 17px;
   font-weight: 700;
   letter-spacing: -0.01em;
   background: linear-gradient(96deg, var(--accent) 0%, #8b5cf6 55%, #a855f7 100%);
@@ -1421,12 +1461,12 @@
 }
 
 .sidebar-brand__sub {
-  font-size: 8px;
+  font-size: 9px;
   font-weight: 600;
   letter-spacing: 0.34em;
   text-transform: uppercase;
   color: var(--muted);
-  /* trim trailing tracking so the subtitle optically left-aligns with "daisy" */
+  /* trim trailing tracking so the subtitle optically left-aligns with "Daisy" */
   margin-right: -0.34em;
 }
 

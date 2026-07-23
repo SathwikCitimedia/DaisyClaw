@@ -30,6 +30,7 @@ import {
   readLegacyChannelAllowFromStore,
   readLegacyChannelAllowFromStoreSync,
   readChannelAllowFromStoreSync,
+  rejectChannelPairingRequest,
   removeChannelAllowFromStoreEntry,
   upsertChannelPairingRequest,
 } from "./pairing-store.js";
@@ -388,6 +389,48 @@ describe("pairing store", () => {
         }),
       ).resolves.toMatchObject({ id: "1001" });
       await expect(readChannelAllowFromStore("telegram", env, "yy")).resolves.toEqual(["1001"]);
+    });
+  });
+
+  it("rejects a pending request by code or sender id without granting access", async () => {
+    await withTempStateDir(async (_stateDir, env) => {
+      const first = await upsertChannelPairingRequest({
+        channel: "demo-reject",
+        id: "u1",
+        accountId: DEFAULT_ACCOUNT_ID,
+        env,
+      });
+      await upsertChannelPairingRequest({
+        channel: "demo-reject",
+        id: "u2",
+        accountId: DEFAULT_ACCOUNT_ID,
+        env,
+      });
+
+      const byCode = await rejectChannelPairingRequest({
+        channel: "demo-reject",
+        codeOrId: first.code.toLowerCase(),
+        env,
+      });
+      expect(byCode?.id).toBe("u1");
+
+      const byId = await rejectChannelPairingRequest({
+        channel: "demo-reject",
+        codeOrId: "u2",
+        env,
+      });
+      expect(byId?.id).toBe("u2");
+
+      await expect(listChannelPairingRequests("demo-reject", env)).resolves.toEqual([]);
+      // Rejection never seeds the allowFrom store.
+      await expect(readChannelAllowFromStore("demo-reject", env)).resolves.toEqual([]);
+
+      const missing = await rejectChannelPairingRequest({
+        channel: "demo-reject",
+        codeOrId: "u1",
+        env,
+      });
+      expect(missing).toBeNull();
     });
   });
 

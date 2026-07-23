@@ -200,31 +200,31 @@ export function inferBasePathFromPathname(pathname: string): string {
 export function iconForTab(tab: Tab): IconName {
   switch (tab) {
     case "agents":
-      return "folder";
+      return "bot";
     case "chat":
-      return "messageSquare";
+      return "messageCircleMore";
     case "overview":
-      return "barChart";
+      return "layoutDashboard";
     case "activity":
       return "activity";
     case "workboard":
-      return "folder";
+      return "kanban";
     case "channels":
       return "link";
     case "instances":
-      return "radio";
+      return "server";
     case "sessions":
-      return "fileText";
+      return "history";
     case "usage":
-      return "barChart";
+      return "gauge";
     case "cron":
-      return "loader";
+      return "calendarClock";
     case "skills":
-      return "zap";
+      return "sparkles";
     case "skillWorkshop":
-      return "wrench";
+      return "hammer";
     case "nodes":
-      return "monitor";
+      return "network";
     case "config":
       return "settings";
     case "communications":
@@ -244,7 +244,7 @@ export function iconForTab(tab: Tab): IconName {
     case "logs":
       return "scrollText";
     case "dreams":
-      return "moon";
+      return "moonStar";
     default:
       return "folder";
   }

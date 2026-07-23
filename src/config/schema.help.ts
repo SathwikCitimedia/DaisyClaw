@@ -31,6 +31,10 @@ export const FIELD_HELP: Record<string, string> = {
     "Diagnostics controls for targeted tracing, telemetry export, and cache inspection during debugging. Keep baseline diagnostics minimal in production and enable deeper signals only when investigating issues.",
   "diagnostics.memoryPressureSnapshot":
     "Whether critical memory pressure automatically captures a redacted stability snapshot. Default: false. Enable only when this host can tolerate the extra file-system scan and snapshot write during critical memory pressure.",
+  "diagnostics.memoryPressureAutoRestart":
+    "Whether the gateway schedules a graceful self-restart when memory pressure reaches critical, or when warning-level pressure persists beyond the configured hold window. The restart drains idle sessions first and is rate-limited to avoid restart loops. Default: true.",
+  "diagnostics.memoryPressureWarningHoldMs":
+    "How long warning-level memory pressure must persist before an automatic restart is scheduled, in milliseconds. Set 0 to restart only on critical pressure. Default: 600000 (10 minutes).",
   "diagnostics.otel":
     "OpenTelemetry export settings for traces, metrics, and logs emitted by gateway components. Use this when integrating with centralized observability backends and distributed tracing pipelines.",
   "diagnostics.cacheTrace":

@@ -165,6 +165,30 @@ export async function checkInboundAccessControl(params: {
         params.verbose,
         `Blocked unauthorized sender ${params.from} (dmPolicy=${policy.dmPolicy})`,
       );
+      // Allowlist mode stays silent toward the sender, but record the knock so
+      // the owner can approve it from the control UI access-requests inbox.
+      // The pairing store is never consulted for access in allowlist mode, so
+      // this grants nothing by itself.
+      if (
+        policy.dmPolicy === "allowlist" &&
+        senderAccess.reasonCode === "dm_policy_not_allowlisted" &&
+        !policy.isSamePhone(params.from) &&
+        !suppressPairingReply
+      ) {
+        try {
+          await upsertChannelPairingRequest({
+            channel: "whatsapp",
+            id: params.from,
+            accountId: policy.account.accountId,
+            meta: { name: (params.pushName ?? "").trim() || undefined },
+          });
+        } catch (err) {
+          logWhatsAppVerbose(
+            params.verbose,
+            `whatsapp access-request record failed for ${params.from}: ${String(err)}`,
+          );
+        }
+      }
       return {
         allowed: false,
         shouldMarkRead: false,

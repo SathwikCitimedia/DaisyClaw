@@ -348,6 +348,18 @@ export type DiagnosticsConfig = {
   stuckSessionAbortMs?: number;
   /** Capture a redacted stability snapshot when memory pressure reaches critical. Default: false. */
   memoryPressureSnapshot?: boolean;
+  /**
+   * Schedule a graceful gateway self-restart when memory pressure reaches
+   * critical, or when warning-level pressure persists (see
+   * memoryPressureWarningHoldMs). Default: true.
+   */
+  memoryPressureAutoRestart?: boolean;
+  /**
+   * How long warning-level memory pressure must persist before an auto-restart
+   * is scheduled, in ms. 0 disables warning-hold restarts (critical still
+   * restarts). Default: 600000 (10 minutes).
+   */
+  memoryPressureWarningHoldMs?: number;
   otel?: DiagnosticsOtelConfig;
   cacheTrace?: DiagnosticsCacheTraceConfig;
 };

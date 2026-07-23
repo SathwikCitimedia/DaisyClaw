@@ -227,6 +227,11 @@ export const CORE_GATEWAY_METHOD_SPECS: readonly CoreGatewayMethodSpec[] = [
   { name: "nativeHook.invoke", scope: "operator.admin", advertise: false },
   { name: "web.login.start", scope: "operator.admin", advertise: false },
   { name: "web.login.wait", scope: "operator.admin", advertise: false },
+  // Channel DM access-requests inbox. Appended last: the advertised method
+  // list preserves legacy ordering for older clients.
+  { name: "channels.pairing.list", scope: "operator.pairing" },
+  { name: "channels.pairing.approve", scope: "operator.pairing" },
+  { name: "channels.pairing.reject", scope: "operator.pairing" },
 ] as const;
 
 const CORE_GATEWAY_METHOD_SPEC_BY_NAME: ReadonlyMap<string, CoreGatewayMethodSpec> = new Map(

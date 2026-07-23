@@ -4,6 +4,7 @@ import { t } from "../../i18n/index.ts";
 import { formatRelativeTimestamp } from "../format.ts";
 import type { SlackStatus } from "../types.ts";
 import { renderChannelConfigSection } from "./channels.config.ts";
+import { renderAllowedContactsSection } from "./channels.contacts.ts";
 import {
   formatNullableBoolean,
   renderSingleAccountChannelCard,
@@ -42,7 +43,10 @@ export function renderSlackCard(params: {
           ${slack.probe.status ?? ""} ${slack.probe.error ?? ""}
         </div>`
       : nothing,
-    configSection: renderChannelConfigSection({ channelId: "slack", props }),
+    configSection: html`
+      ${renderAllowedContactsSection({ channelId: "slack", props })}
+      ${renderChannelConfigSection({ channelId: "slack", props })}
+    `,
     footer: html`<div class="row" style="margin-top: 12px;">
       <button class="btn" @click=${() => props.onRefresh(true)}>${t("common.probe")}</button>
     </div>`,

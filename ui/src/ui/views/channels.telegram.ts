@@ -4,6 +4,7 @@ import { t } from "../../i18n/index.ts";
 import { formatRelativeTimestamp } from "../format.ts";
 import type { ChannelAccountSnapshot, TelegramStatus } from "../types.ts";
 import { renderChannelConfigSection } from "./channels.config.ts";
+import { renderAllowedContactsSection } from "./channels.contacts.ts";
 import {
   formatNullableBoolean,
   renderSingleAccountChannelCard,
@@ -76,7 +77,8 @@ export function renderTelegramCard(params: {
               ${telegram.probe.status ?? ""} ${telegram.probe.error ?? ""}
             </div>`
           : nothing}
-        ${renderChannelConfigSection({ channelId: "telegram", props })}
+        ${html`${renderAllowedContactsSection({ channelId: "telegram", props })}
+        ${renderChannelConfigSection({ channelId: "telegram", props })}`}
 
         <div class="row" style="margin-top: 12px;">
           <button class="btn" @click=${() => props.onRefresh(true)}>${t("common.probe")}</button>
@@ -113,7 +115,8 @@ export function renderTelegramCard(params: {
           ${telegram.probe.status ?? ""} ${telegram.probe.error ?? ""}
         </div>`
       : nothing,
-    configSection: renderChannelConfigSection({ channelId: "telegram", props }),
+    configSection: html`${renderAllowedContactsSection({ channelId: "telegram", props })}
+    ${renderChannelConfigSection({ channelId: "telegram", props })}`,
     footer: html`<div class="row" style="margin-top: 12px;">
       <button class="btn" @click=${() => props.onRefresh(true)}>${t("common.probe")}</button>
     </div>`,

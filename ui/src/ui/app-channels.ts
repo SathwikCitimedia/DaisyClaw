@@ -1,11 +1,18 @@
 // Control UI module implements app channels behavior.
 import { resolveControlUiAuthHeader } from "./control-ui-auth.ts";
 import {
+  addAllowedContacts,
+  approvePairingRequest,
+  connectWhatsApp,
+  disconnectChannel,
+  enableAndStartChannel,
   loadChannels,
   logoutWhatsApp,
-  startWhatsAppLogin,
-  waitWhatsAppLogin,
+  rejectPairingRequest,
+  removeAllowedContact,
+  setChannelDmPolicy,
   type ChannelsState,
+  type PairingRequestEntry,
 } from "./controllers/channels.ts";
 import { loadConfig, saveConfig, type ConfigState } from "./controllers/config.ts";
 import type { NostrProfile } from "./types.ts";
@@ -22,19 +29,69 @@ type ChannelsActionHost = ChannelsState &
     nostrProfileAccountId: string | null;
   };
 
-export async function handleWhatsAppStart(host: ChannelsActionHost, force: boolean) {
-  await startWhatsAppLogin(host as ChannelsState, force);
+export async function handleWhatsAppConnect(host: ChannelsActionHost, force: boolean) {
+  await connectWhatsApp(host as ChannelsState, force);
+  await loadConfig(host as ConfigState);
   await loadChannels(host as ChannelsState, true);
 }
 
-export async function handleWhatsAppWait(host: ChannelsActionHost) {
-  await waitWhatsAppLogin(host as ChannelsState);
+export async function handleChannelEnable(host: ChannelsActionHost, channelId: string) {
+  await enableAndStartChannel(host as ChannelsState, channelId);
+  await loadConfig(host as ConfigState);
   await loadChannels(host as ChannelsState, true);
 }
 
 export async function handleWhatsAppLogout(host: ChannelsActionHost) {
   await logoutWhatsApp(host as ChannelsState);
   await loadChannels(host as ChannelsState, true);
+}
+
+export async function handleChannelDisconnect(host: ChannelsActionHost, channelId: string) {
+  await disconnectChannel(host as ChannelsState, channelId);
+  // Refresh config + status so the UI reflects the disabled channel.
+  await loadConfig(host as ConfigState);
+  await loadChannels(host as ChannelsState, true);
+}
+
+export async function handleContactAdd(host: ChannelsActionHost, channelId: string, value: string) {
+  await addAllowedContacts(host as ChannelsState, channelId, [value]);
+  await loadConfig(host as ConfigState);
+}
+
+export async function handleContactsAdd(
+  host: ChannelsActionHost,
+  channelId: string,
+  values: string[],
+) {
+  await addAllowedContacts(host as ChannelsState, channelId, values);
+  await loadConfig(host as ConfigState);
+}
+
+export async function handlePairingApprove(host: ChannelsActionHost, entry: PairingRequestEntry) {
+  await approvePairingRequest(host as ChannelsState, entry);
+  await loadConfig(host as ConfigState);
+}
+
+export async function handlePairingReject(host: ChannelsActionHost, entry: PairingRequestEntry) {
+  await rejectPairingRequest(host as ChannelsState, entry);
+}
+
+export async function handleContactRemove(
+  host: ChannelsActionHost,
+  channelId: string,
+  value: string,
+) {
+  await removeAllowedContact(host as ChannelsState, channelId, value);
+  await loadConfig(host as ConfigState);
+}
+
+export async function handleDmPolicyChange(
+  host: ChannelsActionHost,
+  channelId: string,
+  policy: string,
+) {
+  await setChannelDmPolicy(host as ChannelsState, channelId, policy);
+  await loadConfig(host as ConfigState);
 }
 
 export async function handleChannelConfigSave(host: ChannelsActionHost) {

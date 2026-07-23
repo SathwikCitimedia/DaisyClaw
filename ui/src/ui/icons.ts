@@ -46,6 +46,168 @@ export const icons = {
       <line x1="10" x2="8" y1="9" y2="9" />
     </svg>
   `,
+  messageCircleMore: html`
+    <svg viewBox="0 0 24 24">
+      <path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z" />
+      <path d="M8 12h.01" />
+      <path d="M12 12h.01" />
+      <path d="M16 12h.01" />
+    </svg>
+  `,
+  bot: html`
+    <svg viewBox="0 0 24 24">
+      <path d="M12 8V4H8" />
+      <rect width="16" height="12" x="4" y="8" rx="2" />
+      <path d="M2 14h2" />
+      <path d="M20 14h2" />
+      <path d="M15 13v2" />
+      <path d="M9 13v2" />
+    </svg>
+  `,
+  sparkles: html`
+    <svg viewBox="0 0 24 24">
+      <path
+        d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"
+      />
+      <path d="M20 3v4" />
+      <path d="M22 5h-4" />
+      <path d="M4 17v2" />
+      <path d="M5 18H3" />
+    </svg>
+  `,
+  hammer: html`
+    <svg viewBox="0 0 24 24">
+      <path d="m15 12-8.373 8.373a1 1 0 1 1-3-3L12 9" />
+      <path d="m18 15 4-4" />
+      <path
+        d="m21.5 11.5-1.914-1.914A2 2 0 0 1 19 8.172V7l-2.26-2.26a6 6 0 0 0-4.202-1.756L9 2.96l.92.82A6.18 6.18 0 0 1 12 8.4V10l2 2h1.172a2 2 0 0 1 1.414.586L18.5 14.5"
+      />
+    </svg>
+  `,
+  network: html`
+    <svg viewBox="0 0 24 24">
+      <rect x="16" y="16" width="6" height="6" rx="1" />
+      <rect x="2" y="16" width="6" height="6" rx="1" />
+      <rect x="9" y="2" width="6" height="6" rx="1" />
+      <path d="M5 16v-3a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v3" />
+      <path d="M12 12V8" />
+    </svg>
+  `,
+  moonStar: html`
+    <svg viewBox="0 0 24 24">
+      <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9" />
+      <path d="M20 3v4" />
+      <path d="M22 5h-4" />
+    </svg>
+  `,
+  lock: html`
+    <svg viewBox="0 0 24 24">
+      <rect width="18" height="11" x="3" y="11" rx="2" ry="2" />
+      <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+    </svg>
+  `,
+  camera: html`
+    <svg viewBox="0 0 24 24">
+      <path
+        d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"
+      />
+      <circle cx="12" cy="13" r="3" />
+    </svg>
+  `,
+  music: html`
+    <svg viewBox="0 0 24 24">
+      <path d="M9 18V5l12-2v13" />
+      <circle cx="6" cy="18" r="3" />
+      <circle cx="18" cy="16" r="3" />
+    </svg>
+  `,
+  mail: html`
+    <svg viewBox="0 0 24 24">
+      <rect width="20" height="16" x="2" y="4" rx="2" />
+      <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" />
+    </svg>
+  `,
+  rss: html`
+    <svg viewBox="0 0 24 24">
+      <path d="M4 11a9 9 0 0 1 9 9" />
+      <path d="M4 4a16 16 0 0 1 16 16" />
+      <circle cx="5" cy="19" r="1" />
+    </svg>
+  `,
+  database: html`
+    <svg viewBox="0 0 24 24">
+      <ellipse cx="12" cy="5" rx="9" ry="3" />
+      <path d="M3 5V19A9 3 0 0 0 21 19V5" />
+      <path d="M3 12A9 3 0 0 0 21 12" />
+    </svg>
+  `,
+  clock: html`
+    <svg viewBox="0 0 24 24">
+      <circle cx="12" cy="12" r="10" />
+      <polyline points="12 6 12 12 16 14" />
+    </svg>
+  `,
+  users: html`
+    <svg viewBox="0 0 24 24">
+      <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+      <circle cx="9" cy="7" r="4" />
+      <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
+      <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+    </svg>
+  `,
+  code: html`
+    <svg viewBox="0 0 24 24">
+      <polyline points="16 18 22 12 16 6" />
+      <polyline points="8 6 2 12 8 18" />
+    </svg>
+  `,
+  layoutDashboard: html`
+    <svg viewBox="0 0 24 24">
+      <rect width="7" height="9" x="3" y="3" rx="1" />
+      <rect width="7" height="5" x="14" y="3" rx="1" />
+      <rect width="7" height="9" x="14" y="12" rx="1" />
+      <rect width="7" height="5" x="3" y="16" rx="1" />
+    </svg>
+  `,
+  kanban: html`
+    <svg viewBox="0 0 24 24">
+      <rect width="18" height="18" x="3" y="3" rx="2" />
+      <path d="M8 7v7" />
+      <path d="M12 7v4" />
+      <path d="M16 7v9" />
+    </svg>
+  `,
+  server: html`
+    <svg viewBox="0 0 24 24">
+      <rect width="20" height="8" x="2" y="2" rx="2" ry="2" />
+      <rect width="20" height="8" x="2" y="14" rx="2" ry="2" />
+      <line x1="6" x2="6.01" y1="6" y2="6" />
+      <line x1="6" x2="6.01" y1="18" y2="18" />
+    </svg>
+  `,
+  history: html`
+    <svg viewBox="0 0 24 24">
+      <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+      <path d="M3 3v5h5" />
+      <path d="M12 7v5l4 2" />
+    </svg>
+  `,
+  gauge: html`
+    <svg viewBox="0 0 24 24">
+      <path d="m12 14 4-4" />
+      <path d="M3.34 19a10 10 0 1 1 17.32 0" />
+    </svg>
+  `,
+  calendarClock: html`
+    <svg viewBox="0 0 24 24">
+      <path d="M21 7.5V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h3.5" />
+      <path d="M16 2v4" />
+      <path d="M8 2v4" />
+      <path d="M3 10h5" />
+      <path d="M17.5 17.5 16 16.3V14" />
+      <circle cx="16" cy="16" r="6" />
+    </svg>
+  `,
   zap: html`
     <svg viewBox="0 0 24 24"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" /></svg>
   `,

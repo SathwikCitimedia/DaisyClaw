@@ -714,6 +714,16 @@
   color: var(--warn);
 }
 
+.qs-badge--action {
+  border: none;
+  cursor: pointer;
+  margin-left: 6px;
+}
+
+.qs-badge--action:hover {
+  opacity: 0.85;
+}
+
 /* ── Status dot ── */
 
 .qs-status-dot {
@@ -765,6 +775,30 @@
   outline: none;
   background: var(--accent-subtle);
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 20%, transparent);
+}
+
+.qs-link-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+  pointer-events: none;
+}
+
+.qs-link-btn--danger {
+  color: var(--danger);
+}
+
+.qs-link-btn--danger:hover,
+.qs-link-btn--danger:focus-visible {
+  background: var(--danger-subtle);
+  box-shadow: none;
+}
+
+/* ── Channel row actions ── */
+
+.qs-channel-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
 }
 
 /* ── Empty state ── */
@@ -1086,9 +1120,24 @@
 }
 
 .qs-preset__icon {
-  font-size: 1.45rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
   line-height: 1;
   flex: 0 0 auto;
+  color: var(--accent);
+}
+
+.qs-preset__icon svg {
+  width: 20px;
+  height: 20px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.75px;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .qs-preset__label {

@@ -6,15 +6,22 @@ import type { ActivityEntry, ActivityStatus } from "./activity-model.ts";
 import {
   handleChannelConfigReload as handleChannelConfigReloadInternal,
   handleChannelConfigSave as handleChannelConfigSaveInternal,
+  handleChannelDisconnect as handleChannelDisconnectInternal,
   handleNostrProfileCancel as handleNostrProfileCancelInternal,
   handleNostrProfileEdit as handleNostrProfileEditInternal,
   handleNostrProfileFieldChange as handleNostrProfileFieldChangeInternal,
   handleNostrProfileImport as handleNostrProfileImportInternal,
   handleNostrProfileSave as handleNostrProfileSaveInternal,
   handleNostrProfileToggleAdvanced as handleNostrProfileToggleAdvancedInternal,
+  handleChannelEnable as handleChannelEnableInternal,
+  handleContactAdd as handleContactAddInternal,
+  handleContactRemove as handleContactRemoveInternal,
+  handleContactsAdd as handleContactsAddInternal,
+  handleDmPolicyChange as handleDmPolicyChangeInternal,
+  handlePairingApprove as handlePairingApproveInternal,
+  handlePairingReject as handlePairingRejectInternal,
+  handleWhatsAppConnect as handleWhatsAppConnectInternal,
   handleWhatsAppLogout as handleWhatsAppLogoutInternal,
-  handleWhatsAppStart as handleWhatsAppStartInternal,
-  handleWhatsAppWait as handleWhatsAppWaitInternal,
 } from "./app-channels.ts";
 import {
   handleAbortChat as handleAbortChatInternal,
@@ -97,6 +104,7 @@ import {
   refreshVisibleToolsEffectiveForCurrentSession as refreshVisibleToolsEffectiveForCurrentSessionInternal,
 } from "./controllers/agents.ts";
 import { loadAssistantIdentity as loadAssistantIdentityInternal } from "./controllers/assistant-identity.ts";
+import type { PairingRequestEntry } from "./controllers/channels.types.ts";
 import type { DevicePairingList } from "./controllers/devices.ts";
 import type {
   DreamingStatus,
@@ -440,6 +448,13 @@ export class DaisyClawApp extends LitElement {
   @state() whatsappLoginQrDataUrl: string | null = null;
   @state() whatsappLoginConnected: boolean | null = null;
   @state() whatsappBusy = false;
+  @state() channelDisconnectBusy: string | null = null;
+  @state() channelConnectBusy: string | null = null;
+  @state() channelContactsBusy: string | null = null;
+  @state() channelContactsError: string | null = null;
+  @state() pairingRequests: PairingRequestEntry[] | null = null;
+  @state() pairingBusy: string | null = null;
+  @state() channelsFocus: string | null = null;
   @state() nostrProfileFormState: NostrProfileFormState | null = null;
   @state() nostrProfileAccountId: string | null = null;
 
@@ -1348,16 +1363,44 @@ export class DaisyClawApp extends LitElement {
     );
   }
 
-  async handleWhatsAppStart(force: boolean) {
-    await handleWhatsAppStartInternal(this, force);
+  async handleWhatsAppConnect(force: boolean) {
+    await handleWhatsAppConnectInternal(this, force);
   }
 
-  async handleWhatsAppWait() {
-    await handleWhatsAppWaitInternal(this);
+  async handleChannelEnable(channelId: string) {
+    await handleChannelEnableInternal(this, channelId);
+  }
+
+  async handleContactAdd(channelId: string, value: string) {
+    await handleContactAddInternal(this, channelId, value);
+  }
+
+  async handleContactsAdd(channelId: string, values: string[]) {
+    await handleContactsAddInternal(this, channelId, values);
+  }
+
+  async handlePairingApprove(entry: PairingRequestEntry) {
+    await handlePairingApproveInternal(this, entry);
+  }
+
+  async handlePairingReject(entry: PairingRequestEntry) {
+    await handlePairingRejectInternal(this, entry);
+  }
+
+  async handleContactRemove(channelId: string, value: string) {
+    await handleContactRemoveInternal(this, channelId, value);
+  }
+
+  async handleDmPolicyChange(channelId: string, policy: string) {
+    await handleDmPolicyChangeInternal(this, channelId, policy);
   }
 
   async handleWhatsAppLogout() {
     await handleWhatsAppLogoutInternal(this);
+  }
+
+  async handleChannelDisconnect(channelId: string) {
+    await handleChannelDisconnectInternal(this, channelId);
   }
 
   async handleChannelConfigSave() {

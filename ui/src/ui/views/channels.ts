@@ -17,6 +17,7 @@ import type {
   WhatsAppStatus,
 } from "../types.ts";
 import { renderChannelConfigSection } from "./channels.config.ts";
+import { renderAllowedContactsSection } from "./channels.contacts.ts";
 import { renderDiscordCard } from "./channels.discord.ts";
 import { renderGoogleChatCard } from "./channels.googlechat.ts";
 import { renderIMessageCard } from "./channels.imessage.ts";
@@ -58,11 +59,13 @@ export function renderChannels(props: ChannelsProps) {
   const channelOrder = resolveChannelOrder(props.snapshot);
   const configured = channelOrder.filter((k) => channelEnabled(k, props));
   const unconfigured = channelOrder.filter((k) => !channelEnabled(k, props));
+  const focusChannel = props.focusChannel ?? null;
 
   const showingStaleSnapshot = Boolean(props.loading && props.snapshot && props.lastSuccessAt);
   const partialWarnings = props.snapshot?.warnings?.filter((warning) => warning.trim()) ?? [];
 
   return html`
+    ${renderAccessRequests(props)}
     <div class="ch-groups">
       ${configured.length > 0
         ? html`
@@ -73,13 +76,19 @@ export function renderChannels(props: ChannelsProps) {
                 <span class="ch-group__chevron"></span>
               </summary>
               <div class="ch-group__body">
-                ${configured.map((key) => renderChannelAccordion(key, props, channelData, true))}
+                ${configured.map((key) =>
+                  renderChannelAccordion(key, props, channelData, true, key === focusChannel),
+                )}
               </div>
             </details>
           `
         : nothing}
 
-      <details class="ch-group" ?open=${configured.length === 0}>
+      <details
+        class="ch-group"
+        ?open=${configured.length === 0 ||
+        (focusChannel != null && unconfigured.includes(focusChannel))}
+      >
         <summary class="ch-group__summary">
           <span class="ch-group__title">Unconfigured</span>
           <span class="ch-group__badge">${unconfigured.length}</span>
@@ -88,7 +97,9 @@ export function renderChannels(props: ChannelsProps) {
         <div class="ch-group__body">
           ${unconfigured.length === 0
             ? html`<div class="ch-group__empty muted">All channels are configured.</div>`
-            : unconfigured.map((key) => renderChannelAccordion(key, props, channelData, false))}
+            : unconfigured.map((key) =>
+                renderChannelAccordion(key, props, channelData, false, key === focusChannel),
+              )}
         </div>
       </details>
     </div>
@@ -126,15 +137,68 @@ ${props.snapshot
   `;
 }
 
+function renderAccessRequests(props: ChannelsProps) {
+  const requests = props.pairingRequests ?? [];
+  if (requests.length === 0) {
+    return nothing;
+  }
+  return html`
+    <div class="ch-requests">
+      <div class="ch-requests__header">
+        <span class="ch-requests__title">Access requests</span>
+        <span class="ch-requests__badge">${requests.length}</span>
+      </div>
+      <div class="ch-requests__hint muted">
+        These people messaged the bot but are not in your allowed contacts. Allow to start replying
+        to them.
+      </div>
+      ${requests.map((entry) => {
+        const busy = props.pairingBusy === `${entry.channel}:${entry.id}`;
+        const lastSeenMs = Date.parse(entry.lastSeenAt);
+        return html`
+          <div class="ch-requests__row">
+            <div class="ch-requests__who">
+              <span class="ch-requests__name">${entry.name || entry.id}</span>
+              <span class="ch-requests__meta muted">
+                ${entry.name ? `${entry.id} · ` : ""}${resolveChannelLabel(
+                  props.snapshot,
+                  entry.channel,
+                )}${Number.isFinite(lastSeenMs) ? ` · ${formatRelativeTimestamp(lastSeenMs)}` : ""}
+              </span>
+            </div>
+            <div class="ch-requests__actions">
+              <button
+                class="btn primary btn-sm"
+                ?disabled=${busy || Boolean(props.pairingBusy)}
+                @click=${() => props.onPairingApprove(entry)}
+              >
+                ${busy ? "Allowing…" : "Allow"}
+              </button>
+              <button
+                class="btn btn-sm"
+                ?disabled=${busy || Boolean(props.pairingBusy)}
+                @click=${() => props.onPairingReject(entry)}
+              >
+                Ignore
+              </button>
+            </div>
+          </div>
+        `;
+      })}
+    </div>
+  `;
+}
+
 function renderChannelAccordion(
   key: ChannelKey,
   props: ChannelsProps,
   data: ChannelsChannelData,
   open: boolean,
+  focused = false,
 ) {
   const label = resolveChannelLabel(props.snapshot, key);
   return html`
-    <details class="ch-item" ?open=${open}>
+    <details class="ch-item" data-channel=${key} ?open=${open || focused}>
       <summary class="ch-item__summary">
         <span class="ch-item__name">${label}</span>
         <span class="ch-item__chevron"></span>
@@ -284,6 +348,7 @@ function renderGenericChannelCard(
       ${lastError
         ? html`<div class="callout danger" style="margin-top: 12px;">${lastError}</div>`
         : nothing}
+      ${renderAllowedContactsSection({ channelId: key, props })}
       ${renderChannelConfigSection({ channelId: key, props })}
     </div>
   `;

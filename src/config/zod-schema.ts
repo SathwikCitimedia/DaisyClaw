@@ -534,6 +534,8 @@ export const DaisyClawSchema = z
         stuckSessionWarnMs: z.number().int().positive().optional(),
         stuckSessionAbortMs: z.number().int().positive().optional(),
         memoryPressureSnapshot: z.boolean().optional(),
+        memoryPressureAutoRestart: z.boolean().optional(),
+        memoryPressureWarningHoldMs: z.number().int().nonnegative().optional(),
         otel: z
           .object({
             enabled: z.boolean().optional(),
@@ -664,7 +666,11 @@ export const DaisyClawSchema = z
                 mcpCommand: z.string().optional(),
                 mcpArgs: z.array(z.string()).optional(),
                 driver: z
-                  .union([z.literal("daisyclaw"), z.literal("clawd"), z.literal("existing-session")])
+                  .union([
+                    z.literal("daisyclaw"),
+                    z.literal("clawd"),
+                    z.literal("existing-session"),
+                  ])
                   .optional(),
                 headless: z.boolean().optional(),
                 executablePath: z.string().optional(),

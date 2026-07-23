@@ -154,7 +154,6 @@ import {
 } from "./controllers/skills.ts";
 import { captureSessionToWorkboard, getWorkboardState } from "./controllers/workboard.ts";
 import { getCronJobPayload } from "./cron-payload.ts";
-import { buildExternalLinkRel, EXTERNAL_LINK_TARGET } from "./external-link.ts";
 import { formatTimeMs } from "./format.ts";
 import { formatRelativeTimestamp } from "./format.ts";
 import { icons } from "./icons.ts";
@@ -1206,6 +1205,31 @@ function formatQuickSettingsLabel(id: string): string {
     .join(" ");
 }
 
+function goToChannelCard(state: AppViewState, channelId: string) {
+  state.channelsFocus = channelId;
+  state.setTab("channels");
+  // The channels view is lazy-loaded; retry until its accordion exists.
+  const scrollToChannel = (attempt: number) => {
+    const el = document.querySelector(`.ch-item[data-channel="${CSS.escape(channelId)}"]`);
+    if (el) {
+      el.scrollIntoView({ behavior: "smooth", block: "start" });
+      return;
+    }
+    if (attempt < 20) {
+      setTimeout(() => scrollToChannel(attempt + 1), 100);
+    }
+  };
+  setTimeout(() => scrollToChannel(0), 50);
+}
+
+function countPairingRequests(state: AppViewState, channelId: string): number {
+  const requests = state.pairingRequests;
+  if (!Array.isArray(requests)) {
+    return 0;
+  }
+  return requests.filter((entry) => entry.channel === channelId).length;
+}
+
 function extractQuickSettingsChannels(state: AppViewState): QuickSettingsChannel[] {
   const config = state.configForm ?? state.configSnapshot?.config;
   if (!config || typeof config !== "object") {
@@ -1230,11 +1254,21 @@ function extractQuickSettingsChannels(state: AppViewState): QuickSettingsChannel
       channelConfig != null &&
       typeof channelConfig === "object" &&
       Object.keys(channelConfig).length > 0;
+    const disabled = hasConfig && (channelConfig as Record<string, unknown>).enabled === false;
+    const allowFrom = hasConfig ? (channelConfig as Record<string, unknown>).allowFrom : null;
+    const contactCount = Array.isArray(allowFrom) ? allowFrom.length : 0;
     channels.push({
       id,
       label: knownLabels.get(id) ?? formatQuickSettingsLabel(id),
-      connected: hasConfig,
-      detail: hasConfig ? "Configured" : undefined,
+      connected: hasConfig && !disabled,
+      detail: disabled
+        ? "Disabled"
+        : hasConfig
+          ? contactCount > 0
+            ? `${contactCount} contact${contactCount === 1 ? "" : "s"}`
+            : "Configured"
+          : undefined,
+      requests: countPairingRequests(state, id),
     });
   }
   return channels;
@@ -1876,9 +1910,44 @@ export function renderApp(state: AppViewState) {
               );
             },
             channels: extractQuickSettingsChannels(state),
-            onChannelConfigure: () => {
-              state.setTab("channels");
+            onChannelConfigure: (channelId) => {
+              goToChannelCard(state, channelId);
             },
+            onChannelConnect: (channelId) => {
+              if (channelId === "whatsapp") {
+                // WhatsApp links by QR: jump to its card and start the flow.
+                goToChannelCard(state, channelId);
+                void state.handleWhatsAppConnect(false).then(() => requestHostUpdate?.());
+                return;
+              }
+              const channelsCfg =
+                ((state.configForm ?? state.configSnapshot?.config)?.channels as
+                  | Record<string, unknown>
+                  | undefined) ?? {};
+              const channelCfg = channelsCfg[channelId] as Record<string, unknown> | undefined;
+              const hasConfig =
+                channelCfg != null &&
+                typeof channelCfg === "object" &&
+                Object.keys(channelCfg).length > 0;
+              if (hasConfig && channelCfg?.enabled === false) {
+                // Credentials already saved — just re-enable and start.
+                void state.handleChannelEnable(channelId).then(() => requestHostUpdate?.());
+                return;
+              }
+              // Needs credentials — open the channel's settings form.
+              goToChannelCard(state, channelId);
+            },
+            channelConnectBusy: state.channelConnectBusy,
+            onChannelDisconnect: (channelId) => {
+              const confirmed = globalThis.confirm(
+                `Disconnect ${channelId}? This logs the channel out and disables it until you reconnect.`,
+              );
+              if (!confirmed) {
+                return;
+              }
+              void state.handleChannelDisconnect(channelId).then(() => requestHostUpdate?.());
+            },
+            channelDisconnectBusy: state.channelDisconnectBusy,
             automation: {
               cronJobCount: state.cronJobs?.length ?? 0,
               skillCount: state.skillsReport?.skills?.length ?? 0,
@@ -2012,6 +2081,7 @@ export function renderApp(state: AppViewState) {
             whatsappQrDataUrl: state.whatsappLoginQrDataUrl,
             whatsappConnected: state.whatsappLoginConnected,
             whatsappBusy: state.whatsappBusy,
+            focusChannel: state.channelsFocus,
             configSchema: state.configSchema,
             configSchemaLoading: state.configSchemaLoading,
             configForm: state.configForm,
@@ -2020,9 +2090,19 @@ export function renderApp(state: AppViewState) {
             configFormDirty: state.configFormDirty,
             nostrProfileFormState: state.nostrProfileFormState,
             nostrProfileAccountId: state.nostrProfileAccountId,
+            contactsBusy: state.channelContactsBusy,
+            contactsError: state.channelContactsError,
+            pairingRequests: state.pairingRequests,
+            pairingBusy: state.pairingBusy,
+            onContactAdd: (channelId, value) => void state.handleContactAdd(channelId, value),
+            onContactsAdd: (channelId, values) => void state.handleContactsAdd(channelId, values),
+            onContactRemove: (channelId, value) => void state.handleContactRemove(channelId, value),
+            onDmPolicyChange: (channelId, policy) =>
+              void state.handleDmPolicyChange(channelId, policy),
+            onPairingApprove: (entry) => void state.handlePairingApprove(entry),
+            onPairingReject: (entry) => void state.handlePairingReject(entry),
             onRefresh: (probe) => void loadChannels(state, probe),
-            onWhatsAppStart: (force) => void state.handleWhatsAppStart(force),
-            onWhatsAppWait: () => void state.handleWhatsAppWait(),
+            onWhatsAppConnect: (force) => void state.handleWhatsAppConnect(force),
             onWhatsAppLogout: () => void state.handleWhatsAppLogout(),
             onConfigPatch: (path, value) => updateConfigFormValue(state, path, value),
             onConfigSave: () => void state.handleChannelConfigSave(),
@@ -2450,7 +2530,7 @@ export function renderApp(state: AppViewState) {
             <div class="sidebar-shell__body">
               ${renderSidebarSessions(state)}
               <nav class="sidebar-nav">
-                ${TAB_GROUPS.map((group) => {
+                ${TAB_GROUPS.filter((group) => group.label !== "settings").map((group) => {
                   const isGroupCollapsed = state.settings.navGroupsCollapsed[group.label] ?? false;
                   const showItems = navCollapsed || !isGroupCollapsed;
 
@@ -2489,33 +2569,18 @@ export function renderApp(state: AppViewState) {
             </div>
             <div class="sidebar-shell__footer">
               <div class="sidebar-utility-group">
-                <a
-                  class="nav-item nav-item--external sidebar-utility-link"
-                  href="https://docs.daisyclaw.ai"
-                  target=${EXTERNAL_LINK_TARGET}
-                  rel=${buildExternalLinkRel()}
-                  title=${t("chat.docsOpensInNewTab", { label: t("common.docs") })}
-                >
-                  <span class="nav-item__icon" aria-hidden="true">${icons.book}</span>
-                  ${!navCollapsed
-                    ? html`
-                        <span class="nav-item__text">${t("common.docs")}</span>
-                        <span class="nav-item__external-icon">${icons.externalLink}</span>
-                      `
-                    : nothing}
-                </a>
                 <div class="sidebar-mode-switch">${renderTopbarThemeModeToggle(state)}</div>
                 ${(() => {
                   const version = state.hello?.server?.version ?? "";
                   const brandTitle = version
-                    ? `daisy intelligence · v${version}`
-                    : "daisy intelligence";
+                    ? `Daisy intelligence · v${version}`
+                    : "Daisy intelligence";
                   return html`
                     <div class="sidebar-version sidebar-brand" title=${brandTitle}>
                       ${!navCollapsed
                         ? html`
-                            <span class="sidebar-brand__wordmark" aria-label="daisy intelligence">
-                              <span class="sidebar-brand__name">daisy</span>
+                            <span class="sidebar-brand__wordmark" aria-label="Daisy intelligence">
+                              <span class="sidebar-brand__name">Daisy</span>
                               <span class="sidebar-brand__sub">intelligence</span>
                             </span>
                             ${renderSidebarConnectionStatus(state)}
@@ -2524,6 +2589,34 @@ export function renderApp(state: AppViewState) {
                     </div>
                   `;
                 })()}
+                <a
+                  href=${pathForTab("config", state.basePath)}
+                  class="sidebar-version sidebar-settings-card"
+                  @click=${(event: MouseEvent) => {
+                    if (
+                      event.defaultPrevented ||
+                      event.button !== 0 ||
+                      event.metaKey ||
+                      event.ctrlKey ||
+                      event.shiftKey ||
+                      event.altKey
+                    ) {
+                      return;
+                    }
+                    event.preventDefault();
+                    state.setTab("config");
+                  }}
+                  title=${titleForTab("config")}
+                >
+                  <span class="sidebar-settings-card__icon" aria-hidden="true"
+                    >${icons[iconForTab("config")]}</span
+                  >
+                  ${!navCollapsed
+                    ? html`<span class="sidebar-settings-card__text"
+                        >${titleForTab("config")}</span
+                      >`
+                    : nothing}
+                </a>
               </div>
             </div>
           </div>

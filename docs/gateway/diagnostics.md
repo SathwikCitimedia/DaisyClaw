@@ -204,6 +204,31 @@ Use this only on hosts that can tolerate the extra file-system scan and snapshot
 write during critical memory pressure. Normal memory pressure events still
 record RSS, heap, threshold, and growth facts when the snapshot is off.
 
+## Memory pressure auto-restart
+
+By default the Gateway schedules a graceful self-restart when memory pressure
+reaches critical, or when warning-level pressure persists for 10 minutes
+(a warning the garbage collector never clears is almost always a leak). The
+restart uses the same machinery as `/restart`: it drains idle sessions first,
+coalesces duplicate requests, and is rate-limited to at most one auto-restart
+per 30 minutes so a fast re-leak cannot flap the Gateway.
+
+```json5
+{
+  diagnostics: {
+    // Disable auto-restart entirely (not recommended for unattended hosts).
+    memoryPressureAutoRestart: false,
+    // Or keep it, but only restart on critical pressure:
+    memoryPressureWarningHoldMs: 0,
+  },
+}
+```
+
+`memoryPressureWarningHoldMs` controls how long warning-level pressure must
+persist before a restart is scheduled (default `600000`, 10 minutes). Auto-
+restart requires diagnostics to be enabled — disabling diagnostics also
+disables the watchdog.
+
 ## Related
 
 - [Health checks](/gateway/health)

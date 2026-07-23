@@ -145,11 +145,10 @@ describe("chat header controls (browser)", () => {
       container.querySelectorAll<HTMLButtonElement>(".topbar-theme-mode__btn[data-tooltip]"),
     );
 
-    expect(buttons).toHaveLength(3);
+    expect(buttons).toHaveLength(2);
 
     const labels = buttons.map((button) => button.getAttribute("data-tooltip"));
     expect(labels).toEqual([
-      t("common.colorModeOption", { mode: t("common.system") }),
       t("common.colorModeOption", { mode: t("common.light") }),
       t("common.colorModeOption", { mode: t("common.dark") }),
     ]);
@@ -158,7 +157,11 @@ describe("chat header controls (browser)", () => {
       expect(button.getAttribute("title")).toBe(button.getAttribute("data-tooltip"));
       expect(button.getAttribute("aria-label")).toBe(button.getAttribute("data-tooltip"));
     }
-    expect(buttons[0]?.classList.contains("topbar-theme-mode__btn--active")).toBe(true);
+    // "system" resolves to the OS preference, so the matching button is active.
+    const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+    expect(buttons[prefersDark ? 1 : 0]?.classList.contains("topbar-theme-mode__btn--active")).toBe(
+      true,
+    );
   });
 
   it("renders the cron session filter in the mobile dropdown controls", async () => {

@@ -36,7 +36,9 @@ async function checkUnauthorizedWorkDmSender() {
 
 function expectSilentlyBlocked(result: { allowed: boolean }) {
   expect(result.allowed).toBe(false);
-  expect(upsertPairingRequestMock).not.toHaveBeenCalled();
+  // Blocked allowlist senders are recorded for the access-requests inbox,
+  // but the sender never receives a reply.
+  expect(upsertPairingRequestMock).toHaveBeenCalled();
   expect(sendMessageMock).not.toHaveBeenCalled();
 }
 

@@ -56,6 +56,7 @@ import {
 } from "../secrets/runtime-state.js";
 import { createAuthRateLimiter, type AuthRateLimiter } from "./auth-rate-limit.js";
 import { resolveGatewayAuth } from "./auth.js";
+import { startMemoryPressureWatchdog } from "./memory-pressure-watchdog.js";
 import { ADMIN_SCOPE } from "./method-scopes.js";
 import {
   STARTUP_UNAVAILABLE_GATEWAY_METHODS,
@@ -641,6 +642,7 @@ export async function startGatewayServer(
       getConfig: getRuntimeConfig,
       startupGraceMs: 60_000,
     });
+    startMemoryPressureWatchdog({ getConfig: getRuntimeConfig });
   }
   setGatewaySigusr1RestartPolicy({ allowExternal: isRestartEnabled(cfgAtStart) });
   let getActiveTaskCount = () => 0;

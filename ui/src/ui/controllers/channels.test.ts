@@ -1,7 +1,13 @@
 // Control UI tests cover channels behavior.
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ChannelsStatusSnapshot } from "../types.ts";
-import { loadChannels, waitWhatsAppLogin, type ChannelsState } from "./channels.ts";
+import {
+  addAllowedContact,
+  connectWhatsApp,
+  loadChannels,
+  removeAllowedContact,
+  type ChannelsState,
+} from "./channels.ts";
 
 function createDeferred<T>() {
   let resolve: ((value: T) => void) | undefined;
@@ -52,32 +58,146 @@ function requireClientRequest(state: ChannelsState) {
   return vi.mocked(request);
 }
 
-describe("channels controller WhatsApp wait", () => {
+describe("channels controller WhatsApp connect", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it("passes the currently displayed QR and replaces it when the login QR rotates", async () => {
+  it("re-enables the channel, shows the QR, follows rotation, and polls until scanned", async () => {
     const state = createState();
     const request = requireClientRequest(state);
-    request.mockResolvedValueOnce({
-      connected: false,
-      message: "QR refreshed. Scan the latest code in WhatsApp → Linked Devices.",
-      qrDataUrl: "data:image/png;base64,next-qr",
+    let waitCalls = 0;
+    request.mockImplementation(async (method: string) => {
+      switch (method) {
+        case "config.get":
+          return {
+            hash: "hash-1",
+            config: { channels: { whatsapp: { enabled: false } } },
+          };
+        case "config.patch":
+          return {};
+        case "channels.start":
+          return {};
+        case "web.login.start":
+          return { qrDataUrl: "data:image/png;base64,first-qr" };
+        case "web.login.wait":
+          waitCalls += 1;
+          if (waitCalls === 1) {
+            return { connected: false, qrDataUrl: "data:image/png;base64,next-qr" };
+          }
+          return { connected: true, message: "WhatsApp connected." };
+        default:
+          throw new Error(`unexpected method: ${method}`);
+      }
     });
 
-    await waitWhatsAppLogin(state);
+    await connectWhatsApp(state, false);
 
+    expect(request).toHaveBeenCalledWith("config.patch", {
+      raw: JSON.stringify({ channels: { whatsapp: { enabled: true } } }),
+      baseHash: "hash-1",
+    });
+    expect(request).toHaveBeenCalledWith("channels.start", { channel: "whatsapp" });
     expect(request).toHaveBeenCalledWith("web.login.wait", {
-      timeoutMs: 120000,
-      currentQrDataUrl: "data:image/png;base64,current-qr",
+      timeoutMs: 30000,
+      currentQrDataUrl: "data:image/png;base64,first-qr",
     });
-    expect(state.whatsappLoginMessage).toBe(
-      "QR refreshed. Scan the latest code in WhatsApp → Linked Devices.",
-    );
-    expect(state.whatsappLoginConnected).toBe(false);
-    expect(state.whatsappLoginQrDataUrl).toBe("data:image/png;base64,next-qr");
+    expect(request).toHaveBeenCalledWith("web.login.wait", {
+      timeoutMs: 30000,
+      currentQrDataUrl: "data:image/png;base64,next-qr",
+    });
+    expect(state.whatsappLoginConnected).toBe(true);
+    expect(state.whatsappLoginQrDataUrl).toBeNull();
+    expect(state.whatsappLoginMessage).toBe("WhatsApp connected.");
     expect(state.whatsappBusy).toBe(false);
+  });
+
+  it("reports already-linked without polling when login start says connected", async () => {
+    const state = createState();
+    const request = requireClientRequest(state);
+    request.mockImplementation(async (method: string) => {
+      switch (method) {
+        case "config.get":
+          return { hash: "hash-1", config: {} };
+        case "channels.start":
+          return {};
+        case "web.login.start":
+          return { connected: true, message: "Already linked." };
+        default:
+          throw new Error(`unexpected method: ${method}`);
+      }
+    });
+
+    await connectWhatsApp(state, false);
+
+    expect(state.whatsappLoginConnected).toBe(true);
+    expect(state.whatsappLoginMessage).toBe("Already linked.");
+    expect(request).not.toHaveBeenCalledWith("web.login.wait", expect.anything());
+    expect(state.whatsappBusy).toBe(false);
+  });
+});
+
+describe("channels controller allowed contacts", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  function mockConfig(request: ReturnType<typeof requireClientRequest>, channelConfig: unknown) {
+    request.mockImplementation(async (method: string) => {
+      if (method === "config.get") {
+        return { hash: "hash-1", config: { channels: { whatsapp: channelConfig } } };
+      }
+      if (method === "config.patch") {
+        return {};
+      }
+      throw new Error(`unexpected method: ${method}`);
+    });
+  }
+
+  it("adds a contact and defaults dmPolicy to allowlist on the first add", async () => {
+    const state = createState();
+    const request = requireClientRequest(state);
+    mockConfig(request, { enabled: true });
+
+    await addAllowedContact(state, "whatsapp", " +15555550123 ");
+
+    expect(request).toHaveBeenCalledWith("config.patch", {
+      raw: JSON.stringify({
+        channels: {
+          whatsapp: { allowFrom: ["+15555550123"], dmPolicy: "allowlist" },
+        },
+      }),
+      baseHash: "hash-1",
+    });
+  });
+
+  it("appends without touching an explicit dmPolicy and skips duplicates", async () => {
+    const state = createState();
+    const request = requireClientRequest(state);
+    mockConfig(request, { dmPolicy: "pairing", allowFrom: ["+111"] });
+
+    await addAllowedContact(state, "whatsapp", "+111");
+    expect(request).not.toHaveBeenCalledWith("config.patch", expect.anything());
+
+    await addAllowedContact(state, "whatsapp", "+222");
+    expect(request).toHaveBeenCalledWith("config.patch", {
+      raw: JSON.stringify({ channels: { whatsapp: { allowFrom: ["+111", "+222"] } } }),
+      baseHash: "hash-1",
+    });
+  });
+
+  it("removes a contact with replacePaths so the gateway accepts the shrink", async () => {
+    const state = createState();
+    const request = requireClientRequest(state);
+    mockConfig(request, { allowFrom: ["+111", "+222"] });
+
+    await removeAllowedContact(state, "whatsapp", "+111");
+
+    expect(request).toHaveBeenCalledWith("config.patch", {
+      raw: JSON.stringify({ channels: { whatsapp: { allowFrom: ["+222"] } } }),
+      baseHash: "hash-1",
+      replacePaths: ["channels.whatsapp.allowFrom"],
+    });
   });
 });
 

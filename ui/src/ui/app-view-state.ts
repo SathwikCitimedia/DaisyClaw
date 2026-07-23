@@ -265,6 +265,13 @@ export type AppViewState = {
   whatsappLoginQrDataUrl: string | null;
   whatsappLoginConnected: boolean | null;
   whatsappBusy: boolean;
+  channelDisconnectBusy: string | null;
+  channelConnectBusy: string | null;
+  channelContactsBusy: string | null;
+  channelContactsError: string | null;
+  pairingRequests: import("./controllers/channels.types.ts").PairingRequestEntry[] | null;
+  pairingBusy: string | null;
+  channelsFocus: string | null;
   nostrProfileFormState: NostrProfileFormState | null;
   nostrProfileAccountId: string | null;
   configFormDirty: boolean;
@@ -495,9 +502,20 @@ export type AppViewState = {
     loadOverview: (opts?: { refresh?: boolean }) => Promise<void>;
     loadAssistantIdentity: () => Promise<void>;
     loadCron: () => Promise<void>;
-    handleWhatsAppStart: (force: boolean) => Promise<void>;
-    handleWhatsAppWait: () => Promise<void>;
+    handleWhatsAppConnect: (force: boolean) => Promise<void>;
     handleWhatsAppLogout: () => Promise<void>;
+    handleChannelDisconnect: (channelId: string) => Promise<void>;
+    handleChannelEnable: (channelId: string) => Promise<void>;
+    handleContactAdd: (channelId: string, value: string) => Promise<void>;
+    handleContactsAdd: (channelId: string, values: string[]) => Promise<void>;
+    handleContactRemove: (channelId: string, value: string) => Promise<void>;
+    handleDmPolicyChange: (channelId: string, policy: string) => Promise<void>;
+    handlePairingApprove: (
+      entry: import("./controllers/channels.types.ts").PairingRequestEntry,
+    ) => Promise<void>;
+    handlePairingReject: (
+      entry: import("./controllers/channels.types.ts").PairingRequestEntry,
+    ) => Promise<void>;
     handleChannelConfigSave: () => Promise<void>;
     handleChannelConfigReload: () => Promise<void>;
     handleNostrProfileEdit: (accountId: string, profile: NostrProfile | null) => void;

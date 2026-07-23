@@ -804,7 +804,6 @@ function countHiddenCronSessions(state: AppViewState, sessions: SessionsListResu
 
 type ThemeModeOption = { id: ThemeMode; labelKey: string; short: string };
 const THEME_MODE_OPTIONS: ThemeModeOption[] = [
-  { id: "system", labelKey: "common.system", short: "SYS" },
   { id: "light", labelKey: "common.light", short: "LIGHT" },
   { id: "dark", labelKey: "common.dark", short: "DARK" },
 ];
@@ -827,6 +826,15 @@ export function renderTopbarThemeModeToggle(state: AppViewState) {
     state.setThemeMode(mode, { element: e.currentTarget as HTMLElement });
   };
 
+  // "system" no longer has its own button; resolve it so the matching
+  // light/dark button still reads as active.
+  const activeMode: ThemeMode =
+    state.themeMode === "system"
+      ? typeof window !== "undefined" && window.matchMedia?.("(prefers-color-scheme: dark)").matches
+        ? "dark"
+        : "light"
+      : state.themeMode;
+
   return html`
     <div class="topbar-theme-mode" role="group" aria-label=${t("common.colorMode")}>
       ${THEME_MODE_OPTIONS.map((opt) => {
@@ -835,13 +843,13 @@ export function renderTopbarThemeModeToggle(state: AppViewState) {
         return html`
           <button
             type="button"
-            class="topbar-theme-mode__btn ${opt.id === state.themeMode
+            class="topbar-theme-mode__btn ${opt.id === activeMode
               ? "topbar-theme-mode__btn--active"
               : ""}"
             title=${tooltip}
             aria-label=${tooltip}
             data-tooltip=${tooltip}
-            aria-pressed=${opt.id === state.themeMode}
+            aria-pressed=${opt.id === activeMode}
             @click=${(e: Event) => applyMode(opt.id, e)}
           >
             ${modeIcon(opt.id)}
@@ -898,6 +906,7 @@ export function renderTopbarThemePicker(state: AppViewState) {
         class="theme-orb__trigger"
         title=${t("common.theme")}
         aria-label=${t("common.theme")}
+        data-tooltip=${t("common.theme")}
         aria-haspopup="menu"
         aria-expanded=${open}
         style="color: ${activeHex}"

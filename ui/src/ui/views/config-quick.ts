@@ -29,6 +29,15 @@ import {
   type ConfigPresetId,
 } from "./config-presets.ts";
 
+// Outline icons for the context-profile preset cards (replaces the emoji
+// stored on each preset definition).
+const PRESET_ICONS: Record<ConfigPresetId, TemplateResult> = {
+  personal: icons.sparkles,
+  codeAgent: icons.code,
+  teamBot: icons.users,
+  minimal: icons.zap,
+};
+
 // ── Types ──
 
 export type QuickSettingsChannel = {
@@ -36,6 +45,7 @@ export type QuickSettingsChannel = {
   label: string;
   connected: boolean;
   detail?: string;
+  requests?: number;
 };
 
 export type QuickSettingsAutomation = {
@@ -64,6 +74,10 @@ export type QuickSettingsProps = {
   // Channels
   channels: QuickSettingsChannel[];
   onChannelConfigure?: (channelId: string) => void;
+  onChannelConnect?: (channelId: string) => void;
+  channelConnectBusy?: string | null;
+  onChannelDisconnect?: (channelId: string) => void;
+  channelDisconnectBusy?: string | null;
 
   // Automations
   automation: QuickSettingsAutomation;
@@ -449,26 +463,53 @@ function renderChannelsCard(props: QuickSettingsProps) {
       <div class="qs-card__body">
         ${props.channels.length === 0
           ? html`<div class="qs-empty muted">No channels configured</div>`
-          : props.channels.map(
-              (ch) => html`
+          : props.channels.map((ch) => {
+              const disconnecting = props.channelDisconnectBusy === ch.id;
+              const connecting = props.channelConnectBusy === ch.id;
+              return html`
                 <div class="qs-row">
                   <span class="qs-row__label">
                     <span class="qs-status-dot ${ch.connected ? "qs-status-dot--ok" : ""}"></span>
                     ${ch.label}
-                  </span>
-                  <span class="qs-row__value">
-                    ${ch.connected
-                      ? html`<span class="muted">${ch.detail ?? "Connected"}</span>`
-                      : html`<button
-                          class="qs-link-btn"
+                    ${ch.requests
+                      ? html`<button
+                          class="qs-badge qs-badge--warn qs-badge--action"
+                          title="Pending access requests"
                           @click=${() => props.onChannelConfigure?.(ch.id)}
                         >
-                          Connect →
+                          ${ch.requests} request${ch.requests === 1 ? "" : "s"}
+                        </button>`
+                      : nothing}
+                  </span>
+                  <span class="qs-row__value qs-channel-actions">
+                    ${ch.connected
+                      ? html`
+                          <span class="muted">${ch.detail ?? "Connected"}</span>
+                          <button
+                            class="qs-link-btn"
+                            @click=${() => props.onChannelConfigure?.(ch.id)}
+                          >
+                            Configure
+                          </button>
+                          <button
+                            class="qs-link-btn qs-link-btn--danger"
+                            ?disabled=${disconnecting || Boolean(props.channelDisconnectBusy)}
+                            @click=${() => props.onChannelDisconnect?.(ch.id)}
+                          >
+                            ${disconnecting ? "Disconnecting…" : "Disconnect"}
+                          </button>
+                        `
+                      : html`<button
+                          class="qs-link-btn"
+                          ?disabled=${connecting || Boolean(props.channelConnectBusy)}
+                          @click=${() => props.onChannelConnect?.(ch.id)}
+                        >
+                          ${connecting ? "Connecting…" : "Connect →"}
                         </button>`}
                   </span>
                 </div>
-              `,
-            )}
+              `;
+            })}
       </div>
     </div>
   `;
@@ -904,7 +945,9 @@ function renderPresetsCard(props: QuickSettingsProps) {
                 >
                   <div class="qs-preset__head">
                     <div class="qs-preset__identity">
-                      <span class="qs-preset__icon">${preset.icon}</span>
+                      <span class="qs-preset__icon" aria-hidden="true"
+                        >${PRESET_ICONS[preset.id] ?? preset.icon}</span
+                      >
                       <div class="qs-preset__identity-copy">
                         <span class="qs-preset__label">${preset.label}</span>
                         <span class="qs-preset__desc muted">${preset.description}</span>

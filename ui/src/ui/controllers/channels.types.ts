@@ -15,4 +15,20 @@ export type ChannelsState = {
   whatsappLoginQrDataUrl: string | null;
   whatsappLoginConnected: boolean | null;
   whatsappBusy: boolean;
+  channelDisconnectBusy?: string | null;
+  channelConnectBusy?: string | null;
+  channelContactsBusy?: string | null;
+  channelContactsError?: string | null;
+  pairingRequests?: PairingRequestEntry[] | null;
+  pairingBusy?: string | null;
+};
+
+export type PairingRequestEntry = {
+  channel: string;
+  id: string;
+  code: string;
+  createdAt: string;
+  lastSeenAt: string;
+  name?: string;
+  accountId?: string;
 };

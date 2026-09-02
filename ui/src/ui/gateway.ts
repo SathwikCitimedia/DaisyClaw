@@ -192,7 +192,16 @@ type Pending = {
   reject: (err: unknown) => void;
   method: string;
   startedAtMs: number;
+  timeoutTimer?: number | null;
 };
+
+/**
+ * Default per-request timeout. Guards against a gateway that is connected but
+ * unresponsive (blocked event loop) — without this, dialogs and buttons wait
+ * forever on a response that never comes. Long-running methods (installs,
+ * probes) pass an explicit longer timeout; 0 disables the timeout.
+ */
+const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 
 type SelectedConnectAuth = {
   authToken?: string;
@@ -994,17 +1003,22 @@ export class GatewayBrowserClient {
     };
   }
 
-  request<T = unknown>(method: string, params?: unknown): Promise<T> {
+  request<T = unknown>(
+    method: string,
+    params?: unknown,
+    opts?: { timeoutMs?: number },
+  ): Promise<T> {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
       return Promise.reject(new Error("gateway not connected"));
     }
-    return this.requestOnSocket(this.ws, method, params);
+    return this.requestOnSocket(this.ws, method, params, opts);
   }
 
   private requestOnSocket<T = unknown>(
     ws: WebSocket,
     method: string,
     params?: unknown,
+    opts?: { timeoutMs?: number },
   ): Promise<T> {
     if (this.ws !== ws || ws.readyState !== WebSocket.OPEN) {
       return Promise.reject(new Error("gateway not connected"));
@@ -1012,8 +1026,42 @@ export class GatewayBrowserClient {
     const id = generateUUID();
     const frame = { type: "req", id, method, params };
     const startedAtMs = this.nowMs();
+    const timeoutMs = opts?.timeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
     const p = new Promise<T>((resolve, reject) => {
-      this.pending.set(id, { resolve: (v) => resolve(v as T), reject, method, startedAtMs });
+      const timeoutTimer =
+        timeoutMs > 0
+          ? window.setTimeout(() => {
+              const entry = this.pending.get(id);
+              if (!entry) {
+                return;
+              }
+              this.pending.delete(id);
+              this.emitRequestTiming(id, entry, false, "CLIENT_TIMEOUT");
+              reject(
+                new Error(
+                  `gateway request timed out: ${method} got no response in ${Math.round(timeoutMs / 1000)}s`,
+                ),
+              );
+            }, timeoutMs)
+          : null;
+      const clearTimer = () => {
+        if (timeoutTimer !== null) {
+          window.clearTimeout(timeoutTimer);
+        }
+      };
+      this.pending.set(id, {
+        resolve: (v) => {
+          clearTimer();
+          resolve(v as T);
+        },
+        reject: (err) => {
+          clearTimer();
+          reject(err);
+        },
+        method,
+        startedAtMs,
+        timeoutTimer,
+      });
     });
     ws.send(JSON.stringify(frame));
     return p;

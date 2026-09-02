@@ -74,6 +74,7 @@ export type QuickSettingsProps = {
 
   // Channels
   channels: QuickSettingsChannel[];
+  onAddChannel?: () => void;
   onChannelConfigure?: (channelId: string) => void;
   onChannelConnect?: (channelId: string) => void;
   channelConnectBusy?: string | null;
@@ -414,10 +415,10 @@ function renderModelCard(props: QuickSettingsProps) {
       <div class="qs-card__body">
         <div class="qs-row">
           <span class="qs-row__label">Model</span>
-          <button class="qs-row__value qs-row__value--action" @click=${props.onModelChange}>
-            <code>${props.currentModel || "default"}</code>
-            <span class="qs-row__chevron">${icons.chevronRight}</span>
-          </button>
+          <span class="qs-row__value qs-row__value--split">
+            <code title=${props.currentModel || "default"}>${props.currentModel || "default"}</code>
+            <button class="btn btn--sm" @click=${props.onModelChange}>Manage</button>
+          </span>
         </div>
         <div class="qs-row">
           <span class="qs-row__label">Thinking</span>
@@ -512,6 +513,9 @@ function renderChannelsCard(props: QuickSettingsProps) {
                 </div>
               `;
             })}
+        <div class="qs-row qs-add-channel">
+          <button class="qs-link-btn" @click=${() => props.onAddChannel?.()}>+ Add channel</button>
+        </div>
       </div>
     </div>
   `;

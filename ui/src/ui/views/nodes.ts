@@ -8,6 +8,7 @@ import {
 import { t } from "../../i18n/index.ts";
 import type { DeviceTokenSummary, PairedDevice, PendingDevice } from "../controllers/devices.ts";
 import { formatRelativeTimestamp, formatList } from "../format.ts";
+import { icons } from "../icons.ts";
 import { normalizeOptionalString } from "../string-coerce.ts";
 import { renderExecApprovals, resolveExecApprovalsState } from "./nodes-exec-approvals.ts";
 import { resolveConfigAgents, resolveNodeTargets, type NodeTargetOption } from "./nodes-shared.ts";
@@ -18,6 +19,62 @@ export function renderNodes(props: NodesProps) {
   const bindingState = resolveBindingsState(props);
   const approvalsState = resolveExecApprovalsState(props);
   return html`
+    <section class="card nodes-intro">
+      <div class="nodes-intro__grid">
+        <div class="nodes-intro__tile">
+          <span class="nodes-intro__icon">${icons.network}</span>
+          <span class="nodes-intro__copy">
+            <span class="nodes-intro__title">Nodes</span>
+            <span class="nodes-intro__desc">
+              Other devices the assistant can act on. This computer is built in — adding more is
+              optional.
+            </span>
+          </span>
+        </div>
+        <div class="nodes-intro__tile">
+          <span class="nodes-intro__icon">${icons.lock}</span>
+          <span class="nodes-intro__copy">
+            <span class="nodes-intro__title">Exec approvals</span>
+            <span class="nodes-intro__desc">
+              Your permission gate — commands are blocked or wait for your one-click approval.
+            </span>
+          </span>
+        </div>
+      </div>
+      <details class="nodes-pair">
+        <summary class="nodes-pair__summary">
+          <span class="nodes-pair__summary-label">How to pair a new device</span>
+          <span class="nodes-pair__chevron" aria-hidden="true"></span>
+        </summary>
+        <ol class="nodes-pair__steps">
+          <li>
+            <div class="nodes-pair__step-title">Find this computer's address</div>
+            <div class="nodes-pair__step-detail">
+              On this PC, open Command Prompt, type <code>ipconfig</code>, and note the "IPv4
+              Address" — it looks like <code>192.168.1.25</code>.
+            </div>
+          </li>
+          <li>
+            <div class="nodes-pair__step-title">Install DaisyClaw on the new device, then run</div>
+            <div class="nodes-pair__cmd">
+              daisyclaw node run --host &lt;your PC address&gt; --port 18789 --display-name "My
+              laptop"
+            </div>
+          </li>
+          <li>
+            <div class="nodes-pair__step-title">Approve it here</div>
+            <div class="nodes-pair__step-detail">
+              The device appears under Devices → Pending on this page. Click Approve — nothing joins
+              without your say-so.
+            </div>
+          </li>
+        </ol>
+        <div class="nodes-pair__note">
+          Heads-up: by default the gateway accepts connections from this computer only (the safe
+          setting). To pair over your network, the gateway's bind setting must allow LAN first.
+        </div>
+      </details>
+    </section>
     ${renderExecApprovals(approvalsState)} ${renderBindings(bindingState)} ${renderDevices(props)}
     <section class="card">
       <div class="row" style="justify-content: space-between;">

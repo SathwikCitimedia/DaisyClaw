@@ -10,6 +10,7 @@ import {
   logoutWhatsApp,
   rejectPairingRequest,
   removeAllowedContact,
+  renameAllowedContact,
   setChannelDmPolicy,
   type ChannelsState,
   type PairingRequestEntry,
@@ -62,8 +63,19 @@ export async function handleContactsAdd(
   host: ChannelsActionHost,
   channelId: string,
   values: string[],
+  labels?: Record<string, string>,
 ) {
-  await addAllowedContacts(host as ChannelsState, channelId, values);
+  await addAllowedContacts(host as ChannelsState, channelId, values, labels);
+  await loadConfig(host as ConfigState);
+}
+
+export async function handleContactRename(
+  host: ChannelsActionHost,
+  channelId: string,
+  contact: string,
+  name: string,
+) {
+  await renameAllowedContact(host as ChannelsState, channelId, contact, name);
   await loadConfig(host as ConfigState);
 }
 
@@ -80,9 +92,10 @@ export async function handleContactRemove(
   host: ChannelsActionHost,
   channelId: string,
   value: string,
-) {
-  await removeAllowedContact(host as ChannelsState, channelId, value);
+): Promise<boolean> {
+  const removed = await removeAllowedContact(host as ChannelsState, channelId, value);
   await loadConfig(host as ConfigState);
+  return removed;
 }
 
 export async function handleDmPolicyChange(

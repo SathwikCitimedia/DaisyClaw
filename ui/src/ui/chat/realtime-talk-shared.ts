@@ -310,10 +310,15 @@ function waitForChatResult(params: {
       }
       emptyFinalWaitStarted = true;
       void params.client
-        .request<AgentWaitResult>("agent.wait", {
-          runId: params.runId,
-          timeoutMs: params.timeoutMs,
-        })
+        .request<AgentWaitResult>(
+          "agent.wait",
+          {
+            runId: params.runId,
+            timeoutMs: params.timeoutMs,
+          },
+          // Server-side long-poll: keep the client timeout above its budget.
+          { timeoutMs: params.timeoutMs + 15_000 },
+        )
         .then((result) => {
           if (settled) {
             return;

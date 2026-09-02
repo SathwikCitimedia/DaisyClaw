@@ -1,5 +1,10 @@
 // Control UI view renders the per-channel allowed-contacts manager.
 import { html, nothing } from "lit";
+import { ref } from "lit/directives/ref.js";
+import { confirmDialog } from "../confirm-dialog.ts";
+import { CONTACT_LABEL_CHANNELS } from "../controllers/channels.ts";
+import { icons } from "../icons.ts";
+import { showToast } from "../toast.ts";
 import { resolveChannelConfigValue } from "./channel-config-extras.ts";
 import type { ChannelsProps } from "./channels.types.ts";
 
@@ -115,12 +120,56 @@ function readAllowFrom(props: ChannelsProps, channelId: string): string[] {
   return raw.map((entry) => String(entry).trim()).filter((entry) => entry.length > 0);
 }
 
+function readContactLabels(props: ChannelsProps, channelId: string): Record<string, string> {
+  const channelConfig = props.configForm
+    ? resolveChannelConfigValue(props.configForm, channelId)
+    : null;
+  const raw = channelConfig?.contactLabels;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    return {};
+  }
+  const labels: Record<string, string> = {};
+  for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (typeof value === "string" && value.trim()) {
+      labels[key] = value.trim();
+    }
+  }
+  return labels;
+}
+
 function readDmPolicy(props: ChannelsProps, channelId: string): string {
   const channelConfig = props.configForm
     ? resolveChannelConfigValue(props.configForm, channelId)
     : null;
   const raw = channelConfig?.dmPolicy;
   return typeof raw === "string" && raw.trim() ? raw.trim() : "pairing";
+}
+
+/** CSS.escape with a fallback for test environments that lack the CSS global. */
+function escapeSelector(value: string): string {
+  return typeof CSS !== "undefined" && typeof CSS.escape === "function"
+    ? CSS.escape(value)
+    : value.replace(/[^a-zA-Z0-9_-]/g, "\\$&");
+}
+
+function findNameInput(root: HTMLElement, channelId: string): HTMLInputElement | null {
+  return (
+    root
+      .closest(".contacts-add")
+      ?.querySelector<HTMLInputElement>(`#${escapeSelector(`contact-name-${channelId}`)}`) ?? null
+  );
+}
+
+function buildSingleLabel(
+  values: string[],
+  nameInput: HTMLInputElement | null,
+): Record<string, string> | undefined {
+  // A single typed name can only describe a single contact — ignore it for bulk pastes.
+  const name = nameInput?.value.trim() ?? "";
+  if (!name || values.length !== 1) {
+    return undefined;
+  }
+  return { [values[0]]: name };
 }
 
 function submitContact(props: ChannelsProps, channelId: string, input: HTMLInputElement) {
@@ -135,8 +184,12 @@ function submitContact(props: ChannelsProps, channelId: string, input: HTMLInput
   if (tokens.length === 0) {
     return;
   }
-  props.onContactsAdd(channelId, tokens);
+  const nameInput = findNameInput(input, channelId);
+  props.onContactsAdd(channelId, tokens, buildSingleLabel(tokens, nameInput));
   input.value = "";
+  if (nameInput) {
+    nameInput.value = "";
+  }
 }
 
 function submitPhoneContact(
@@ -169,8 +222,12 @@ function submitPhoneContact(
     return;
   }
   input.setCustomValidity("");
-  props.onContactsAdd(channelId, numbers);
+  const nameInput = findNameInput(input, channelId);
+  props.onContactsAdd(channelId, numbers, buildSingleLabel(numbers, nameInput));
   input.value = "";
+  if (nameInput) {
+    nameInput.value = "";
+  }
 }
 
 function normalizePhoneToken(token: string, dial: string): string | null {
@@ -179,32 +236,230 @@ function normalizePhoneToken(token: string, dial: string): string | null {
   return /^\+\d{6,15}$/.test(full) ? full : null;
 }
 
-/** Pulls phone numbers out of a pasted/imported file: vCard TEL lines or any phone-like tokens. */
-function extractPhoneNumbersFromText(text: string, dial: string): string[] {
-  const numbers = new Set<string>();
-  const telLines = text.match(/^TEL[^:]*:(.+)$/gim);
-  if (telLines) {
-    for (const line of telLines) {
-      const value = line.slice(line.indexOf(":") + 1);
-      const normalized = normalizePhoneToken(value, dial);
+type ImportedContact = { number: string; name?: string };
+
+/** Pulls named contacts out of a vCard export: FN/N gives the name, TEL lines give numbers. */
+function parseVCardContacts(text: string, dial: string): ImportedContact[] {
+  const results: ImportedContact[] = [];
+  const cards = text.split(/BEGIN:VCARD/i).slice(1);
+  for (const card of cards) {
+    const fn = card.match(/^FN(?:;[^:]*)?:(.+)$/im)?.[1]?.trim();
+    let name = fn;
+    if (!name) {
+      // N is "Last;First;Middle;Prefix;Suffix" — reassemble as "First Last".
+      const n = card.match(/^N(?:;[^:]*)?:(.+)$/im)?.[1];
+      if (n) {
+        const parts = n.split(";").map((part) => part.trim());
+        name = [parts[1], parts[0]].filter(Boolean).join(" ").trim() || undefined;
+      }
+    }
+    for (const line of card.match(/^TEL(?:;[^:]*)?:(.+)$/gim) ?? []) {
+      const normalized = normalizePhoneToken(line.slice(line.indexOf(":") + 1), dial);
       if (normalized) {
-        numbers.add(normalized);
+        results.push({ number: normalized, ...(name ? { name } : {}) });
       }
     }
   }
-  if (numbers.size === 0) {
-    for (const match of text.matchAll(/\+?\d[\d\s\-().]{5,}\d/g)) {
-      const normalized = normalizePhoneToken(match[0], dial);
-      if (normalized) {
-        numbers.add(normalized);
-      }
-    }
-  }
-  return [...numbers];
+  return results;
 }
 
-function importContactsFile(params: { channelId: string; props: ChannelsProps; dial: string }) {
-  const { channelId, props, dial } = params;
+/** RFC 4180-style CSV split: quoted fields, escaped quotes, commas inside quotes, CR/LF rows. */
+function parseCsvRows(text: string): string[][] {
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let field = "";
+  let inQuotes = false;
+  for (let i = 0; i < text.length; i += 1) {
+    const char = text[i];
+    if (inQuotes) {
+      if (char === '"') {
+        if (text[i + 1] === '"') {
+          field += '"';
+          i += 1;
+        } else {
+          inQuotes = false;
+        }
+      } else {
+        field += char;
+      }
+      continue;
+    }
+    if (char === '"') {
+      inQuotes = true;
+    } else if (char === ",") {
+      row.push(field);
+      field = "";
+    } else if (char === "\n" || char === "\r") {
+      if (char === "\r" && text[i + 1] === "\n") {
+        i += 1;
+      }
+      row.push(field);
+      field = "";
+      rows.push(row);
+      row = [];
+    } else {
+      field += char;
+    }
+  }
+  row.push(field);
+  rows.push(row);
+  return rows.filter((cells) => cells.some((cell) => cell.trim().length > 0));
+}
+
+type CsvColumnMap = { nameIdx: number; firstIdx: number; lastIdx: number; phoneIdxs: number[] };
+
+/**
+ * Recognize a contacts-export header row (Google Contacts, Outlook, or a plain
+ * name/number file with headers). Returns null when the first row is data.
+ */
+function detectCsvColumns(header: string[]): CsvColumnMap | null {
+  const normalized = header.map((cell) => cell.trim().toLowerCase());
+  const findIdx = (test: (cell: string) => boolean) => normalized.findIndex(test);
+
+  const nameIdx = findIdx((cell) => /^(name|full ?name|display ?name)$/.test(cell));
+  const firstIdx = findIdx((cell) => /^(first ?name|given ?name)$/.test(cell));
+  const lastIdx = findIdx((cell) => /^(last ?name|family ?name|surname)$/.test(cell));
+  const phoneIdxs = normalized.flatMap((cell, index) =>
+    /(phone|mobile|tel\b|telephone|number)/.test(cell) && !/type|label|format/.test(cell)
+      ? [index]
+      : [],
+  );
+
+  if (phoneIdxs.length === 0 || (nameIdx === -1 && firstIdx === -1 && lastIdx === -1)) {
+    return null;
+  }
+  return { nameIdx, firstIdx, lastIdx, phoneIdxs };
+}
+
+function resolveCsvRowName(cells: string[], columns: CsvColumnMap): string | undefined {
+  const direct = columns.nameIdx >= 0 ? cells[columns.nameIdx]?.trim() : "";
+  if (direct) {
+    return direct;
+  }
+  const first = columns.firstIdx >= 0 ? cells[columns.firstIdx]?.trim() : "";
+  const last = columns.lastIdx >= 0 ? cells[columns.lastIdx]?.trim() : "";
+  const combined = [first, last].filter(Boolean).join(" ").trim();
+  return combined || undefined;
+}
+
+/** Google Contacts joins multiple values in one column with " ::: ". */
+function splitPhoneCell(cell: string): string[] {
+  return cell
+    .split(/\s*:::\s*|;/)
+    .map((token) => token.trim())
+    .filter((token) => token.length > 0);
+}
+
+/** One free-form line ("Aasrith, +91 93812 41869") → contacts, pairing leftover text as the name. */
+function parseContactLine(line: string, dial: string): ImportedContact[] {
+  const matches = [...line.matchAll(/\+?\d[\d\s\-().]{5,}\d/g)];
+  if (matches.length === 1) {
+    const normalized = normalizePhoneToken(matches[0][0], dial);
+    if (!normalized) {
+      return [];
+    }
+    const name = line
+      .replace(matches[0][0], "")
+      .replace(/["']/g, "")
+      .replace(/[,;\t]+/g, " ")
+      .trim();
+    return [{ number: normalized, ...(/\p{L}/u.test(name) ? { name } : {}) }];
+  }
+  const results: ImportedContact[] = [];
+  for (const match of matches) {
+    const normalized = normalizePhoneToken(match[0], dial);
+    if (normalized) {
+      results.push({ number: normalized });
+    }
+  }
+  return results;
+}
+
+/**
+ * CSV/plain-text contact extraction. Handles, in order of preference:
+ * - exports with a header row (Google Contacts "Phone 1 - Value", Outlook
+ *   "Mobile Phone", or a simple "Name,Number" header) — every number in a row
+ *   gets that row's name;
+ * - headerless rows ("Aasrith,+91 93812 41869");
+ * - loose text lines and numbers-only files.
+ */
+function parseCsvContacts(text: string, dial: string): ImportedContact[] {
+  const rows = parseCsvRows(text);
+  if (rows.length === 0) {
+    return [];
+  }
+
+  const columns = detectCsvColumns(rows[0]);
+  if (columns) {
+    const results: ImportedContact[] = [];
+    for (const cells of rows.slice(1)) {
+      const name = resolveCsvRowName(cells, columns);
+      for (const phoneIdx of columns.phoneIdxs) {
+        for (const token of splitPhoneCell(cells[phoneIdx] ?? "")) {
+          const normalized = normalizePhoneToken(token, dial);
+          if (normalized) {
+            results.push({ number: normalized, ...(name ? { name } : {}) });
+          }
+        }
+      }
+    }
+    return results;
+  }
+
+  const results: ImportedContact[] = [];
+  for (const cells of rows) {
+    if (cells.length === 1) {
+      results.push(...parseContactLine(cells[0], dial));
+      continue;
+    }
+    // Headerless multi-column row: phone-like cells are numbers, and when the
+    // row has exactly one text cell it names all of them.
+    const numbers: string[] = [];
+    const textCells: string[] = [];
+    for (const cell of cells) {
+      const trimmed = cell.trim();
+      if (!trimmed) {
+        continue;
+      }
+      const normalized = normalizePhoneToken(trimmed, dial);
+      if (normalized) {
+        numbers.push(normalized);
+      } else if (/\p{L}/u.test(trimmed) && !trimmed.includes("@") && !/https?:/i.test(trimmed)) {
+        // Emails/URLs are ignored so they never masquerade as the person's name.
+        textCells.push(trimmed);
+      }
+    }
+    const name = textCells.length === 1 ? textCells[0] : undefined;
+    for (const number of numbers) {
+      results.push({ number, ...(name ? { name } : {}) });
+    }
+  }
+  return results;
+}
+
+/** Exported for tests. */
+export function extractContactsFromText(text: string, dial: string): ImportedContact[] {
+  const parsed = /BEGIN:VCARD/i.test(text)
+    ? parseVCardContacts(text, dial)
+    : parseCsvContacts(text, dial);
+  // Dedupe by number; a named entry beats an unnamed duplicate.
+  const byNumber = new Map<string, ImportedContact>();
+  for (const contact of parsed) {
+    const existing = byNumber.get(contact.number);
+    if (!existing || (!existing.name && contact.name)) {
+      byNumber.set(contact.number, contact);
+    }
+  }
+  return [...byNumber.values()];
+}
+
+function importContactsFile(params: {
+  channelId: string;
+  props: ChannelsProps;
+  dial: string;
+  withNames: boolean;
+}) {
+  const { channelId, props, dial, withNames } = params;
   const picker = document.createElement("input");
   picker.type = "file";
   picker.accept = ".txt,.csv,.vcf,text/plain,text/csv,text/vcard";
@@ -213,102 +468,286 @@ function importContactsFile(params: { channelId: string; props: ChannelsProps; d
     if (!file) {
       return;
     }
-    void file.text().then((text) => {
-      const numbers = extractPhoneNumbersFromText(text, dial);
-      if (numbers.length === 0) {
-        globalThis.alert("No phone numbers found in that file.");
+    void file.text().then(async (text) => {
+      const contacts = extractContactsFromText(text, dial);
+      if (contacts.length === 0) {
+        showToast("No phone numbers found in that file.", { tone: "error" });
         return;
       }
-      const confirmed = globalThis.confirm(
-        `Add ${numbers.length} number${numbers.length === 1 ? "" : "s"} to allowed contacts?\n\n${numbers.slice(0, 10).join("\n")}${numbers.length > 10 ? "\n…" : ""}`,
-      );
-      if (confirmed) {
-        props.onContactsAdd(channelId, numbers);
+      const preview = contacts
+        .slice(0, 8)
+        .map((contact) => (contact.name ? `${contact.name} — ${contact.number}` : contact.number))
+        .join("\n");
+      const rest = contacts.length > 8 ? `\n…and ${contacts.length - 8} more` : "";
+      const confirmed = await confirmDialog({
+        title: "Import contacts",
+        message: `Add ${contacts.length} contact${contacts.length === 1 ? "" : "s"} to allowed contacts?\n\n${preview}${rest}`,
+        confirmLabel: contacts.length === 1 ? "Add contact" : "Add contacts",
+        danger: false,
+      });
+      if (!confirmed) {
+        return;
       }
+      const numbers = contacts.map((contact) => contact.number);
+      const labels: Record<string, string> = {};
+      if (withNames) {
+        for (const contact of contacts) {
+          if (contact.name) {
+            labels[contact.number] = contact.name;
+          }
+        }
+      }
+      props.onContactsAdd(channelId, numbers, Object.keys(labels).length > 0 ? labels : undefined);
     });
   });
   picker.click();
 }
 
-function renderPhoneAddRow(params: { channelId: string; props: ChannelsProps; busy: boolean }) {
-  const { channelId, props, busy } = params;
+function renderNameField(params: { channelId: string; busy: boolean }) {
+  const { channelId, busy } = params;
+  return html`
+    <input
+      id=${`contact-name-${channelId}`}
+      class="contacts-input contacts-name"
+      type="text"
+      autocomplete="off"
+      placeholder="Name (optional) — so you remember who this is"
+      ?disabled=${busy}
+    />
+  `;
+}
+
+function renderPhoneAddRow(params: {
+  channelId: string;
+  props: ChannelsProps;
+  busy: boolean;
+  canLabel: boolean;
+}) {
+  const { channelId, props, busy, canLabel } = params;
+  const adding = busy && props.contactsBusyOp === "add";
   const inputId = `contact-input-${channelId}`;
   const selectId = `contact-cc-${channelId}`;
   const selectedDial = defaultCountryDial();
   const findSelect = (root: HTMLElement) =>
-    root.closest(".contacts-add")?.querySelector<HTMLSelectElement>(`#${CSS.escape(selectId)}`) ??
-    null;
+    root
+      .closest(".contacts-add")
+      ?.querySelector<HTMLSelectElement>(`#${escapeSelector(selectId)}`) ?? null;
 
   return html`
-    <div class="row contacts-add" style="margin-top: 10px; gap: 8px;">
-      <select
-        id=${selectId}
-        class="contacts-cc"
-        aria-label="Country code"
-        ?disabled=${busy}
-        @change=${(event: Event) => {
-          storeCountryDial((event.currentTarget as HTMLSelectElement).value);
-        }}
-      >
-        ${COUNTRY_CODES.map(
-          (entry) => html`
-            <option
-              value=${entry.dial}
-              ?selected=${entry.dial === selectedDial}
-              title=${entry.name}
-            >
-              ${entry.flag} ${entry.dial} ${entry.name}
-            </option>
-          `,
-        )}
-      </select>
-      <input
-        id=${inputId}
-        class="contacts-input"
-        type="tel"
-        inputmode="tel"
-        placeholder="98765 43210 — paste many, separated by commas"
-        ?disabled=${busy}
-        @input=${(event: Event) => {
-          (event.currentTarget as HTMLInputElement).setCustomValidity("");
-        }}
-        @keydown=${(event: KeyboardEvent) => {
-          if (event.key === "Enter") {
-            const input = event.currentTarget as HTMLInputElement;
-            submitPhoneContact(props, channelId, input, findSelect(input));
-          }
-        }}
-      />
-      <button
-        class="btn primary"
-        ?disabled=${busy}
-        @click=${(event: Event) => {
-          const root = event.currentTarget as HTMLElement;
-          const input = root
-            .closest(".contacts-add")
-            ?.querySelector<HTMLInputElement>(`#${CSS.escape(inputId)}`);
-          if (input) {
-            submitPhoneContact(props, channelId, input, findSelect(root));
-          }
-        }}
-      >
-        ${busy ? "Adding…" : "Add"}
-      </button>
-      <button
-        class="btn"
-        title="Import numbers from a .txt, .csv, or .vcf (vCard) file"
-        ?disabled=${busy}
-        @click=${(event: Event) => {
-          const root = event.currentTarget as HTMLElement;
-          importContactsFile({
-            channelId,
-            props,
-            dial: findSelect(root)?.value ?? defaultCountryDial(),
-          });
-        }}
-      >
-        Import…
-      </button>
+    <div class="contacts-add" style="margin-top: 10px;">
+      ${canLabel ? renderNameField({ channelId, busy }) : nothing}
+      <div class="row contacts-add__row" style="gap: 8px;">
+        <select
+          id=${selectId}
+          class="contacts-cc"
+          aria-label="Country code"
+          ?disabled=${busy}
+          @change=${(event: Event) => {
+            storeCountryDial((event.currentTarget as HTMLSelectElement).value);
+          }}
+        >
+          ${COUNTRY_CODES.map(
+            (entry) => html`
+              <option
+                value=${entry.dial}
+                ?selected=${entry.dial === selectedDial}
+                title=${entry.name}
+              >
+                ${entry.flag} ${entry.dial} ${entry.name}
+              </option>
+            `,
+          )}
+        </select>
+        <input
+          id=${inputId}
+          class="contacts-input"
+          type="tel"
+          inputmode="tel"
+          placeholder="98765 43210 — paste many, separated by commas"
+          ?disabled=${busy}
+          @input=${(event: Event) => {
+            (event.currentTarget as HTMLInputElement).setCustomValidity("");
+          }}
+          @keydown=${(event: KeyboardEvent) => {
+            if (event.key === "Enter") {
+              const input = event.currentTarget as HTMLInputElement;
+              submitPhoneContact(props, channelId, input, findSelect(input));
+            }
+          }}
+        />
+        <button
+          class="btn primary"
+          ?disabled=${busy}
+          @click=${(event: Event) => {
+            const root = event.currentTarget as HTMLElement;
+            const input = root
+              .closest(".contacts-add")
+              ?.querySelector<HTMLInputElement>(`#${escapeSelector(inputId)}`);
+            if (input) {
+              submitPhoneContact(props, channelId, input, findSelect(root));
+            }
+          }}
+        >
+          ${adding ? "Adding…" : "Add"}
+        </button>
+        <button
+          class="btn"
+          title="Import contacts from a .txt, .csv, or .vcf (vCard) file — names are picked up automatically"
+          ?disabled=${busy}
+          @click=${(event: Event) => {
+            const root = event.currentTarget as HTMLElement;
+            importContactsFile({
+              channelId,
+              props,
+              dial: findSelect(root)?.value ?? defaultCountryDial(),
+              withNames: canLabel,
+            });
+          }}
+        >
+          Import…
+        </button>
+      </div>
+    </div>
+  `;
+}
+
+/** Confirm, delete, and report the outcome as a toast. */
+function confirmContactDelete(params: {
+  channelId: string;
+  props: ChannelsProps;
+  contact: string;
+  label: string | undefined;
+}) {
+  const { channelId, props, contact, label } = params;
+  const display = label ? `${label} (${contact})` : contact;
+  let removed = false;
+  void confirmDialog({
+    title: "Delete contact",
+    message: `Delete ${display} from allowed contacts? They will stop getting replies until you add them again.`,
+    confirmLabel: "Delete",
+    loadingLabel: "Deleting…",
+    onConfirm: async () => {
+      removed = await props.onContactRemove(channelId, contact);
+    },
+  }).then((confirmed) => {
+    if (!confirmed) {
+      return;
+    }
+    if (removed) {
+      showToast(`${display} deleted`, { tone: "success" });
+    } else {
+      showToast(`Couldn't delete ${display} — see the error under the contact list.`, {
+        tone: "error",
+      });
+    }
+  });
+}
+
+/** Focus the inline name editor once when it first appears (not on every re-render). */
+function focusNameEditorOnce(el?: Element) {
+  const input = el as HTMLInputElement | undefined;
+  if (input && input.dataset.autofocused !== "true") {
+    input.dataset.autofocused = "true";
+    input.focus();
+    input.select();
+  }
+}
+
+function renderContactRow(params: {
+  channelId: string;
+  props: ChannelsProps;
+  contact: string;
+  label: string | undefined;
+  busy: boolean;
+  canLabel: boolean;
+}) {
+  const { channelId, props, contact, label, busy, canLabel } = params;
+  const editing = props.contactEditKey === `${channelId}:${contact}`;
+  const removing = busy && props.contactsBusyOp === "remove";
+
+  if (editing) {
+    const save = (input: HTMLInputElement) => {
+      props.onContactRename(channelId, contact, input.value);
+    };
+    return html`
+      <div class="contacts-list__row contacts-list__row--editing">
+        <span class="contacts-list__value">${contact}</span>
+        <input
+          class="contacts-input contacts-list__name-input"
+          type="text"
+          autocomplete="off"
+          placeholder="Name"
+          .value=${label ?? ""}
+          ?disabled=${busy}
+          ${ref(focusNameEditorOnce)}
+          @keydown=${(event: KeyboardEvent) => {
+            if (event.key === "Enter") {
+              save(event.currentTarget as HTMLInputElement);
+            } else if (event.key === "Escape") {
+              props.onContactEditCancel();
+            }
+          }}
+        />
+        <button
+          class="btn primary"
+          ?disabled=${busy}
+          @click=${(event: Event) => {
+            const input = (event.currentTarget as HTMLElement)
+              .closest(".contacts-list__row")
+              ?.querySelector<HTMLInputElement>(".contacts-list__name-input");
+            if (input) {
+              save(input);
+            }
+          }}
+        >
+          ${busy && props.contactsBusyOp === "rename" ? "Saving…" : "Save"}
+        </button>
+        <button class="btn" ?disabled=${busy} @click=${() => props.onContactEditCancel()}>
+          Cancel
+        </button>
+      </div>
+    `;
+  }
+
+  return html`
+    <div class="contacts-list__row">
+      <div class="contacts-list__info">
+        ${label ? html`<span class="contacts-list__name">${label}</span>` : nothing}
+        <span class="contacts-list__value">${contact}</span>
+      </div>
+      <div class="contacts-list__actions">
+        ${canLabel
+          ? label
+            ? html`
+                <button
+                  class="contacts-list__iconbtn"
+                  title="Edit name"
+                  aria-label="Edit name"
+                  ?disabled=${busy}
+                  @click=${() => props.onContactEditStart(channelId, contact)}
+                >
+                  ${icons.edit}
+                </button>
+              `
+            : html`
+                <button
+                  class="contacts-list__addname"
+                  ?disabled=${busy}
+                  @click=${() => props.onContactEditStart(channelId, contact)}
+                >
+                  Add name
+                </button>
+              `
+          : nothing}
+        <button
+          class="contacts-list__delete"
+          title="Delete contact"
+          ?disabled=${busy}
+          @click=${() => confirmContactDelete({ channelId, props, contact, label })}
+        >
+          ${removing ? "Deleting…" : "Delete"}
+        </button>
+      </div>
     </div>
   `;
 }
@@ -318,7 +757,10 @@ export function renderAllowedContactsSection(params: { channelId: string; props:
   const contacts = readAllowFrom(props, channelId);
   const dmPolicy = readDmPolicy(props, channelId);
   const busy = props.contactsBusy === channelId;
+  const adding = busy && props.contactsBusyOp === "add";
   const isPhoneChannel = PHONE_CONTACT_CHANNELS.has(channelId);
+  const canLabel = CONTACT_LABEL_CHANNELS.has(channelId);
+  const labels = canLabel ? readContactLabels(props, channelId) : {};
   const inputId = `contact-input-${channelId}`;
   const placeholder = CONTACT_PLACEHOLDERS[channelId] ?? "user id";
 
@@ -330,21 +772,15 @@ export function renderAllowedContactsSection(params: { channelId: string; props:
       ${contacts.length > 0
         ? html`
             <div class="contacts-list" style="margin-top: 10px;">
-              ${contacts.map(
-                (contact) => html`
-                  <div class="contacts-list__row">
-                    <span class="contacts-list__value">${contact}</span>
-                    <button
-                      class="contacts-list__remove"
-                      title="Remove contact"
-                      aria-label="Remove contact"
-                      ?disabled=${busy}
-                      @click=${() => props.onContactRemove(channelId, contact)}
-                    >
-                      ×
-                    </button>
-                  </div>
-                `,
+              ${contacts.map((contact) =>
+                renderContactRow({
+                  channelId,
+                  props,
+                  contact,
+                  label: labels[contact],
+                  busy,
+                  canLabel,
+                }),
               )}
             </div>
           `
@@ -352,35 +788,38 @@ export function renderAllowedContactsSection(params: { channelId: string; props:
             No contacts yet — add a number below.
           </div>`}
       ${isPhoneChannel
-        ? renderPhoneAddRow({ channelId, props, busy })
+        ? renderPhoneAddRow({ channelId, props, busy, canLabel })
         : html`
-            <div class="row contacts-add" style="margin-top: 10px; gap: 8px;">
-              <input
-                id=${inputId}
-                class="contacts-input"
-                type="text"
-                placeholder=${placeholder}
-                ?disabled=${busy}
-                @keydown=${(event: KeyboardEvent) => {
-                  if (event.key === "Enter") {
-                    submitContact(props, channelId, event.currentTarget as HTMLInputElement);
-                  }
-                }}
-              />
-              <button
-                class="btn primary"
-                ?disabled=${busy}
-                @click=${(event: Event) => {
-                  const input = (event.currentTarget as HTMLElement)
-                    .closest(".contacts-add")
-                    ?.querySelector<HTMLInputElement>(`#${CSS.escape(inputId)}`);
-                  if (input) {
-                    submitContact(props, channelId, input);
-                  }
-                }}
-              >
-                ${busy ? "Adding…" : "Add"}
-              </button>
+            <div class="contacts-add" style="margin-top: 10px;">
+              ${canLabel ? renderNameField({ channelId, busy }) : nothing}
+              <div class="row contacts-add__row" style="gap: 8px;">
+                <input
+                  id=${inputId}
+                  class="contacts-input"
+                  type="text"
+                  placeholder=${placeholder}
+                  ?disabled=${busy}
+                  @keydown=${(event: KeyboardEvent) => {
+                    if (event.key === "Enter") {
+                      submitContact(props, channelId, event.currentTarget as HTMLInputElement);
+                    }
+                  }}
+                />
+                <button
+                  class="btn primary"
+                  ?disabled=${busy}
+                  @click=${(event: Event) => {
+                    const input = (event.currentTarget as HTMLElement)
+                      .closest(".contacts-add")
+                      ?.querySelector<HTMLInputElement>(`#${escapeSelector(inputId)}`);
+                    if (input) {
+                      submitContact(props, channelId, input);
+                    }
+                  }}
+                >
+                  ${adding ? "Adding…" : "Add"}
+                </button>
+              </div>
             </div>
           `}
 

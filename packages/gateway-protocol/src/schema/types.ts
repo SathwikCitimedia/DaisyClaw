@@ -79,6 +79,7 @@ export type SessionsCompactionListParams = SchemaType<"SessionsCompactionListPar
 export type SessionsCompactionGetParams = SchemaType<"SessionsCompactionGetParams">;
 export type SessionsCompactionBranchParams = SchemaType<"SessionsCompactionBranchParams">;
 export type SessionsCompactionRestoreParams = SchemaType<"SessionsCompactionRestoreParams">;
+export type SessionsForkFromMessageParams = SchemaType<"SessionsForkFromMessageParams">;
 export type SessionsCompactionListResult = SchemaType<"SessionsCompactionListResult">;
 export type SessionsCompactionGetResult = SchemaType<"SessionsCompactionGetResult">;
 export type SessionsCompactionBranchResult = SchemaType<"SessionsCompactionBranchResult">;

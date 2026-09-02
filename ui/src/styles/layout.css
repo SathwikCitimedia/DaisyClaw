@@ -755,7 +755,7 @@
 .sidebar-session-select .chat-session-picker {
   width: 100%;
   max-width: 100%;
-  max-height: min(480px, calc(100vh - 120px));
+  max-height: min(320px, calc(100vh - 160px));
 }
 
 .sidebar-session-select--collapsed .chat-controls__session-trigger {
@@ -1608,6 +1608,35 @@
   overflow: hidden;
   padding-top: 0;
   padding-bottom: 0;
+}
+
+/* Glossy chat surface: a lit-from-above specular sheen over a cool white
+   base, with a faint accent tint in the top-left corner. The gradient sits on
+   the non-scrolling container, so the sheen stays put while messages scroll.
+   --chat-surface-base is the color the base gradient settles into at the
+   bottom; the sticky composer fade reuses it so the footer blends seamlessly. */
+:root[data-theme-mode="light"] .content--chat {
+  --chat-surface-base: color-mix(in srgb, var(--accent) 3%, #f6f8fb);
+  background:
+    radial-gradient(120% 55% at 50% -12%, rgba(255, 255, 255, 0.95), rgba(255, 255, 255, 0) 62%),
+    radial-gradient(
+      90% 42% at 12% -6%,
+      color-mix(in srgb, var(--accent) 6%, transparent),
+      transparent 58%
+    ),
+    linear-gradient(180deg, #ffffff 0%, var(--chat-surface-base) 100%);
+}
+
+/* Dark-mode parity: the same top-lit sheen, dialed way down. */
+:root:not([data-theme-mode="light"]) .content--chat {
+  background:
+    radial-gradient(120% 55% at 50% -12%, rgba(255, 255, 255, 0.045), transparent 60%),
+    radial-gradient(
+      90% 42% at 12% -6%,
+      color-mix(in srgb, var(--accent) 7%, transparent),
+      transparent 58%
+    ),
+    var(--bg);
 }
 
 .content--chat > * + * {

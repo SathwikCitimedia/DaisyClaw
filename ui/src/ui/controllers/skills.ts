@@ -347,6 +347,32 @@ export async function saveSkillApiKey(state: SkillsState, skillKey: string) {
   });
 }
 
+/**
+ * Saves one env value for a skill. The primary env goes through the `apiKey`
+ * field (secret-ref handling); any other env var is stored under
+ * `skills.entries.<skillKey>.env.<envName>`. Edit state for non-primary vars
+ * is keyed `<skillKey>::<envName>` (see skillEnvEditKey in views/skills.ts).
+ */
+export async function saveSkillEnvValue(
+  state: SkillsState,
+  skillKey: string,
+  envName: string,
+  asApiKey: boolean,
+) {
+  if (asApiKey) {
+    await saveSkillApiKey(state, skillKey);
+    return;
+  }
+  await runSkillMutation(state, skillKey, async (client) => {
+    const value = state.skillEdits[`${skillKey}::${envName}`] ?? "";
+    await client.request("skills.update", { skillKey, env: { [envName]: value } });
+    return {
+      kind: "success",
+      message: `${envName} saved — stored in daisyclaw.json (skills.entries.${skillKey})`,
+    };
+  });
+}
+
 export async function installSkill(
   state: SkillsState,
   skillKey: string,
@@ -355,12 +381,17 @@ export async function installSkill(
   dangerouslyForceUnsafeInstall = false,
 ) {
   await runSkillMutation(state, skillKey, async (client) => {
-    const result = await client.request<{ message?: string }>("skills.install", {
-      name,
-      installId,
-      dangerouslyForceUnsafeInstall,
-      timeoutMs: 120000,
-    });
+    const result = await client.request<{ message?: string }>(
+      "skills.install",
+      {
+        name,
+        installId,
+        dangerouslyForceUnsafeInstall,
+        timeoutMs: 120000,
+      },
+      // Server-side install budget is 120s; keep the client timeout above it.
+      { timeoutMs: 150_000 },
+    );
     return {
       kind: "success",
       message: result?.message ?? "Installed",
@@ -442,7 +473,11 @@ export async function installFromClawHub(state: SkillsState, slug: string) {
   state.clawhubInstallMessage = null;
   state.clawhubAmbiguousMatches = null;
   try {
-    const result = (await state.client.request("skills.install", { source: "clawhub", slug })) as
+    const result = (await state.client.request(
+      "skills.install",
+      { source: "clawhub", slug },
+      { timeoutMs: 150_000 },
+    )) as
       | { ok: true }
       | {
           ok: false;
@@ -471,7 +506,11 @@ export async function installFromClawHubRef(state: SkillsState, ref: string) {
   state.clawhubInstallMessage = null;
   state.clawhubAmbiguousMatches = null;
   try {
-    await state.client.request("skills.install", { source: "clawhub", slug: ref });
+    await state.client.request(
+      "skills.install",
+      { source: "clawhub", slug: ref },
+      { timeoutMs: 150_000 },
+    );
     await loadSkills(state);
     state.clawhubInstallMessage = { kind: "success", text: `Installed ${ref}` };
   } catch (err) {

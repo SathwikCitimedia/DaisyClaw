@@ -37,6 +37,7 @@ import {
   resolveChatAgentFilterOptions,
   resolvePreferredSessionForAgent,
 } from "./chat/session-controls.ts";
+import { confirmDialog } from "./confirm-dialog.ts";
 import {
   controlUiNowMs,
   recordControlUiRenderTiming,
@@ -120,6 +121,16 @@ import {
   updateExecApprovalsFormValue,
 } from "./controllers/exec-approvals.ts";
 import { loadLogs } from "./controllers/logs.ts";
+import { loadModelAuthStatusState } from "./controllers/model-auth-status.ts";
+import {
+  invalidateModelCatalog,
+  loadModels,
+  resolveDefaultModelSelection,
+  saveCustomProvider,
+  saveProviderApiKey,
+  setDefaultModel,
+  setModelFallbacks,
+} from "./controllers/models.ts";
 import { loadNodes } from "./controllers/nodes.ts";
 import { loadPresence } from "./controllers/presence.ts";
 import {
@@ -146,7 +157,7 @@ import {
   installSkill,
   loadClawHubDetail,
   loadSkills,
-  saveSkillApiKey,
+  saveSkillEnvValue,
   searchClawHub,
   setClawHubSearchQuery,
   updateSkillEdit,
@@ -157,6 +168,7 @@ import { getCronJobPayload } from "./cron-payload.ts";
 import { formatTimeMs } from "./format.ts";
 import { formatRelativeTimestamp } from "./format.ts";
 import { icons } from "./icons.ts";
+import "./components/dashboard-header.ts";
 import { createLazyView, renderLazyView } from "./lazy-view.ts";
 import {
   iconForTab,
@@ -170,7 +182,6 @@ import {
   type Tab,
 } from "./navigation.ts";
 import { isPluginEnabledInConfigSnapshot } from "./plugin-activation.ts";
-import "./components/dashboard-header.ts";
 import { isCronSessionKey, resolveSessionDisplayName } from "./session-display.ts";
 import {
   buildAgentMainSessionKey,
@@ -183,6 +194,7 @@ import {
 import { loadLocalAssistantIdentity } from "./storage.ts";
 import { normalizeStringEntries } from "./string-coerce.ts";
 import { normalizeOptionalString } from "./string-coerce.ts";
+import { showToast } from "./toast.ts";
 import type { AgentsFilesGetResult, AgentsFilesListResult, GatewaySessionRow } from "./types.ts";
 import { isRenderableControlUiAvatarUrl } from "./views/agents-utils.ts";
 import { agentLogoUrl } from "./views/agents-utils.ts";
@@ -209,6 +221,7 @@ import { renderExecApprovalPrompt } from "./views/exec-approval.ts";
 import { renderGatewayUrlConfirmation } from "./views/gateway-url-confirmation.ts";
 import { renderLoginGate } from "./views/login-gate.ts";
 import { renderMcp } from "./views/mcp.ts";
+import { renderModelStudio } from "./views/model-studio.ts";
 import { renderOverview } from "./views/overview.ts";
 
 let pendingUpdate: (() => void) | undefined;
@@ -372,7 +385,11 @@ async function ensureSkillWorkshopRevisionSessionsLoaded(
 
 async function resolveSkillWorkshopRevisionSessionKey(
   state: AppViewState,
-  proposal: { key: string; slug: string; origin?: { agentId?: string; sessionKey?: string } },
+  proposal: {
+    key: string;
+    slug: string;
+    origin?: { agentId?: string; sessionKey?: string };
+  },
 ): Promise<string | null> {
   if (state.skillWorkshopUseCurrentChatForRevisions) {
     return normalizeOptionalString(state.sessionKey) ?? null;
@@ -404,7 +421,11 @@ async function resolveSkillWorkshopRevisionSessionKey(
 async function sendSkillWorkshopRevisionRequest(
   state: AppViewState,
   instructions: string,
-  proposal: { key: string; slug: string; origin?: { agentId?: string; sessionKey?: string } },
+  proposal: {
+    key: string;
+    slug: string;
+    origin?: { agentId?: string; sessionKey?: string };
+  },
 ): Promise<void> {
   if (!state.client || !state.connected) {
     throw new Error("Gateway is not connected.");
@@ -456,6 +477,11 @@ function renderSettingsSectionNav(state: AppViewState) {
                 return;
               }
               event.preventDefault();
+              if (tab === "config") {
+                // Explicitly opening Settings always lands on Quick Settings;
+                // advanced mode is a per-visit choice, never a sticky trap.
+                state.configSettingsMode = "quick";
+              }
               state.setTab(tab);
             }}
             title=${titleForTab(tab)}
@@ -850,7 +876,9 @@ export function formatDreamNextCycle(nextRunAtMs: number | undefined): string | 
 }
 
 function resolveDreamingNextCycle(
-  status: { phases?: Record<string, { enabled: boolean; nextRunAtMs?: number }> } | null,
+  status: {
+    phases?: Record<string, { enabled: boolean; nextRunAtMs?: number }>;
+  } | null,
 ): string | null {
   if (!status?.phases) {
     return null;
@@ -939,7 +967,10 @@ function isUpdateBannerDismissed(updateAvailable: unknown): boolean {
   if (!dismissed) {
     return false;
   }
-  const info = updateAvailable as { latestVersion?: unknown; channel?: unknown };
+  const info = updateAvailable as {
+    latestVersion?: unknown;
+    channel?: unknown;
+  };
   const latestVersion = info && typeof info.latestVersion === "string" ? info.latestVersion : null;
   const channel = info && typeof info.channel === "string" ? info.channel : null;
   return Boolean(
@@ -948,7 +979,10 @@ function isUpdateBannerDismissed(updateAvailable: unknown): boolean {
 }
 
 function dismissUpdateBanner(updateAvailable: unknown) {
-  const info = updateAvailable as { latestVersion?: unknown; channel?: unknown };
+  const info = updateAvailable as {
+    latestVersion?: unknown;
+    channel?: unknown;
+  };
   const latestVersion = info && typeof info.latestVersion === "string" ? info.latestVersion : null;
   if (!latestVersion) {
     return;
@@ -1238,6 +1272,10 @@ function extractQuickSettingsChannels(state: AppViewState): QuickSettingsChannel
     KNOWN_CHANNEL_IDS.map(({ id, label }) => [id, label]),
   );
   const channels: QuickSettingsChannel[] = [];
+  const snapshotChannels = state.channelsSnapshot?.channels as Record<
+    string,
+    Record<string, unknown> | undefined
+  > | null;
   for (const id of channelIds) {
     const channelConfig = channelsConfig[id];
     const hasConfig =
@@ -1247,10 +1285,19 @@ function extractQuickSettingsChannels(state: AppViewState): QuickSettingsChannel
     const disabled = hasConfig && (channelConfig as Record<string, unknown>).enabled === false;
     const allowFrom = hasConfig ? (channelConfig as Record<string, unknown>).allowFrom : null;
     const contactCount = Array.isArray(allowFrom) ? allowFrom.length : 0;
+    // Prefer the live status snapshot when we have one — config presence alone
+    // must not read as "connected" (e.g. right after a WhatsApp logout).
+    const summary = snapshotChannels?.[id];
+    const accounts = state.channelsSnapshot?.channelAccounts?.[id] ?? [];
+    const live =
+      summary?.connected === true ||
+      summary?.running === true ||
+      accounts.some((account) => account.connected === true || account.running === true);
+    const connected = state.channelsSnapshot ? live && !disabled : hasConfig && !disabled;
     channels.push({
       id,
       label: knownLabels.get(id) ?? formatQuickSettingsLabel(id),
-      connected: hasConfig && !disabled,
+      connected,
       detail: disabled
         ? "Disabled"
         : hasConfig
@@ -1391,7 +1438,10 @@ function renderCronQuickCreateForTab(
       const draft = state.cronQuickCreateDraft ?? createDefaultDraft();
       const formPatch = draftToCronFormPatch(draft);
       state.cronEditingJobId = null;
-      state.cronForm = { ...DEFAULT_CRON_FORM, ...formPatch } as typeof state.cronForm;
+      state.cronForm = {
+        ...DEFAULT_CRON_FORM,
+        ...formPatch,
+      } as typeof state.cronForm;
       requestHostUpdate?.();
       void (async () => {
         const saved = await addCronJob(state);
@@ -1880,26 +1930,155 @@ export function renderApp(state: AppViewState) {
             typeof activeSession?.fastMode === "boolean"
               ? activeSession.fastMode
               : agentsDefaults.fastMode === true;
-          return renderQuickSettings({
+          const refreshModelStudioData = async () => {
+            invalidateModelCatalog(state.client);
+            await loadConfig(state);
+            if (state.client) {
+              state.modelStudioCatalog = await loadModels(state.client);
+            }
+            void loadModelAuthStatusState(state, { refresh: true }).then(() =>
+              requestHostUpdate?.(),
+            );
+          };
+          const buildModelStudio = () =>
+            renderModelStudio({
+              open: state.modelStudioOpen,
+              loading: state.modelStudioLoading,
+              catalog: state.modelStudioCatalog ?? [],
+              authStatus: state.modelAuthStatusResult,
+              defaultModel: resolveDefaultModelSelection(configObj),
+              busy: state.modelStudioBusy,
+              error: state.modelStudioError,
+              expandedProvider: state.modelStudioProvider,
+              onClose: () => {
+                state.modelStudioOpen = false;
+                state.modelStudioProvider = null;
+                state.modelStudioError = null;
+              },
+              onExpandProvider: (id) => {
+                state.modelStudioProvider = id;
+              },
+              onConnectProvider: (providerId, input) => {
+                void (async () => {
+                  state.modelStudioBusy = `provider:${providerId || "custom"}`;
+                  state.modelStudioError = null;
+                  try {
+                    if (input.baseUrl !== undefined || input.modelId !== undefined) {
+                      await saveCustomProvider(state, {
+                        providerId: providerId || "custom",
+                        baseUrl: input.baseUrl ?? "",
+                        apiKey: input.apiKey,
+                        modelId: input.modelId ?? "",
+                      });
+                    } else {
+                      await saveProviderApiKey(state, providerId, input.apiKey ?? "");
+                    }
+                    await refreshModelStudioData();
+                    state.modelStudioProvider = null;
+                    showToast("Provider connected — its models are now available.", {
+                      tone: "success",
+                    });
+                  } catch (err) {
+                    state.modelStudioError = err instanceof Error ? err.message : String(err);
+                  } finally {
+                    state.modelStudioBusy = null;
+                  }
+                })();
+              },
+              onMakeDefault: (modelRef) => {
+                void (async () => {
+                  state.modelStudioBusy = `default:${modelRef}`;
+                  state.modelStudioError = null;
+                  try {
+                    await setDefaultModel(state, modelRef);
+                    await loadConfig(state);
+                    showToast("Default model updated — new messages use it right away.", {
+                      tone: "success",
+                    });
+                  } catch (err) {
+                    state.modelStudioError = err instanceof Error ? err.message : String(err);
+                  } finally {
+                    state.modelStudioBusy = null;
+                  }
+                })();
+              },
+              onToggleFallback: (modelRef) => {
+                void (async () => {
+                  state.modelStudioBusy = `fallback:${modelRef}`;
+                  state.modelStudioError = null;
+                  try {
+                    const selection = resolveDefaultModelSelection(
+                      state.configForm ?? (state.configSnapshot?.config as Record<string, unknown>),
+                    );
+                    const next = selection.fallbacks.includes(modelRef)
+                      ? selection.fallbacks.filter((entry) => entry !== modelRef)
+                      : [...selection.fallbacks, modelRef];
+                    await setModelFallbacks(state, next);
+                    await loadConfig(state);
+                  } catch (err) {
+                    state.modelStudioError = err instanceof Error ? err.message : String(err);
+                  } finally {
+                    state.modelStudioBusy = null;
+                  }
+                })();
+              },
+              onOpenAdvanced: () => {
+                state.modelStudioOpen = false;
+                state.configSettingsMode = "advanced";
+                state.aiAgentsActiveSection = "models";
+                state.setTab("aiAgents");
+              },
+            });
+          // Crash guard: a dialog bug must degrade to an error toast, never
+          // freeze the whole app render.
+          let modelStudio: unknown = nothing;
+          try {
+            modelStudio = buildModelStudio();
+          } catch (err) {
+            console.error("model studio render failed", err);
+            const message = err instanceof Error ? err.message : String(err);
+            setTimeout(() => {
+              state.modelStudioOpen = false;
+              showToast(`Model manager failed to open: ${message}`, {
+                tone: "error",
+              });
+            }, 0);
+          }
+          return html`${renderQuickSettings({
             currentModel,
             thinkingLevel,
             fastMode,
             onModelChange: () => {
-              state.configSettingsMode = "advanced";
-              state.aiAgentsActiveSection = "models";
-              state.setTab("aiAgents");
+              state.modelStudioOpen = true;
+              state.modelStudioError = null;
+              state.modelStudioLoading = true;
+              requestHostUpdate?.();
+              void (async () => {
+                try {
+                  await loadConfig(state);
+                  if (state.client) {
+                    state.modelStudioCatalog = await loadModels(state.client);
+                  }
+                  void loadModelAuthStatusState(state).then(() => requestHostUpdate?.());
+                } finally {
+                  state.modelStudioLoading = false;
+                }
+              })();
             },
             onThinkingChange: (level) => {
-              void patchSession(state, state.sessionKey, { thinkingLevel: level }).then(() =>
-                requestHostUpdate?.(),
-              );
+              void patchSession(state, state.sessionKey, {
+                thinkingLevel: level,
+              }).then(() => requestHostUpdate?.());
             },
             onFastModeToggle: () => {
-              void patchSession(state, state.sessionKey, { fastMode: !fastMode }).then(() =>
-                requestHostUpdate?.(),
-              );
+              void patchSession(state, state.sessionKey, {
+                fastMode: !fastMode,
+              }).then(() => requestHostUpdate?.());
             },
             channels: extractQuickSettingsChannels(state),
+            onAddChannel: () => {
+              state.setTab("channels");
+            },
             onChannelConfigure: (channelId) => {
               goToChannelCard(state, channelId);
             },
@@ -1929,13 +2108,22 @@ export function renderApp(state: AppViewState) {
             },
             channelConnectBusy: state.channelConnectBusy,
             onChannelDisconnect: (channelId) => {
-              const confirmed = globalThis.confirm(
-                `Disconnect ${channelId}? This logs the channel out and disables it until you reconnect.`,
-              );
-              if (!confirmed) {
-                return;
-              }
-              void state.handleChannelDisconnect(channelId).then(() => requestHostUpdate?.());
+              void confirmDialog({
+                title: "Disconnect channel",
+                message: `Disconnect ${formatQuickSettingsLabel(channelId)}? It will stop responding until you reconnect. Your saved credentials are kept.`,
+                confirmLabel: "Disconnect",
+                loadingLabel: "Disconnecting…",
+                onConfirm: async () => {
+                  await state.handleChannelDisconnect(channelId);
+                },
+              }).then((confirmed) => {
+                if (confirmed) {
+                  requestHostUpdate?.();
+                  showToast(`${formatQuickSettingsLabel(channelId)} disconnected`, {
+                    tone: "success",
+                  });
+                }
+              });
             },
             channelDisconnectBusy: state.channelDisconnectBusy,
             automation: {
@@ -2028,7 +2216,7 @@ export function renderApp(state: AppViewState) {
             gatewayUrl: state.settings.gatewayUrl,
             assistantName: state.assistantName,
             version: state.hello?.server?.version ?? "",
-          });
+          })}${modelStudio}`;
         }
         // Advanced mode — full config form with accordion groups
         return renderConfigTab({
@@ -2081,12 +2269,23 @@ export function renderApp(state: AppViewState) {
             nostrProfileFormState: state.nostrProfileFormState,
             nostrProfileAccountId: state.nostrProfileAccountId,
             contactsBusy: state.channelContactsBusy,
+            contactsBusyOp: state.channelContactsBusyOp,
             contactsError: state.channelContactsError,
             pairingRequests: state.pairingRequests,
             pairingBusy: state.pairingBusy,
             onContactAdd: (channelId, value) => void state.handleContactAdd(channelId, value),
-            onContactsAdd: (channelId, values) => void state.handleContactsAdd(channelId, values),
-            onContactRemove: (channelId, value) => void state.handleContactRemove(channelId, value),
+            onContactsAdd: (channelId, values, labels) =>
+              void state.handleContactsAdd(channelId, values, labels),
+            onContactRemove: (channelId, value) => state.handleContactRemove(channelId, value),
+            onContactRename: (channelId, contact, name) =>
+              void state.handleContactRename(channelId, contact, name),
+            contactEditKey: state.contactEditKey,
+            onContactEditStart: (channelId, contact) => {
+              state.contactEditKey = `${channelId}:${contact}`;
+            },
+            onContactEditCancel: () => {
+              state.contactEditKey = null;
+            },
             onDmPolicyChange: (channelId, policy) =>
               void state.handleDmPolicyChange(channelId, policy),
             onPairingApprove: (entry) => void state.handlePairingApprove(entry),
@@ -2096,6 +2295,58 @@ export function renderApp(state: AppViewState) {
             },
             onCloseChannel: () => {
               state.channelsFocus = null;
+              state.channelSetupForced = null;
+            },
+            channelSetupBusy: state.channelSetupBusy,
+            onChannelSetupConnect: (channelId) => {
+              void (async () => {
+                state.channelSetupBusy = channelId;
+                try {
+                  if (state.configFormDirty) {
+                    await state.handleChannelConfigSave();
+                  }
+                  await state.handleChannelEnable(channelId);
+                  state.channelSetupForced = null;
+                  showToast("Channel setup saved — connecting…", {
+                    tone: "success",
+                  });
+                } catch (err) {
+                  showToast(`Channel setup failed: ${String(err)}`, {
+                    tone: "error",
+                  });
+                } finally {
+                  state.channelSetupBusy = null;
+                }
+              })();
+            },
+            setupForcedChannel: state.channelSetupForced,
+            onForceSetup: (channelId) => {
+              state.channelSetupForced = channelId;
+            },
+            channelDisconnectBusy: state.channelDisconnectBusy,
+            onChannelDisconnect: (channelId) => {
+              const label = formatQuickSettingsLabel(channelId);
+              void confirmDialog({
+                title: "Disconnect channel",
+                message: `Disconnect ${label}? It will stop responding until you reconnect. Your saved credentials are kept.`,
+                confirmLabel: "Disconnect",
+                loadingLabel: "Disconnecting…",
+                onConfirm: async () => {
+                  await state.handleChannelDisconnect(channelId);
+                },
+              }).then((confirmed) => {
+                if (confirmed) {
+                  showToast(`${label} disconnected`, { tone: "success" });
+                }
+              });
+            },
+            channelEnableBusy: state.channelConnectBusy,
+            onChannelEnable: (channelId) => {
+              void state.handleChannelEnable(channelId).then(() =>
+                showToast(`${formatQuickSettingsLabel(channelId)} reconnecting…`, {
+                  tone: "info",
+                }),
+              );
             },
             onRefresh: (probe) => void loadChannels(state, probe),
             onWhatsAppConnect: (force) => void state.handleWhatsAppConnect(force),
@@ -2537,7 +2788,9 @@ export function renderApp(state: AppViewState) {
                             <button
                               class="nav-section__label"
                               @click=${() => {
-                                const next = { ...state.settings.navGroupsCollapsed };
+                                const next = {
+                                  ...state.settings.navGroupsCollapsed,
+                                };
                                 next[group.label] = !isGroupCollapsed;
                                 state.applySettings({
                                   ...state.settings,
@@ -2600,6 +2853,8 @@ export function renderApp(state: AppViewState) {
                       return;
                     }
                     event.preventDefault();
+                    // Sidebar Settings always opens the friendly Quick view.
+                    state.configSettingsMode = "quick";
                     state.setTab("config");
                   }}
                   title=${titleForTab("config")}
@@ -2637,7 +2892,8 @@ export function renderApp(state: AppViewState) {
         state.updateAvailable.latestVersion !== state.updateAvailable.currentVersion &&
         !isUpdateBannerDismissed(state.updateAvailable)
           ? html`<div class="update-banner callout danger" role="alert">
-              <strong>${t("chat.updateAvailable")}</strong> v${state.updateAvailable.latestVersion}
+              <strong>${t("chat.updateAvailable")}</strong>
+              v${state.updateAvailable.latestVersion}
               (${t("chat.runningVersion", { version: state.updateAvailable.currentVersion })}).
               <button
                 class="btn btn--sm update-banner__btn"
@@ -2689,18 +2945,29 @@ export function renderApp(state: AppViewState) {
                             ? t("dreaming.header.refreshing")
                             : t("dreaming.header.refresh")}
                         </button>
-                        <button
-                          class="dreams__phase-toggle ${dreamingOn
-                            ? "dreams__phase-toggle--on"
-                            : ""}"
-                          ?disabled=${dreamingLoading}
-                          @click=${() => applyDreamingEnabled(!dreamingOn)}
-                        >
-                          <span class="dreams__phase-toggle-dot"></span>
-                          <span class="dreams__phase-toggle-label">
-                            ${dreamingOn ? t("dreaming.header.on") : t("dreaming.header.off")}
-                          </span>
-                        </button>
+                        ${dreamingOn
+                          ? html`
+                              <button
+                                class="dreams__phase-toggle dreams__phase-toggle--on"
+                                title="Click to turn dreaming off"
+                                ?disabled=${dreamingLoading}
+                                @click=${() => applyDreamingEnabled(false)}
+                              >
+                                <span class="dreams__phase-toggle-dot"></span>
+                                <span class="dreams__phase-toggle-label">
+                                  ${t("dreaming.header.on")}
+                                </span>
+                              </button>
+                            `
+                          : html`
+                              <button
+                                class="btn primary btn--sm"
+                                ?disabled=${dreamingLoading}
+                                @click=${() => applyDreamingEnabled(true)}
+                              >
+                                ${t("dreaming.header.enable")}
+                              </button>
+                            `}
                       </div>
                     `
                   : nothing}
@@ -2820,8 +3087,11 @@ export function renderApp(state: AppViewState) {
                 },
               );
               const operatorCanWrite = hasOperatorWriteAccess(
-                (state.hello as { auth?: { role?: string; scopes?: string[] } } | null)?.auth ??
-                  null,
+                (
+                  state.hello as {
+                    auth?: { role?: string; scopes?: string[] };
+                  } | null
+                )?.auth ?? null,
               );
               return m.renderSessions({
                 loading: state.sessionsLoading,
@@ -2980,8 +3250,11 @@ export function renderApp(state: AppViewState) {
         ${state.tab === "workboard"
           ? renderLazyView(lazyWorkboard, (m) => {
               const auth =
-                (state.hello as { auth?: { role?: string; scopes?: string[] } } | null)?.auth ??
-                null;
+                (
+                  state.hello as {
+                    auth?: { role?: string; scopes?: string[] };
+                  } | null
+                )?.auth ?? null;
               return m.renderWorkboard({
                 host: state,
                 client: state.client,
@@ -3049,7 +3322,10 @@ export function renderApp(state: AppViewState) {
                 deliveryToSuggestions,
                 accountSuggestions,
                 onFormChange: (patch) => {
-                  state.cronForm = normalizeCronFormState({ ...state.cronForm, ...patch });
+                  state.cronForm = normalizeCronFormState({
+                    ...state.cronForm,
+                    ...patch,
+                  });
                   state.cronFieldErrors = validateCronForm(state.cronForm);
                 },
                 onRefresh: () => void state.loadCron(),
@@ -3093,7 +3369,10 @@ export function renderApp(state: AppViewState) {
                   await loadCronRuns(state, jobId);
                 }),
                 onLoadMoreJobs: () =>
-                  void loadCronJobsPage(state, { append: true, tableFilters: true }),
+                  void loadCronJobsPage(state, {
+                    append: true,
+                    tableFilters: true,
+                  }),
                 onJobsFiltersChange: runUiTask(async (patch) => {
                   updateCronJobsFilter(state, patch);
                   const shouldReload =
@@ -3104,7 +3383,10 @@ export function renderApp(state: AppViewState) {
                     Boolean(patch.cronJobsSortBy) ||
                     Boolean(patch.cronJobsSortDir);
                   if (shouldReload) {
-                    await loadCronJobsPage(state, { append: false, tableFilters: true });
+                    await loadCronJobsPage(state, {
+                      append: false,
+                      tableFilters: true,
+                    });
                   }
                 }),
                 onJobsFiltersReset: runUiTask(async () => {
@@ -3116,7 +3398,10 @@ export function renderApp(state: AppViewState) {
                     cronJobsSortBy: "nextRunAtMs",
                     cronJobsSortDir: "asc",
                   });
-                  await loadCronJobsPage(state, { append: false, tableFilters: true });
+                  await loadCronJobsPage(state, {
+                    append: false,
+                    tableFilters: true,
+                  });
                 }),
                 onLoadMoreRuns: () => void loadMoreCronRuns(state),
                 onRunsFiltersChange: runUiTask(async (patch) => {
@@ -3260,11 +3545,17 @@ export function renderApp(state: AppViewState) {
                   void loadAgentFileContent(state, resolvedAgentId, name);
                 },
                 onFileDraftChange: (name, content) => {
-                  state.agentFileDrafts = { ...state.agentFileDrafts, [name]: content };
+                  state.agentFileDrafts = {
+                    ...state.agentFileDrafts,
+                    [name]: content,
+                  };
                 },
                 onFileReset: (name) => {
                   const base = state.agentFileContents[name] ?? "";
-                  state.agentFileDrafts = { ...state.agentFileDrafts, [name]: base };
+                  state.agentFileDrafts = {
+                    ...state.agentFileDrafts,
+                    [name]: base,
+                  };
                 },
                 onFileSave: (name) => {
                   if (!resolvedAgentId) {
@@ -3332,8 +3623,11 @@ export function renderApp(state: AppViewState) {
                   if (index < 0) {
                     return;
                   }
-                  const list = (getCurrentConfigValue() as { agents?: { list?: unknown[] } } | null)
-                    ?.agents?.list;
+                  const list = (
+                    getCurrentConfigValue() as {
+                      agents?: { list?: unknown[] };
+                    } | null
+                  )?.agents?.list;
                   const entry = Array.isArray(list)
                     ? (list[index] as { skills?: unknown })
                     : undefined;
@@ -3439,7 +3733,10 @@ export function renderApp(state: AppViewState) {
                   if (!primary) {
                     return;
                   }
-                  updateConfigFormValue(state, basePathResult, { primary, fallbacks: normalized });
+                  updateConfigFormValue(state, basePathResult, {
+                    primary,
+                    fallbacks: normalized,
+                  });
                 },
                 onSetDefault: (agentId) => {
                   stageDefaultAgentConfigEntry(state, agentId);
@@ -3483,7 +3780,8 @@ export function renderApp(state: AppViewState) {
                 onRefresh: () => void loadSkills(state, { clearMessages: true }),
                 onToggle: (key, enabled) => void updateSkillEnabled(state, key, enabled),
                 onEdit: (key, value) => updateSkillEdit(state, key, value),
-                onSaveKey: (key) => void saveSkillApiKey(state, key),
+                onSaveKey: (skillKey, envName, asApiKey) =>
+                  void saveSkillEnvValue(state, skillKey, envName, asApiKey),
                 onInstall: (skillKey, name, installId) =>
                   void installSkill(state, skillKey, name, installId),
                 onDetailOpen: (key) => {
@@ -3651,7 +3949,10 @@ export function renderApp(state: AppViewState) {
                 onLoadExecApprovals: () => {
                   const target =
                     state.execApprovalsTarget === "node" && state.execApprovalsTargetNodeId
-                      ? { kind: "node" as const, nodeId: state.execApprovalsTargetNodeId }
+                      ? {
+                          kind: "node" as const,
+                          nodeId: state.execApprovalsTargetNodeId,
+                        }
                       : { kind: "gateway" as const };
                   void loadExecApprovals(state, target);
                 },
@@ -3688,7 +3989,10 @@ export function renderApp(state: AppViewState) {
                 onSaveExecApprovals: () => {
                   const target =
                     state.execApprovalsTarget === "node" && state.execApprovalsTargetNodeId
-                      ? { kind: "node" as const, nodeId: state.execApprovalsTargetNodeId }
+                      ? {
+                          kind: "node" as const,
+                          nodeId: state.execApprovalsTargetNodeId,
+                        }
                       : { kind: "gateway" as const };
                   void saveExecApprovals(state, target);
                 },
@@ -3755,7 +4059,9 @@ export function renderApp(state: AppViewState) {
                     messages: state.chatMessages,
                     onRequestUpdate: () => requestHostUpdate?.(),
                     onRun: (id) =>
-                      void state.handleSendChat(actionPromptFor(id), { restoreDraft: true }),
+                      void state.handleSendChat(actionPromptFor(id), {
+                        restoreDraft: true,
+                      }),
                   }),
                   workspaceFiles: {
                     agentId: chatAgentId,
@@ -3780,7 +4086,10 @@ export function renderApp(state: AppViewState) {
                   onRefresh: () => {
                     state.chatSideResult = null;
                     state.resetToolStream();
-                    void refreshChat(state, { awaitHistory: true, scheduleScroll: false });
+                    void refreshChat(state, {
+                      awaitHistory: true,
+                      scheduleScroll: false,
+                    });
                   },
                   onChatScroll: (event) => state.handleChatScroll(event),
                   getDraft: () => state.chatMessage,
@@ -3791,7 +4100,43 @@ export function renderApp(state: AppViewState) {
                   attachments: state.chatAttachments,
                   onAttachmentsChange: (next) => (state.chatAttachments = next),
                   onSend: () => void state.handleSendChat(),
-                  onCompact: () => void state.handleSendChat("/compact", { restoreDraft: true }),
+                  onSendText: (text: string) =>
+                    void state.handleSendChat(text, { restoreDraft: true }),
+                  onEditFork: (
+                    target: { messageId?: string; lastUser?: boolean },
+                    text: string,
+                  ) => {
+                    void (async () => {
+                      if (!state.client) {
+                        showToast("Message edit failed: gateway not connected", { tone: "error" });
+                        return;
+                      }
+                      try {
+                        // Fork the session so history ends just before the
+                        // edited message — the old exchange truly leaves the
+                        // model context, like ChatGPT's edit-and-regenerate.
+                        await state.client.request("sessions.forkFromMessage", {
+                          key: state.sessionKey,
+                          ...(target.messageId
+                            ? { messageId: target.messageId }
+                            : { lastUser: true }),
+                          ...scopedAgentParamsForSession(state, state.sessionKey),
+                        });
+                      } catch (err) {
+                        showToast(`Message edit failed: ${String(err)}`, {
+                          tone: "error",
+                        });
+                        return;
+                      }
+                      await state.handleSendChat(text, {
+                        restoreDraft: true,
+                      });
+                    })();
+                  },
+                  onCompact: () =>
+                    void state.handleSendChat("/compact", {
+                      restoreDraft: true,
+                    }),
                   onOpenSessionCheckpoints: () => {
                     state.sessionsExpandedCheckpointKey = state.sessionKey;
                     state.setTab("sessions" as import("./navigation.ts").Tab);
@@ -3927,7 +4272,10 @@ export function renderApp(state: AppViewState) {
                   truncated: state.logsTruncated,
                   onFilterTextChange: (next) => (state.logsFilterText = next),
                   onLevelToggle: (level, enabled) => {
-                    state.logsLevelFilters = { ...state.logsLevelFilters, [level]: enabled };
+                    state.logsLevelFilters = {
+                      ...state.logsLevelFilters,
+                      [level]: enabled,
+                    };
                   },
                   onToggleAutoFollow: (next) => (state.logsAutoFollow = next),
                   onRefresh: () => void loadLogs(state, { reset: true }),
@@ -3940,6 +4288,8 @@ export function renderApp(state: AppViewState) {
         ${state.tab === "dreams"
           ? renderDreaming({
               active: dreamingOn,
+              onEnableChange: applyDreamingEnabled,
+              enableBusy: dreamingLoading,
               selectedAgentId: dreamingSelectedAgentId,
               agentOptions: dreamingAgentOptions,
               shortTermCount: state.dreamingStatus?.shortTermCount ?? 0,

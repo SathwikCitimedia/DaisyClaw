@@ -120,7 +120,16 @@ export function canRunPlaywrightChromium(chromiumExecutablePath: string): boolea
   if (!existsSync(chromiumExecutablePath)) {
     return false;
   }
-  return spawnSync(chromiumExecutablePath, ["--version"], { stdio: "ignore" }).status === 0;
+  if (process.platform === "win32") {
+    // chrome.exe never exits for `--version` on Windows; an untimed spawnSync
+    // here hangs the importing test worker forever. Existence is the best
+    // probe available — Playwright fails loudly later if the binary is broken.
+    return true;
+  }
+  return (
+    spawnSync(chromiumExecutablePath, ["--version"], { stdio: "ignore", timeout: 15_000 })
+      .status === 0
+  );
 }
 
 export async function startControlUiE2eServer(): Promise<ControlUiE2eServer> {

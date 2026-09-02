@@ -77,6 +77,32 @@ export function formatDateTimeMs(
   return timestampMs === undefined ? fallback : new Date(timestampMs).toLocaleString([], options);
 }
 
+/**
+ * Contextual timestamp for list rows: time only for today ("9:14 PM"),
+ * month-day + time within the current year ("Jul 23, 9:14 PM"), and a full
+ * date for anything older ("Jul 23, 2025").
+ */
+export function formatContextualDateTimeMs(ms?: number | null, fallback = ""): string {
+  const timestampMs = asDateTimestampMs(ms);
+  if (timestampMs === undefined) {
+    return fallback;
+  }
+  const date = new Date(timestampMs);
+  const now = new Date();
+  if (date.toDateString() === now.toDateString()) {
+    return date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  }
+  if (date.getFullYear() === now.getFullYear()) {
+    return date.toLocaleString([], {
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+    });
+  }
+  return date.toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" });
+}
+
 export function formatList(values?: Array<string | null | undefined>): string {
   if (!values || values.length === 0) {
     return "none";

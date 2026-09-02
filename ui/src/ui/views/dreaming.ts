@@ -154,6 +154,9 @@ export type DreamingProps = {
   onResetGroundedShortTerm: () => void;
   onRepairDreamingArtifacts: () => void;
   onRequestUpdate?: () => void;
+  /** Flips the dreaming feature on/off (opens the restart confirmation). */
+  onEnableChange?: (enabled: boolean) => void;
+  enableBusy?: boolean;
 };
 
 const DREAM_PHRASE_KEYS = [
@@ -471,7 +474,11 @@ function renderScene(props: DreamingProps, idle: boolean, dreamText: string) {
 
       <div class="dreams__status">
         <span class="dreams__status-label"
-          >${props.active ? t("dreaming.status.active") : t("dreaming.status.idle")}</span
+          >${props.active
+            ? t("dreaming.status.active")
+            : props.onEnableChange
+              ? t("dreaming.status.off")
+              : t("dreaming.status.idle")}</span
         >
         <div class="dreams__status-detail">
           <div class="dreams__status-dot"></div>
@@ -484,6 +491,22 @@ function renderScene(props: DreamingProps, idle: boolean, dreamText: string) {
           </span>
         </div>
       </div>
+
+      ${idle && props.onEnableChange
+        ? html`
+            <div class="dreams__enable">
+              <p class="dreams__enable-text">${t("dreaming.scene.offExplainer")}</p>
+              <button
+                class="btn primary dreams__enable-btn"
+                ?disabled=${props.enableBusy}
+                @click=${() => props.onEnableChange?.(true)}
+              >
+                ${props.enableBusy ? t("dreaming.scene.enabling") : t("dreaming.scene.enableCta")}
+              </button>
+              <span class="dreams__enable-note">${t("dreaming.scene.offRestartNote")}</span>
+            </div>
+          `
+        : nothing}
 
       <!-- Sleep phases -->
       <div class="dreams__phases">

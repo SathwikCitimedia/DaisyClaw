@@ -2,6 +2,8 @@
 import type { GatewayBrowserClient } from "../gateway.ts";
 import type { ChannelsStatusSnapshot } from "../types.ts";
 
+export type ChannelContactsBusyOp = "add" | "remove" | "rename" | "policy";
+
 export type ChannelsState = {
   client: GatewayBrowserClient | null;
   connected: boolean;
@@ -18,6 +20,7 @@ export type ChannelsState = {
   channelDisconnectBusy?: string | null;
   channelConnectBusy?: string | null;
   channelContactsBusy?: string | null;
+  channelContactsBusyOp?: ChannelContactsBusyOp | null;
   channelContactsError?: string | null;
   pairingRequests?: PairingRequestEntry[] | null;
   pairingBusy?: string | null;

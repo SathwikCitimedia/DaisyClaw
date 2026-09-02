@@ -139,7 +139,7 @@ describe("loadSettings default gateway URL derivation", () => {
       theme: "claw",
       themeMode: "system",
       chatShowThinking: true,
-      chatShowToolCalls: true,
+      chatShowToolCalls: false,
       chatAutoScroll: "near-bottom",
       splitRatio: 0.6,
       navCollapsed: false,

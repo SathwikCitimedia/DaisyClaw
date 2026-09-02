@@ -3,9 +3,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ChannelsStatusSnapshot } from "../types.ts";
 import {
   addAllowedContact,
+  addAllowedContacts,
   connectWhatsApp,
   loadChannels,
   removeAllowedContact,
+  renameAllowedContact,
   type ChannelsState,
 } from "./channels.ts";
 
@@ -98,14 +100,22 @@ describe("channels controller WhatsApp connect", () => {
       baseHash: "hash-1",
     });
     expect(request).toHaveBeenCalledWith("channels.start", { channel: "whatsapp" });
-    expect(request).toHaveBeenCalledWith("web.login.wait", {
-      timeoutMs: 30000,
-      currentQrDataUrl: "data:image/png;base64,first-qr",
-    });
-    expect(request).toHaveBeenCalledWith("web.login.wait", {
-      timeoutMs: 30000,
-      currentQrDataUrl: "data:image/png;base64,next-qr",
-    });
+    expect(request).toHaveBeenCalledWith(
+      "web.login.wait",
+      {
+        timeoutMs: 30000,
+        currentQrDataUrl: "data:image/png;base64,first-qr",
+      },
+      { timeoutMs: 45_000 },
+    );
+    expect(request).toHaveBeenCalledWith(
+      "web.login.wait",
+      {
+        timeoutMs: 30000,
+        currentQrDataUrl: "data:image/png;base64,next-qr",
+      },
+      { timeoutMs: 45_000 },
+    );
     expect(state.whatsappLoginConnected).toBe(true);
     expect(state.whatsappLoginQrDataUrl).toBeNull();
     expect(state.whatsappLoginMessage).toBe("WhatsApp connected.");
@@ -195,6 +205,95 @@ describe("channels controller allowed contacts", () => {
 
     expect(request).toHaveBeenCalledWith("config.patch", {
       raw: JSON.stringify({ channels: { whatsapp: { allowFrom: ["+222"] } } }),
+      baseHash: "hash-1",
+      replacePaths: ["channels.whatsapp.allowFrom"],
+    });
+  });
+
+  it("stores a contact label alongside a new contact", async () => {
+    const state = createState();
+    const request = requireClientRequest(state);
+    mockConfig(request, { dmPolicy: "allowlist", allowFrom: ["+111"] });
+
+    await addAllowedContacts(state, "whatsapp", ["+222"], { "+222": " Aasrith " });
+
+    expect(request).toHaveBeenCalledWith("config.patch", {
+      raw: JSON.stringify({
+        channels: {
+          whatsapp: { allowFrom: ["+111", "+222"], contactLabels: { "+222": "Aasrith" } },
+        },
+      }),
+      baseHash: "hash-1",
+    });
+  });
+
+  it("labels an already-listed contact without rewriting allowFrom", async () => {
+    const state = createState();
+    const request = requireClientRequest(state);
+    mockConfig(request, { dmPolicy: "allowlist", allowFrom: ["+111"] });
+
+    await addAllowedContacts(state, "whatsapp", ["+111"], { "+111": "Abhinash" });
+
+    expect(request).toHaveBeenCalledWith("config.patch", {
+      raw: JSON.stringify({
+        channels: { whatsapp: { contactLabels: { "+111": "Abhinash" } } },
+      }),
+      baseHash: "hash-1",
+    });
+  });
+
+  it("renames a contact by merging only that label key", async () => {
+    const state = createState();
+    const request = requireClientRequest(state);
+    mockConfig(request, {
+      allowFrom: ["+111", "+222"],
+      contactLabels: { "+111": "Old name", "+222": "Kept" },
+    });
+
+    await renameAllowedContact(state, "whatsapp", "+111", "New name");
+
+    expect(request).toHaveBeenCalledWith("config.patch", {
+      raw: JSON.stringify({
+        channels: { whatsapp: { contactLabels: { "+111": "New name" } } },
+      }),
+      baseHash: "hash-1",
+    });
+  });
+
+  it("clears a label with a merge-patch null delete when renamed to empty", async () => {
+    const state = createState();
+    const request = requireClientRequest(state);
+    mockConfig(request, {
+      allowFrom: ["+111", "+222"],
+      contactLabels: { "+111": "Aasrith", "+222": "Kept" },
+    });
+
+    await renameAllowedContact(state, "whatsapp", "+111", "  ");
+
+    // replacePaths only applies to arrays on the gateway; label keys must be
+    // deleted with RFC 7396 nulls or they silently survive the merge.
+    expect(request).toHaveBeenCalledWith("config.patch", {
+      raw: JSON.stringify({
+        channels: { whatsapp: { contactLabels: { "+111": null } } },
+      }),
+      baseHash: "hash-1",
+    });
+  });
+
+  it("drops the contact's label when the contact is removed", async () => {
+    const state = createState();
+    const request = requireClientRequest(state);
+    mockConfig(request, {
+      allowFrom: ["+111", "+222"],
+      contactLabels: { "+111": "Aasrith", "+222": "Kept" },
+    });
+
+    await removeAllowedContact(state, "whatsapp", "+111");
+
+    expect(request).toHaveBeenCalledWith("config.patch", {
+      raw: JSON.stringify({
+        channels: { whatsapp: { allowFrom: ["+222"], contactLabels: { "+111": null } } },
+      }),
       baseHash: "hash-1",
       replacePaths: ["channels.whatsapp.allowFrom"],
     });

@@ -492,6 +492,9 @@ export async function refreshActiveTab(host: SettingsHost, opts?: { chatStartup?
         ]);
         break;
       case "chat": {
+        // Non-blocking: pulls channel contact names so session labels can show
+        // "Abhinash" instead of the raw number, without delaying chat startup.
+        void loadConfig(app);
         try {
           await refreshChat(host as unknown as Parameters<typeof refreshChat>[0], {
             awaitHistory: opts?.chatStartup === true,

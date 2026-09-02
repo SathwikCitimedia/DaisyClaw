@@ -98,7 +98,8 @@ export const zh_CN = {
       websocketUrl: "Gateway WebSocket URL",
     },
     gatewayTailscale: {
-      docsNote: "文档：\nhttps://docs.daisyclaw.ai/gateway/tailscale\nhttps://docs.daisyclaw.ai/web",
+      docsNote:
+        "文档：\nhttps://docs.daisyclaw.ai/gateway/tailscale\nhttps://docs.daisyclaw.ai/web",
       funnel: "Funnel",
       funnelHint: "通过 Tailscale Funnel 暴露公网 HTTPS",
       missingBinNote:
@@ -322,6 +323,12 @@ export const zh_CN = {
       nodeManager: "技能安装首选 Node 管理器",
       setEnv: "为 {name} 设置 {env}？",
       skipDepsHint: "继续，不安装依赖",
+      starterPack:
+        "使用推荐的入门技能包？将隐藏 {count} 个开发者/高级技能；之后可随时在控制台重新启用。",
+      starterPackApplied: "已隐藏 {count} 个高级技能（可随时在控制台重新启用）。",
+      starterPackConnect: "连接账号后可用：{skills}",
+      starterPackInstant: "开箱即用：{skills}",
+      starterPackTitle: "入门技能包",
       statusTitle: "技能状态",
       allReadyTitle: "所有技能已就绪",
     },

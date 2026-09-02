@@ -231,7 +231,9 @@ export function loadSettings(): UiSettings {
     theme: "claw",
     themeMode: "system",
     chatShowThinking: true,
-    chatShowToolCalls: true,
+    // Tool-call cards are developer detail — hidden for end users by default,
+    // discoverable via the chat settings toggle.
+    chatShowToolCalls: false,
     chatAutoScroll: "near-bottom",
     splitRatio: 0.6,
     navCollapsed: false,

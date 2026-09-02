@@ -470,6 +470,18 @@ function resolveConfigStatMetadata(
   };
 }
 
+/** Byte size of a config object serialized the way this module writes it. */
+function resolveCanonicalConfigBytes(parsed: unknown): number | null {
+  if (parsed === null || parsed === undefined || typeof parsed !== "object") {
+    return null;
+  }
+  try {
+    return Buffer.byteLength(JSON.stringify(parsed, null, 2).trimEnd().concat("\n"), "utf-8");
+  } catch {
+    return null;
+  }
+}
+
 function resolveConfigWriteSuspiciousReasons(params: {
   existsBefore: boolean;
   previousBytes: number | null;
@@ -2333,8 +2345,13 @@ export function createConfigIO(
     const nextHash = hashConfigRaw(json);
     const previousHash = resolveConfigSnapshotHash(snapshot);
     const changedPathCount = changedPaths?.size;
+    // Size comparisons must be canonical-vs-canonical: the on-disk file may
+    // carry inflated formatting or comments (e.g. hand edits, external tools),
+    // and the raw byte count would then flag a harmless rewrite as a
+    // destructive size drop. Fall back to raw bytes when the file is unparsed.
     const previousBytes =
-      typeof snapshot.raw === "string" ? Buffer.byteLength(snapshot.raw, "utf-8") : null;
+      resolveCanonicalConfigBytes(snapshot.parsed) ??
+      (typeof snapshot.raw === "string" ? Buffer.byteLength(snapshot.raw, "utf-8") : null);
     const nextBytes = Buffer.byteLength(json, "utf-8");
     const previousStat = snapshot.exists
       ? await deps.fs.promises.stat(configPath).catch(() => null)

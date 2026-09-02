@@ -9,6 +9,7 @@ import {
 } from "./zod-schema.channels.js";
 import {
   BlockStreamingCoalesceSchema,
+  ContactLabelsSchema,
   ContextVisibilityModeSchema,
   DmConfigSchema,
   DmPolicySchema,
@@ -83,6 +84,7 @@ function buildWhatsAppCommonShape(params: { useDefaults: boolean }) {
       : DmPolicySchema.optional(),
     selfChatMode: z.boolean().optional(),
     allowFrom: z.array(z.string()).optional(),
+    contactLabels: ContactLabelsSchema,
     defaultTo: z.string().optional(),
     groupAllowFrom: z.array(z.string()).optional(),
     groupPolicy: params.useDefaults

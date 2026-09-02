@@ -330,6 +330,12 @@ export const en = {
       nodeManager: "Preferred node manager for skill installs",
       setEnv: "Set {env} for {name}?",
       skipDepsHint: "Continue without installing dependencies",
+      starterPack:
+        "Use the recommended starter skill pack? It hides {count} developer/advanced skills; you can re-enable any of them later in the dashboard.",
+      starterPackApplied: "Hidden {count} advanced skills (re-enable anytime in the dashboard).",
+      starterPackConnect: "Connect your account to unlock: {skills}",
+      starterPackInstant: "Ready out of the box: {skills}",
+      starterPackTitle: "Starter skill pack",
       statusTitle: "Skills status",
       allReadyTitle: "All skills ready",
     },

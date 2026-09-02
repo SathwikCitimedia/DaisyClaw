@@ -1091,6 +1091,58 @@ describe("config io write", () => {
     });
   });
 
+  it("does not flag a size drop when only the on-disk formatting was inflated", async () => {
+    await withSuiteHome(async (home) => {
+      const configPath = path.join(home, ".daisyclaw", "daisyclaw.json");
+      await fs.mkdir(path.dirname(configPath), { recursive: true });
+      const original = {
+        meta: { lastTouchedVersion: "2026.4.30" },
+        gateway: { mode: "local" },
+        channels: {
+          whatsapp: {
+            enabled: true,
+            allowFrom: Array.from({ length: 40 }, (_, index) => `+91900000${index}`),
+          },
+        },
+      } satisfies ConfigFileSnapshot["config"];
+      // External tools (hand edits, PowerShell ConvertTo-Json) can rewrite the
+      // file with much wider indentation; the canonical rewrite is then less
+      // than half the raw byte size even though no content is lost.
+      const originalRaw = `${JSON.stringify(original, null, 12)}\n`;
+      expect(Buffer.byteLength(originalRaw, "utf-8")).toBeGreaterThan(
+        Buffer.byteLength(JSON.stringify(original, null, 2), "utf-8") * 2,
+      );
+      await fs.writeFile(configPath, originalRaw, "utf-8");
+      const io = createConfigIO({
+        env: { VITEST: "true" } as NodeJS.ProcessEnv,
+        homedir: () => home,
+        logger: silentLogger,
+      });
+      const baseSnapshot = {
+        path: configPath,
+        exists: true,
+        raw: originalRaw,
+        parsed: original,
+        sourceConfig: original,
+        resolved: original,
+        valid: true,
+        runtimeConfig: original,
+        config: original,
+        issues: [],
+        warnings: [],
+        legacyIssues: [],
+      } satisfies ConfigFileSnapshot;
+
+      const next = structuredClone(original);
+      next.channels.whatsapp.allowFrom = next.channels.whatsapp.allowFrom.slice(0, -1);
+
+      const written = await io.writeConfigFile(next, { baseSnapshot });
+      expect(
+        (written.persistedConfig.channels as typeof original.channels).whatsapp.allowFrom,
+      ).toHaveLength(39);
+    });
+  });
+
   it("keeps authored agent provider params during narrowed internal agent writes", async () => {
     await withSuiteHome(async (home) => {
       const configPath = path.join(home, ".daisyclaw", "daisyclaw.json");

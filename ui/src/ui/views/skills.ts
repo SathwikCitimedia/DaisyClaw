@@ -93,6 +93,24 @@ function skillOutlineIcon(skill: SkillStatusEntry): TemplateResult {
   return icons.puzzle;
 }
 
+/** True when the skill declares darwin as its only supported platform. */
+function isMacOnlySkill(skill: SkillStatusEntry): boolean {
+  const os = skill.requirements.os;
+  return os.length > 0 && os.every((entry) => entry === "darwin");
+}
+
+function macOnlyBadge(): TemplateResult {
+  return html`
+    <span
+      class="skill-icon skill-icon--mac"
+      title="macOS only"
+      aria-label="macOS only"
+      style="opacity: 0.75;"
+      >${icons.apple}</span
+    >
+  `;
+}
+
 function safeExternalHref(raw?: string): string | null {
   if (!raw) {
     return null;
@@ -157,8 +175,8 @@ export type SkillsProps = {
   onStatusFilterChange: (next: SkillsStatusFilter) => void;
   onRefresh: () => void;
   onToggle: (skillKey: string, enabled: boolean) => void;
-  onEdit: (skillKey: string, value: string) => void;
-  onSaveKey: (skillKey: string) => void;
+  onEdit: (editKey: string, value: string) => void;
+  onSaveKey: (skillKey: string, envName: string, asApiKey: boolean) => void;
   onInstall: (skillKey: string, name: string, installId: string) => void;
   onDetailOpen: (skillKey: string) => void;
   onDetailClose: () => void;
@@ -235,6 +253,29 @@ function verdictLabel(verdict: ClawHubSkillSecurityVerdict | null | undefined): 
   return "Unavailable";
 }
 
+/** Plain-language explanation for non-passing verdicts (null when clean). */
+function verdictExplanation(
+  verdict: ClawHubSkillSecurityVerdict | null | undefined,
+): string | null {
+  if (!verdict) {
+    return "Security scan result unavailable — treat this version as unverified.";
+  }
+  if (verdict.ok && verdict.decision === "pass") {
+    return null;
+  }
+  const status = verdict.securityStatus?.trim() || null;
+  if (status === "pending" || status === "not-run") {
+    return "ClawHub hasn't finished scanning this version yet. Check back soon.";
+  }
+  if (status === "malicious") {
+    return "ClawHub marked this version as malicious. Do not use it.";
+  }
+  if (status === "suspicious") {
+    return "ClawHub's scanner flagged this version for manual review. Only use it if you trust the author.";
+  }
+  return "This version hasn't been verified clean by ClawHub yet. Only use it if you trust the author.";
+}
+
 function verdictChipClass(verdict: ClawHubSkillSecurityVerdict | null | undefined): string {
   if (!verdict) {
     return "chip-warn";
@@ -244,6 +285,111 @@ function verdictChipClass(verdict: ClawHubSkillSecurityVerdict | null | undefine
   }
   const status = verdict.securityStatus?.trim() || null;
   return status === "pending" || status === "not-run" ? "chip" : "chip-warn";
+}
+
+// Starter overview caps: enough to show the pack at a glance without
+// duplicating the full grouped list underneath.
+const STARTER_READY_MAX = 8;
+const STARTER_CONNECT_MAX = 6;
+
+function renderStarterOverview(props: SkillsProps, skills: SkillStatusEntry[]) {
+  const ready = skills.filter((s) => !s.disabled && s.eligible);
+  const connect = skills.filter((s) => s.bundled && !s.disabled && !s.eligible);
+  if (ready.length === 0 && connect.length === 0) {
+    return nothing;
+  }
+  const readyShown = ready.slice(0, STARTER_READY_MAX);
+  const connectShown = connect.slice(0, STARTER_CONNECT_MAX);
+  return html`
+    <div class="skills-starter" style="margin-top: 14px; display: grid; gap: 14px;">
+      ${readyShown.length > 0
+        ? html`
+            <div>
+              <div style="font-size: 13px; font-weight: 600; margin-bottom: 8px;">Ready to use</div>
+              <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+                ${readyShown.map(
+                  (skill) => html`
+                    <button
+                      class="btn btn--sm"
+                      style="display: inline-flex; align-items: center; gap: 6px;"
+                      title=${skill.description}
+                      @click=${() => props.onDetailOpen(skill.skillKey)}
+                    >
+                      <span class="skill-icon" aria-hidden="true">${skillOutlineIcon(skill)}</span>
+                      ${skill.name}
+                    </button>
+                  `,
+                )}
+                ${ready.length > readyShown.length
+                  ? html`
+                      <button
+                        class="btn btn--sm"
+                        @click=${() => props.onStatusFilterChange("ready")}
+                      >
+                        +${ready.length - readyShown.length} more
+                      </button>
+                    `
+                  : nothing}
+              </div>
+            </div>
+          `
+        : nothing}
+      ${connectShown.length > 0
+        ? html`
+            <div>
+              <div style="font-size: 13px; font-weight: 600; margin-bottom: 8px;">
+                Connect to unlock
+              </div>
+              <div
+                style="display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 8px;"
+              >
+                ${repeat(
+                  connectShown,
+                  (skill) => skill.skillKey,
+                  (skill) => html`
+                    <div
+                      class="skills-starter-connect"
+                      style="border: 1px solid var(--border); background: var(--panel-2); border-radius: 10px; padding: 10px 12px; display: grid; gap: 6px; align-content: start;"
+                    >
+                      <div
+                        style="display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 13px;"
+                      >
+                        <span class="skill-icon" aria-hidden="true"
+                          >${skillOutlineIcon(skill)}</span
+                        >
+                        <span>${skill.name}</span>
+                      </div>
+                      <div class="muted" style="font-size: 12px; line-height: 1.4;">
+                        ${clampText(skill.description, 70)}
+                      </div>
+                      <div>
+                        <button
+                          class="btn btn--sm"
+                          @click=${() => props.onDetailOpen(skill.skillKey)}
+                        >
+                          Connect
+                        </button>
+                      </div>
+                    </div>
+                  `,
+                )}
+              </div>
+              ${connect.length > connectShown.length
+                ? html`
+                    <button
+                      class="btn btn--sm"
+                      style="margin-top: 8px;"
+                      @click=${() => props.onStatusFilterChange("needs-setup")}
+                    >
+                      Show all (${connect.length})
+                    </button>
+                  `
+                : nothing}
+            </div>
+          `
+        : nothing}
+    </div>
+  `;
 }
 
 export function renderSkills(props: SkillsProps) {
@@ -278,7 +424,13 @@ export function renderSkills(props: SkillsProps) {
         ).includes(filter),
       )
     : afterStatus;
-  const groups = groupSkills(filtered);
+  // macOS-only skills get their own explicit group instead of mixing into the
+  // source groups, so non-Mac users can tell at a glance why they're inert.
+  const macOnly = filtered.filter((skill) => isMacOnlySkill(skill));
+  const groups = groupSkills(filtered.filter((skill) => !isMacOnlySkill(skill)));
+  if (macOnly.length > 0) {
+    groups.push({ id: "macos-only", label: "macOS Only", skills: macOnly });
+  }
 
   const detailSkill = props.detailKey
     ? (skills.find((s) => s.skillKey === props.detailKey) ?? null)
@@ -299,6 +451,8 @@ export function renderSkills(props: SkillsProps) {
           ${props.loading ? t("common.loading") : t("common.refresh")}
         </button>
       </div>
+
+      ${props.statusFilter === "all" && !filter ? renderStarterOverview(props, skills) : nothing}
 
       <div class="agent-tabs" style="margin-top: 14px;">
         ${STATUS_TABS.map(
@@ -401,7 +555,9 @@ export function renderSkills(props: SkillsProps) {
                 return html`
                   <details class="agent-skills-group" open>
                     <summary class="agent-skills-header">
-                      <span>${group.label}</span>
+                      <span style="display: inline-flex; align-items: center; gap: 6px;">
+                        ${group.id === "macos-only" ? macOnlyBadge() : nothing}${group.label}
+                      </span>
                       <span class="muted">${group.skills.length}</span>
                     </summary>
                     <div class="list skills-grid">
@@ -562,6 +718,7 @@ function renderSkill(skill: SkillStatusEntry, props: SkillsProps) {
           <span class="statusDot ${dotClass}"></span>
           <span class="skill-icon" aria-hidden="true">${skillOutlineIcon(skill)}</span>
           <span>${skill.name}</span>
+          ${isMacOnlySkill(skill) ? macOnlyBadge() : nothing}
         </div>
         <div class="list-sub">${clampText(skill.description, 140)}</div>
       </div>
@@ -591,9 +748,30 @@ function renderSkill(skill: SkillStatusEntry, props: SkillsProps) {
   `;
 }
 
+/**
+ * Stable edit-state key per (skill, env var). The primary env keeps the bare
+ * skillKey so pre-existing edit state and the apiKey save path stay intact.
+ */
+export function skillEnvEditKey(skillKey: string, envName: string, primary: boolean): string {
+  return primary ? skillKey : `${skillKey}::${envName}`;
+}
+
+/** Env vars the dialog offers inputs for: the primary key plus any missing ones. */
+function skillEnvInputs(skill: SkillStatusEntry): Array<{ name: string; primary: boolean }> {
+  const inputs: Array<{ name: string; primary: boolean }> = [];
+  if (skill.primaryEnv) {
+    inputs.push({ name: skill.primaryEnv, primary: true });
+  }
+  for (const name of skill.missing.env) {
+    if (name !== skill.primaryEnv) {
+      inputs.push({ name, primary: false });
+    }
+  }
+  return inputs;
+}
+
 function renderSkillDetail(skill: SkillStatusEntry, props: SkillsProps) {
   const busy = props.busyKey === skill.skillKey;
-  const apiKey = props.edits[skill.skillKey] ?? "";
   const message = props.messages[skill.skillKey] ?? null;
   const canInstall = skill.install.length > 0 && skill.missing.bins.length > 0;
   const showBundledBadge = Boolean(skill.bundled && skill.source !== "daisyclaw-bundled");
@@ -626,6 +804,7 @@ function renderSkillDetail(skill: SkillStatusEntry, props: SkillsProps) {
               >${skillOutlineIcon(skill)}</span
             >
             <span>${skill.name}</span>
+            ${isMacOnlySkill(skill) ? macOnlyBadge() : nothing}
           </div>
           <button
             class="btn btn--sm"
@@ -713,44 +892,66 @@ function renderSkillDetail(skill: SkillStatusEntry, props: SkillsProps) {
                 ${message.message}
               </div>`
             : nothing}
-          ${skill.primaryEnv
-            ? html`
-                <div style="display: grid; gap: 8px;">
-                  <div class="field">
-                    <span
-                      >API key
-                      <span class="muted" style="font-weight: normal; font-size: 0.88em;"
-                        >(${skill.primaryEnv})</span
-                      ></span
-                    >
-                    <input
-                      type="password"
-                      .value=${apiKey}
-                      @input=${(e: Event) =>
-                        props.onEdit(skill.skillKey, (e.target as HTMLInputElement).value)}
-                    />
-                  </div>
-                  ${(() => {
-                    const href = safeExternalHref(skill.homepage);
-                    return href
-                      ? html`<div class="muted" style="font-size: 13px;">
-                          Get your key:
-                          <a href="${href}" target="_blank" rel="noopener noreferrer"
-                            >${skill.homepage}</a
-                          >
-                        </div>`
-                      : nothing;
-                  })()}
-                  <button
-                    class="btn primary"
-                    ?disabled=${busy}
-                    @click=${() => props.onSaveKey(skill.skillKey)}
-                  >
-                    Save key
-                  </button>
-                </div>
-              `
-            : nothing}
+          ${(() => {
+            const envInputs = skillEnvInputs(skill);
+            if (envInputs.length === 0) {
+              // No key to enter here. Non-bundled (ClawHub/workspace) skills
+              // usually connect accounts through an in-chat flow instead.
+              return skill.bundled
+                ? nothing
+                : html`
+                    <div class="callout skills-connect-hint" style="font-size: 13px;">
+                      If this skill needs an account, connect it in chat — ask your assistant:
+                      <span style="font-weight: 600;">"set up ${skill.name}"</span>.
+                    </div>
+                  `;
+            }
+            return html`
+              <div style="display: grid; gap: 12px;">
+                ${envInputs.map((envVar) => {
+                  const editKey = skillEnvEditKey(skill.skillKey, envVar.name, envVar.primary);
+                  const value = props.edits[editKey] ?? "";
+                  return html`
+                    <div style="display: grid; gap: 8px;">
+                      <div class="field">
+                        <span
+                          >${envVar.primary ? "API key" : "Key"}
+                          <span class="muted" style="font-weight: normal; font-size: 0.88em;"
+                            >(${envVar.name})</span
+                          ></span
+                        >
+                        <input
+                          type="password"
+                          .value=${value}
+                          @input=${(e: Event) =>
+                            props.onEdit(editKey, (e.target as HTMLInputElement).value)}
+                        />
+                      </div>
+                      <button
+                        class="btn primary"
+                        style="justify-self: start;"
+                        ?disabled=${busy}
+                        @click=${() => props.onSaveKey(skill.skillKey, envVar.name, envVar.primary)}
+                      >
+                        Save ${envVar.name}
+                      </button>
+                    </div>
+                  `;
+                })}
+                ${(() => {
+                  const href = safeExternalHref(skill.homepage);
+                  return href
+                    ? html`<div class="muted" style="font-size: 13px;">
+                        Get your key:
+                        <a href="${href}" target="_blank" rel="noopener noreferrer"
+                          >${skill.homepage}</a
+                        >
+                      </div>`
+                    : nothing;
+                })()}
+              </div>
+            `;
+          })()}
 
           <div
             style="border-top: 1px solid var(--border); padding-top: 12px; display: grid; gap: 6px; font-size: 12px; color: var(--muted);"
@@ -790,7 +991,8 @@ function renderInstalledClawHubOverview(
     </div>`;
   }
   const auditHref = safeExternalHref(verdict?.securityAuditUrl ?? undefined);
-  const reasonText = verdict?.reasons?.length ? verdict.reasons.join(", ") : null;
+  const explanation = verdictExplanation(verdict);
+  const rawReasons = verdict?.reasons?.length ? verdict.reasons.join(", ") : null;
   return html`
     <div
       class="callout"
@@ -803,8 +1005,10 @@ function renderInstalledClawHubOverview(
       </div>
       ${props.clawhubVerdictsError
         ? html`<div class="muted" style="font-size: 13px;">${props.clawhubVerdictsError}</div>`
-        : reasonText
-          ? html`<div class="muted" style="font-size: 13px;">${reasonText}</div>`
+        : explanation
+          ? html`<div class="muted" style="font-size: 13px;" title=${rawReasons ?? ""}>
+              ${explanation}
+            </div>`
           : nothing}
       ${auditHref
         ? html`<div style="font-size: 13px;">

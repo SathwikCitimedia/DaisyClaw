@@ -344,6 +344,29 @@ export const SessionsCompactionRestoreParamsSchema = Type.Object(
   { additionalProperties: false },
 );
 
+/**
+ * Forks a session in place so its history ends just before the given
+ * transcript message (ChatGPT-style message editing: the edited turn and
+ * everything after it leave the model context; the original transcript file
+ * is kept untouched).
+ */
+export const SessionsForkFromMessageParamsSchema = Type.Object(
+  {
+    key: NonEmptyString,
+    agentId: Type.Optional(NonEmptyString),
+    /** Transcript entry id of the user message being edited. */
+    messageId: Type.Optional(NonEmptyString),
+    /**
+     * Fork at the most recent user message on the active branch instead of an
+     * explicit id — used when the edited message was just sent and the UI has
+     * not yet learned its transcript id. Exactly one of messageId/lastUser is
+     * required.
+     */
+    lastUser: Type.Optional(Type.Boolean()),
+  },
+  { additionalProperties: false },
+);
+
 /** List response for session compaction checkpoints. */
 export const SessionsCompactionListResultSchema = Type.Object(
   {

@@ -126,6 +126,8 @@ export type MSTeamsConfig = {
   dmPolicy?: DmPolicy;
   /** Allowlist for DM senders (AAD object IDs or UPNs). */
   allowFrom?: Array<string>;
+  /** Display names for allowFrom entries keyed by sender id — cosmetic only, never used for matching. */
+  contactLabels?: Record<string, string>;
   /** Default delivery target for CLI --deliver when no explicit --reply-to is provided. */
   defaultTo?: string;
   /** Optional allowlist for group/channel senders (AAD object IDs or UPNs). */

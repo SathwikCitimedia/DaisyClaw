@@ -6,6 +6,7 @@ import {
   loadSkillCard,
   loadClawHubDetail,
   saveSkillApiKey,
+  saveSkillEnvValue,
   searchClawHub,
   setClawHubSearchQuery,
   updateSkillEnabled,
@@ -507,6 +508,27 @@ describe("skill mutations", () => {
       expectedMessage: "API key saved — stored in daisyclaw.json (skills.entries.github)",
     },
     {
+      name: "saves non-primary env vars under the skill's env record",
+      run: async (state: SkillsState) => {
+        state.skillEdits["github::GH_EXTRA_TOKEN"] = "tok-123";
+        await saveSkillEnvValue(state, "github", "GH_EXTRA_TOKEN", false);
+      },
+      expectedRequest: [
+        "skills.update",
+        { skillKey: "github", env: { GH_EXTRA_TOKEN: "tok-123" } },
+      ],
+      expectedMessage: "GH_EXTRA_TOKEN saved — stored in daisyclaw.json (skills.entries.github)",
+    },
+    {
+      name: "routes primary env saves through the apiKey field",
+      run: async (state: SkillsState) => {
+        state.skillEdits.github = "sk-primary";
+        await saveSkillEnvValue(state, "github", "GH_TOKEN", true);
+      },
+      expectedRequest: ["skills.update", { skillKey: "github", apiKey: "sk-primary" }],
+      expectedMessage: "API key saved — stored in daisyclaw.json (skills.entries.github)",
+    },
+    {
       name: "installs skills and uses server success messages",
       run: (state: SkillsState) => installSkill(state, "github", "GitHub", "install-123", true),
       expectedRequest: [
@@ -517,6 +539,7 @@ describe("skill mutations", () => {
           dangerouslyForceUnsafeInstall: true,
           timeoutMs: 120000,
         },
+        { timeoutMs: 150_000 },
       ],
       expectedMessage: "Installed from registry",
       installMessage: "Installed from registry",
@@ -527,8 +550,7 @@ describe("skill mutations", () => {
 
     await run(state);
 
-    const [method, params] = expectedRequest;
-    expect(request).toHaveBeenCalledWith(method, params);
+    expect(request).toHaveBeenCalledWith(...expectedRequest);
     expect(state.skillMessages.github).toEqual({ kind: "success", message: expectedMessage });
     expect(state.skillsBusyKey).toBeNull();
     expect(state.skillsError).toBeNull();

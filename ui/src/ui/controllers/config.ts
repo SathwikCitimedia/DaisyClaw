@@ -1,6 +1,7 @@
 // Control UI controller manages config gateway state.
 import { applyMergePatch } from "../../../../src/config/merge-patch.ts";
 import type { GatewayBrowserClient } from "../gateway.ts";
+import { setSessionContactNames } from "../session-display.ts";
 import type { ConfigSchemaResponse, ConfigSnapshot, ConfigUiHints } from "../types.ts";
 import type { JsonSchema } from "../views/config-form.shared.ts";
 import { coerceFormValues } from "./config/form-coerce.ts";
@@ -118,6 +119,9 @@ export function applyConfigSnapshot(
   const draftBaseHash = state.configDraftBaseHash ?? state.configSnapshot?.hash ?? null;
   state.configSnapshot = snapshot;
   const editableConfig = resolveEditableSnapshotConfig(snapshot);
+  // Keep the session-display contact-name lookup in sync with the latest
+  // config so session lists can label channel peers with their saved names.
+  setSessionContactNames(editableConfig);
   const rawAvailable =
     typeof snapshot.raw === "string" || Boolean(editableConfig) || Boolean(state.configForm);
   if (!rawAvailable && state.configFormMode === "raw") {

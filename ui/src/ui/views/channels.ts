@@ -3,6 +3,7 @@ import { html, nothing } from "lit";
 import { ref } from "lit/directives/ref.js";
 import { t } from "../../i18n/index.ts";
 import { formatRelativeTimestamp } from "../format.ts";
+import { icons } from "../icons.ts";
 import type {
   ChannelAccountSnapshot,
   ChannelUiMetaEntry,
@@ -24,6 +25,11 @@ import { renderGoogleChatCard } from "./channels.googlechat.ts";
 import { renderChannelBrandIcon } from "./channels.icons.ts";
 import { renderIMessageCard } from "./channels.imessage.ts";
 import { renderNostrCard } from "./channels.nostr.ts";
+import {
+  channelSetupReplaceLabel,
+  hasChannelSetupGuide,
+  renderChannelSetup,
+} from "./channels.setup.ts";
 import {
   channelEnabled,
   formatNullableBoolean,
@@ -135,10 +141,17 @@ type ChannelRowStatus = {
 
 function resolveChannelRowStatus(key: ChannelKey, props: ChannelsProps): ChannelRowStatus {
   const state = resolveChannelDisplayState(key, props);
-  if (state.connected === true || state.running === true || state.hasAnyActiveAccount) {
+  const accounts = props.snapshot?.channelAccounts?.[key] ?? [];
+  // Strict tiers: "Connected" requires a live connection right now — a merely
+  // configured account must not read as connected (e.g. right after logout).
+  const liveAccount = accounts.some(
+    (account) => account.connected === true || account.running === true,
+  );
+  if (state.connected === true || state.running === true || liveAccount) {
     return { label: "Connected", tone: "ok" };
   }
-  if (state.configured === true) {
+  const configuredAccount = accounts.some((account) => account.configured === true);
+  if (state.configured === true || configuredAccount) {
     return { label: "Configured", tone: "idle" };
   }
   return { label: "Not configured", tone: "off" };
@@ -170,10 +183,94 @@ function renderChannelRow(key: ChannelKey, props: ChannelsProps) {
   `;
 }
 
+// "Connected as @bot" identity line for channels that expose it in probe data.
+function resolveChannelIdentity(key: ChannelKey, props: ChannelsProps): string | null {
+  if (key !== "telegram") {
+    return null;
+  }
+  const accounts = props.snapshot?.channelAccounts?.telegram ?? [];
+  for (const account of accounts) {
+    const probe = account.probe as { bot?: { username?: string } } | undefined;
+    const username = probe?.bot?.username;
+    if (username) {
+      return `@${username}`;
+    }
+  }
+  return null;
+}
+
+// Action row shown at the top of manage mode: reconnect / start-over /
+// disconnect. WhatsApp keeps its own connect/logout actions inside its card.
+function renderManageActions(key: ChannelKey, props: ChannelsProps, status: ChannelRowStatus) {
+  if (key === "whatsapp") {
+    return nothing;
+  }
+  const disconnectBusy = props.channelDisconnectBusy === key;
+  const enableBusy = props.channelEnableBusy === key;
+  const anyBusy = Boolean(props.channelDisconnectBusy || props.channelEnableBusy);
+  const identity = resolveChannelIdentity(key, props);
+  const replaceLabel = channelSetupReplaceLabel(key);
+  return html`
+    <div class="ch-manage">
+      ${identity
+        ? html`<div class="ch-manage__identity">Connected as <strong>${identity}</strong></div>`
+        : nothing}
+      <div class="ch-manage__actions">
+        ${status.tone === "idle"
+          ? html`<button
+              class="btn primary"
+              ?disabled=${anyBusy}
+              @click=${() => props.onChannelEnable(key)}
+            >
+              ${enableBusy ? "Reconnecting…" : "Reconnect"}
+            </button>`
+          : nothing}
+        ${replaceLabel
+          ? html`<button class="btn" ?disabled=${anyBusy} @click=${() => props.onForceSetup(key)}>
+              ${replaceLabel}
+            </button>`
+          : nothing}
+        <button
+          class="btn danger"
+          ?disabled=${anyBusy || status.tone === "off"}
+          @click=${() => props.onChannelDisconnect(key)}
+        >
+          ${disconnectBusy ? "Disconnecting…" : "Disconnect"}
+        </button>
+      </div>
+    </div>
+  `;
+}
+
 function renderChannelDialog(key: ChannelKey, props: ChannelsProps, data: ChannelsChannelData) {
   const label = resolveChannelLabel(props.snapshot, key);
   const status = resolveChannelRowStatus(key, props);
   const close = () => props.onCloseChannel();
+  // Unconfigured channels with a guided flow get setup mode: plain-language
+  // steps + only the essential fields. "Start over" (setupForcedChannel) also
+  // opens setup mode so users can replace an existing bot from scratch.
+  const forced = props.setupForcedChannel === key;
+  const setupMode = hasChannelSetupGuide(key) && (status.tone === "off" || forced);
+  const body = setupMode
+    ? html`
+        ${forced
+          ? html`<button
+              type="button"
+              class="btn btn--sm ch-setup__back"
+              @click=${() => props.onForceSetup(null)}
+            >
+              ← Back to settings
+            </button>`
+          : nothing}
+        ${renderChannelSetup(key, props)}
+        ${!forced
+          ? html`<details class="ch-setup__advanced">
+              <summary>Advanced settings</summary>
+              ${renderChannel(key, props, data)}
+            </details>`
+          : nothing}
+      `
+    : html`${renderManageActions(key, props, status)}${renderChannel(key, props, data)}`;
   return html`
     <dialog
       class="md-preview-dialog ch-dialog"
@@ -196,17 +293,17 @@ function renderChannelDialog(key: ChannelKey, props: ChannelsProps, data: Channe
             </div>
           </div>
           <button
-            class="btn btn--sm"
+            class="ch-dialog__close"
+            title="Close"
+            aria-label="Close"
             @click=${(e: Event) => {
               (e.currentTarget as HTMLElement).closest("dialog")?.close();
             }}
           >
-            Close
+            ${icons.x}
           </button>
         </div>
-        <div class="md-preview-dialog__body ch-dialog__body">
-          ${renderChannel(key, props, data)}
-        </div>
+        <div class="md-preview-dialog__body ch-dialog__body">${body}</div>
       </div>
     </dialog>
   `;

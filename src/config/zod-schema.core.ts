@@ -636,6 +636,8 @@ export const TypingModeSchema = z.union([
 export const GroupPolicySchema = z.enum(["open", "disabled", "allowlist"]);
 
 export const DmPolicySchema = z.enum(["pairing", "allowlist", "open", "disabled"]);
+/** Display names for allowFrom entries keyed by sender id — cosmetic only, never used for matching. */
+export const ContactLabelsSchema = z.record(z.string(), z.string()).optional();
 export const ContextVisibilityModeSchema = z.enum(["all", "allowlist", "allowlist_quote"]);
 
 export const BlockStreamingCoalesceSchema = z

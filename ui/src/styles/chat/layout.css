@@ -584,7 +584,13 @@
 }
 
 :root[data-theme-mode="light"] .chat-compose {
-  background: linear-gradient(to bottom, transparent, var(--bg-content) 20%);
+  /* Fade into the glossy chat surface's bottom color, not flat white, so the
+     sticky composer melts into the page instead of sitting on a rectangle. */
+  background: linear-gradient(
+    to bottom,
+    transparent,
+    var(--chat-surface-base, var(--bg-content)) 20%
+  );
 }
 
 .chat-compose__field {
@@ -2084,14 +2090,16 @@
   z-index: 90;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
   width: min(520px, calc(100vw - 32px));
-  max-height: min(520px, calc(100vh - 132px));
-  padding: 10px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
+  max-height: min(380px, calc(100vh - 132px));
+  padding: 8px;
+  border: 1px solid color-mix(in srgb, var(--border) 88%, transparent);
+  border-radius: 14px;
   background: var(--card);
-  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.34);
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.08),
+    0 16px 40px rgba(0, 0, 0, 0.22);
   overflow: hidden;
 }
 
@@ -2099,6 +2107,8 @@
   display: flex;
   gap: 6px;
   align-items: center;
+  padding-bottom: 6px;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 64%, transparent);
 }
 
 .chat-session-picker__search {
@@ -2109,31 +2119,39 @@
 .chat-session-picker__search input {
   box-sizing: border-box;
   width: 100%;
-  min-height: 36px;
+  min-height: 32px;
   padding: 0 12px;
   font-size: 13px;
+  border-radius: 9px;
 }
 
 .chat-session-picker .chat-session-picker__icon-button.btn--icon {
-  flex: 0 0 36px;
-  width: 36px;
-  min-width: 36px;
-  height: 36px;
+  flex: 0 0 32px;
+  width: 32px;
+  min-width: 32px;
+  height: 32px;
   padding: 0;
-  border-radius: var(--radius-md);
+  border-radius: 9px;
 }
 
 .chat-session-picker .chat-session-picker__icon-button.btn--icon svg {
-  width: 16px;
-  height: 16px;
+  width: 15px;
+  height: 15px;
 }
 
 .chat-session-picker__list {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 1px;
   min-height: 0;
   overflow-y: auto;
+  /* Scroll without a visible scrollbar — the list fades are enough affordance. */
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.chat-session-picker__list::-webkit-scrollbar {
+  display: none;
 }
 
 .chat-session-picker__option {
@@ -2142,10 +2160,10 @@
   justify-content: space-between;
   gap: 10px;
   width: 100%;
-  min-height: 44px;
-  padding: 8px 10px;
+  min-height: 36px;
+  padding: 5px 10px;
   border: 1px solid transparent;
-  border-radius: var(--radius-sm);
+  border-radius: 9px;
   background: transparent;
   color: var(--text);
   font: inherit;
@@ -2166,7 +2184,7 @@
 
 .chat-session-picker__option-main {
   display: grid;
-  gap: 3px;
+  gap: 1px;
   min-width: 0;
 }
 
@@ -2180,12 +2198,14 @@
 .chat-session-picker__option-label {
   color: var(--text-strong);
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 550;
+  letter-spacing: -0.01em;
 }
 
 .chat-session-picker__option-meta {
   color: var(--muted);
   font-size: 11px;
+  font-variant-numeric: tabular-nums;
 }
 
 .chat-session-picker__option-check {
@@ -2329,13 +2349,13 @@
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  padding-top: 8px;
-  border-top: 1px solid color-mix(in srgb, var(--border) 74%, transparent);
+  padding: 6px 4px 0;
+  border-top: 1px solid color-mix(in srgb, var(--border) 64%, transparent);
 }
 
 .chat-session-picker__count {
   color: var(--muted);
-  font-size: 12px;
+  font-size: 11px;
   font-variant-numeric: tabular-nums;
 }
 

@@ -1,5 +1,6 @@
 // Control UI view renders channels.whatsapp screen content.
 import { html, nothing } from "lit";
+import { ref } from "lit/directives/ref.js";
 import { t } from "../../i18n/index.ts";
 import { formatRelativeTimestamp, formatDurationHuman } from "../format.ts";
 import type { WhatsAppStatus } from "../types.ts";
@@ -11,6 +12,17 @@ import {
   resolveChannelConfigured,
 } from "./channels.shared.ts";
 import type { ChannelsProps } from "./channels.types.ts";
+
+// Scroll the QR into view the moment it renders — the connect button sits
+// right above it, but dialogs can be scrolled anywhere when the QR arrives.
+export function scrollQrIntoView(el?: Element) {
+  if (!(el instanceof HTMLElement) || typeof el.scrollIntoView !== "function") {
+    return;
+  }
+  requestAnimationFrame(() => {
+    el.scrollIntoView({ behavior: "smooth", block: "center" });
+  });
+}
 
 export function renderWhatsAppCard(params: {
   props: ChannelsProps;
@@ -53,43 +65,57 @@ export function renderWhatsAppCard(params: {
     ],
     lastError: whatsapp?.lastError,
     extraContent: html`
-      ${props.whatsappMessage
-        ? html`<div class="callout" style="margin-top: 12px;">${props.whatsappMessage}</div>`
-        : nothing}
+      <div class="row" style="margin-top: 14px; flex-wrap: wrap;">
+        ${linked
+          ? html`<button
+              class="btn"
+              ?disabled=${props.whatsappBusy}
+              @click=${() => props.onWhatsAppConnect(true)}
+            >
+              ${connectButtonLabel(props, t("common.relink"))}
+            </button>`
+          : html`<button
+              class="btn primary"
+              ?disabled=${props.whatsappBusy}
+              @click=${() => props.onWhatsAppConnect(false)}
+            >
+              ${connectButtonLabel(props, t("common.connect"))}
+            </button>`}
+        ${linked
+          ? html`<button
+              class="btn danger"
+              ?disabled=${props.whatsappBusy}
+              @click=${() => props.onWhatsAppLogout()}
+            >
+              ${t("common.logout")}
+            </button>`
+          : nothing}
+        <button class="btn" @click=${() => props.onRefresh(true)}>${t("common.refresh")}</button>
+      </div>
       ${props.whatsappQrDataUrl
-        ? html`<div class="qr-wrap">
+        ? html`<div class="ch-setup__qr" ${ref(scrollQrIntoView)}>
+            <div class="ch-setup__qr-hint">
+              Scan with your phone: WhatsApp → Settings → Linked devices → Link a device
+            </div>
             <img src=${props.whatsappQrDataUrl} alt="WhatsApp QR" />
           </div>`
-        : nothing}
+        : props.whatsappMessage
+          ? html`<div class="callout" style="margin-top: 12px;">${props.whatsappMessage}</div>`
+          : nothing}
     `,
     configSection: html`
       ${renderAllowedContactsSection({ channelId: "whatsapp", props })}
       ${renderChannelConfigSection({ channelId: "whatsapp", props })}
     `,
-    footer: html`<div class="row" style="margin-top: 14px; flex-wrap: wrap;">
-      ${linked
-        ? html`<button
-            class="btn"
-            ?disabled=${props.whatsappBusy}
-            @click=${() => props.onWhatsAppConnect(true)}
-          >
-            ${props.whatsappBusy ? t("common.working") : t("common.relink")}
-          </button>`
-        : html`<button
-            class="btn primary"
-            ?disabled=${props.whatsappBusy}
-            @click=${() => props.onWhatsAppConnect(false)}
-          >
-            ${props.whatsappBusy ? t("common.working") : t("common.connect")}
-          </button>`}
-      <button
-        class="btn danger"
-        ?disabled=${props.whatsappBusy}
-        @click=${() => props.onWhatsAppLogout()}
-      >
-        ${t("common.logout")}
-      </button>
-      <button class="btn" @click=${() => props.onRefresh(true)}>${t("common.refresh")}</button>
-    </div>`,
   });
+}
+
+function connectButtonLabel(props: ChannelsProps, idleLabel: string): string {
+  if (props.whatsappQrDataUrl && props.whatsappBusy) {
+    return "Waiting for scan…";
+  }
+  if (props.whatsappBusy) {
+    return "Generating QR…";
+  }
+  return idleLabel;
 }

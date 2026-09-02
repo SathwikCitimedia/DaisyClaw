@@ -1,5 +1,6 @@
 // Control UI chat module implements grouped render behavior.
 import { html, nothing, type TemplateResult } from "lit";
+import { ref } from "lit/directives/ref.js";
 import { unsafeHTML } from "lit/directives/unsafe-html.js";
 import { until } from "lit/directives/until.js";
 import { getSafeLocalStorage } from "../../local-storage.ts";
@@ -432,6 +433,11 @@ export function renderMessageGroup(
     onDelete?: () => void;
     onEdit?: (text: string) => void;
     onQuote?: (text: string) => void;
+    /** Key of the user group currently being edited in place (ChatGPT style). */
+    editingGroupKey?: string | null;
+    onEditStart?: (key: string, text: string) => void;
+    onEditCancel?: () => void;
+    onEditSubmit?: (key: string, text: string) => void;
     /** Next-action chips rendered inline in the footer of the latest assistant group. */
     actionChips?: TemplateResult | typeof nothing;
   },
@@ -573,6 +579,30 @@ export function renderMessageGroup(
     `;
   }
 
+  const isInlineEditing =
+    normalizedRole === "user" && opts.editingGroupKey != null && opts.editingGroupKey === group.key;
+
+  if (isInlineEditing) {
+    return html`
+      <div class="chat-group ${roleClass}">
+        ${renderChatAvatar(
+          group.role,
+          {
+            name: assistantName,
+            avatar: opts.assistantAvatar ?? null,
+          },
+          {
+            name: opts.userName ?? null,
+            avatar: opts.userAvatar ?? null,
+          },
+          opts.basePath,
+          opts.assistantAttachmentAuthToken,
+        )}
+        <div class="chat-group-messages">${renderInlineEdit(group, opts)}</div>
+      </div>
+    `;
+  }
+
   return html`
     <div class="chat-group ${roleClass}">
       ${renderChatAvatar(
@@ -617,16 +647,34 @@ export function renderMessageGroup(
           ),
         )}
         <div class="chat-group-footer">
-          <span class="chat-sender-name">${who}</span>
-          ${renderChatTimestamp(group.timestamp)}
-          ${normalizedRole === "assistant" ? (opts.actionChips ?? nothing) : nothing}
-          ${opts.onQuote ? renderQuoteButton(() => opts.onQuote!(groupPlainText(group))) : nothing}
-          ${normalizedRole === "user" && opts.onEdit
-            ? renderEditButton(() => opts.onEdit!(groupPlainText(group)))
-            : nothing}
-          ${opts.onDelete
-            ? renderDeleteButton(opts.onDelete, normalizedRole === "user" ? "left" : "right")
-            : nothing}
+          ${normalizedRole === "user"
+            ? html`
+                ${opts.onQuote
+                  ? renderQuoteButton(() => opts.onQuote!(groupPlainText(group)))
+                  : nothing}
+                ${opts.onEditStart
+                  ? renderEditButton(() => opts.onEditStart!(group.key, groupPlainText(group)))
+                  : opts.onEdit
+                    ? renderEditButton(() => opts.onEdit!(groupPlainText(group)))
+                    : nothing}
+                ${opts.onDelete
+                  ? renderDeleteButton(
+                      opts.onDelete,
+                      "left",
+                      "Delete this message and its response?",
+                    )
+                  : nothing}
+                <span class="chat-sender-name">${who}</span>
+                ${renderChatTimestamp(group.timestamp)}
+              `
+            : html`
+                <span class="chat-sender-name">${who}</span>
+                ${renderChatTimestamp(group.timestamp)}
+                ${normalizedRole === "assistant" ? (opts.actionChips ?? nothing) : nothing}
+                ${opts.onQuote
+                  ? renderQuoteButton(() => opts.onQuote!(groupPlainText(group)))
+                  : nothing}
+              `}
         </div>
       </div>
     </div>
@@ -749,6 +797,72 @@ function renderQuoteButton(onQuote: () => void) {
   `;
 }
 
+// ChatGPT-style in-place editor: the user's bubble becomes a textarea with
+// Cancel/Send. Enter sends, Shift+Enter inserts a newline, Escape cancels.
+function renderInlineEdit(
+  group: MessageGroup,
+  opts: {
+    onEditCancel?: () => void;
+    onEditSubmit?: (key: string, text: string) => void;
+  },
+) {
+  let textareaEl: HTMLTextAreaElement | null = null;
+  const autosize = (el: HTMLTextAreaElement) => {
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight}px`;
+  };
+  const submit = () => {
+    const text = textareaEl?.value.trim() ?? "";
+    if (!text) {
+      return;
+    }
+    opts.onEditSubmit?.(group.key, text);
+  };
+  return html`
+    <div class="chat-inline-edit">
+      <textarea
+        class="chat-inline-edit__input"
+        rows="1"
+        .value=${groupPlainText(group)}
+        ${ref((el) => {
+          if (!(el instanceof HTMLTextAreaElement) || textareaEl === el) {
+            return;
+          }
+          textareaEl = el;
+          requestAnimationFrame(() => {
+            if (!el.isConnected) {
+              return;
+            }
+            autosize(el);
+            el.focus();
+            el.setSelectionRange(el.value.length, el.value.length);
+          });
+        })}
+        @input=${(e: Event) => autosize(e.target as HTMLTextAreaElement)}
+        @keydown=${(e: KeyboardEvent) => {
+          if (e.key === "Enter" && !e.shiftKey) {
+            e.preventDefault();
+            submit();
+          } else if (e.key === "Escape") {
+            e.preventDefault();
+            opts.onEditCancel?.();
+          }
+        }}
+      ></textarea>
+      <div class="chat-inline-edit__actions">
+        <button
+          type="button"
+          class="chat-inline-edit__cancel"
+          @click=${() => opts.onEditCancel?.()}
+        >
+          Cancel
+        </button>
+        <button type="button" class="chat-inline-edit__send" @click=${submit}>Send</button>
+      </div>
+    </div>
+  `;
+}
+
 // Flatten a group's messages to plain text for edit/quote actions.
 function groupPlainText(group: MessageGroup): string {
   return group.messages
@@ -769,7 +883,11 @@ function groupPlainText(group: MessageGroup): string {
     .trim();
 }
 
-function renderDeleteButton(onDelete: () => void, side: DeleteConfirmSide) {
+function renderDeleteButton(
+  onDelete: () => void,
+  side: DeleteConfirmSide,
+  promptText = "Delete this message?",
+) {
   return html`
     <span class="chat-delete-wrap">
       <button
@@ -791,7 +909,7 @@ function renderDeleteButton(onDelete: () => void, side: DeleteConfirmSide) {
           const popover = document.createElement("div");
           popover.className = `chat-delete-confirm chat-delete-confirm--${side}`;
           popover.innerHTML = `
-            <p class="chat-delete-confirm__text">Delete this message?</p>
+            <p class="chat-delete-confirm__text"></p>
             <label class="chat-delete-confirm__remember">
               <input type="checkbox" class="chat-delete-confirm__check" />
               <span>Don't ask again</span>
@@ -801,6 +919,7 @@ function renderDeleteButton(onDelete: () => void, side: DeleteConfirmSide) {
               <button class="chat-delete-confirm__yes" type="button">Delete</button>
             </div>
           `;
+          popover.querySelector(".chat-delete-confirm__text")!.textContent = promptText;
           wrap.appendChild(popover);
           placeDeleteConfirmPopover(btn, popover, side);
 
@@ -1187,7 +1306,11 @@ function resolveAssistantAttachmentAvailability(
     return { status: "available" };
   }
   if (!isLocalAttachmentPreviewAllowed(source, localMediaPreviewRoots)) {
-    return { status: "unavailable", reason: "Outside allowed folders", checkedAt: Date.now() };
+    return {
+      status: "unavailable",
+      reason: "Outside allowed folders",
+      checkedAt: Date.now(),
+    };
   }
   const normalizedAuthToken = authToken?.trim() ?? "";
   const cacheKey = `${basePath ?? ""}::${normalizedAuthToken}::${source}`;
@@ -1812,13 +1935,14 @@ function renderGroupedMessage(
               : nothing}
             ${normalizedRole === "assistant" && assistantViewBlocks.length > 0
               ? html`${assistantViewBlocks.map(
-                  (block) => html`${renderToolPreview(block.preview, "chat_message", {
-                    onOpenSidebar,
-                    rawText: block.rawText ?? null,
-                    canvasPluginSurfaceUrl: opts.canvasPluginSurfaceUrl,
-                    embedSandboxMode: opts.embedSandboxMode ?? "scripts",
-                  })}
-                  ${block.rawText ? renderRawOutputToggle(block.rawText) : nothing}`,
+                  (block) =>
+                    html`${renderToolPreview(block.preview, "chat_message", {
+                      onOpenSidebar,
+                      rawText: block.rawText ?? null,
+                      canvasPluginSurfaceUrl: opts.canvasPluginSurfaceUrl,
+                      embedSandboxMode: opts.embedSandboxMode ?? "scripts",
+                    })}
+                    ${block.rawText ? renderRawOutputToggle(block.rawText) : nothing}`,
                 )}`
               : nothing}
             ${jsonResult

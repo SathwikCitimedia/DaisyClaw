@@ -492,6 +492,97 @@
   font-size: 0.8125rem;
 }
 
+.contacts-list__info {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.contacts-list__name {
+  font-size: 0.8438rem;
+  font-weight: 600;
+}
+
+.contacts-list__name + .contacts-list__value {
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+.contacts-list__actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex: 0 0 auto;
+}
+
+.contacts-list__iconbtn {
+  border: none;
+  background: none;
+  color: var(--muted);
+  padding: 4px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+}
+
+.contacts-list__iconbtn svg {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.contacts-list__iconbtn:hover {
+  color: var(--fg);
+  background: var(--bg-hover, rgba(127, 127, 127, 0.12));
+}
+
+.contacts-list__iconbtn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.contacts-list__addname {
+  border: none;
+  background: none;
+  color: var(--accent);
+  font-size: 0.75rem;
+  font-weight: 500;
+  padding: 3px 6px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.contacts-list__addname:hover {
+  text-decoration: underline;
+}
+
+.contacts-list__addname:disabled {
+  opacity: 0.5;
+  cursor: default;
+  text-decoration: none;
+}
+
+.contacts-list__row--editing {
+  gap: 8px;
+}
+
+.contacts-list__row--editing .contacts-list__value {
+  flex: 0 0 auto;
+}
+
+.contacts-list__name-input {
+  flex: 1;
+  min-width: 80px;
+}
+
 .contacts-list__remove {
   border: none;
   background: none;
@@ -513,8 +604,570 @@
   cursor: default;
 }
 
+.contacts-list__delete {
+  border: 1px solid color-mix(in srgb, var(--danger) 32%, transparent);
+  background: none;
+  color: var(--danger);
+  font-size: 0.75rem;
+  font-weight: 500;
+  padding: 3px 10px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.contacts-list__delete:hover {
+  background: var(--danger-subtle);
+  border-color: color-mix(in srgb, var(--danger) 55%, transparent);
+}
+
+.contacts-list__delete:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* App-level render error boundary. */
+.app-render-error {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  padding: 24px;
+}
+
+.app-render-error__panel {
+  max-width: 640px;
+  width: 100%;
+  padding: 24px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--card);
+}
+
+.app-render-error__title {
+  font-size: 16px;
+  font-weight: 650;
+  color: var(--text-strong);
+}
+
+.app-render-error__sub {
+  margin-top: 6px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.app-render-error__detail {
+  margin: 14px 0;
+  padding: 12px;
+  max-height: 40vh;
+  overflow: auto;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+  border-radius: 9px;
+  background: var(--bg-muted);
+  border: 1px solid var(--border);
+}
+
+/* Model Studio — guided AI-model manager dialog. */
+.model-studio__lede {
+  margin: 0 0 16px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--muted);
+}
+
+.model-studio__section-title {
+  margin: 18px 0 8px;
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.model-studio__hero {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--accent) 24%, transparent);
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--accent) 9%, transparent),
+    color-mix(in srgb, var(--accent) 3%, transparent) 60%
+  );
+}
+
+.model-studio__hero-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+}
+
+.model-studio__hero-icon svg {
+  width: 17px;
+  height: 17px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.model-studio__hero-main {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.model-studio__hero-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-strong);
+  letter-spacing: -0.01em;
+}
+
+.model-studio__hero-meta {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.model-studio__list {
+  display: grid;
+  gap: 4px;
+}
+
+.model-studio__row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  transition: background 0.12s ease;
+}
+
+.model-studio__row:hover {
+  background: color-mix(in srgb, var(--fg) 4%, transparent);
+}
+
+.model-studio__row--default {
+  border-color: color-mix(in srgb, var(--accent) 22%, transparent);
+  background: color-mix(in srgb, var(--accent) 5%, transparent);
+}
+
+.model-studio__row-main {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+  flex: 1;
+}
+
+.model-studio__row-name {
+  font-size: 13px;
+  font-weight: 550;
+  color: var(--text-strong);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.model-studio__row-meta {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.model-studio__row-action {
+  flex: 0 0 auto;
+}
+
+.model-studio__row-action--active {
+  border-color: color-mix(in srgb, var(--accent) 40%, transparent);
+  color: var(--accent);
+}
+
+.model-studio__badge {
+  flex: 0 0 auto;
+  font-size: 10.5px;
+  font-weight: 650;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--accent);
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.model-brand {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  color: var(--model-brand-color);
+  background: color-mix(in srgb, var(--model-brand-color) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--model-brand-color) 18%, transparent);
+}
+
+.model-brand__glyph {
+  width: 15px;
+  height: 15px;
+  fill: currentColor;
+}
+
+.model-brand__monogram {
+  font-size: 13px;
+  font-weight: 750;
+  line-height: 1;
+}
+
+.model-brand-wrap {
+  position: relative;
+  flex: 0 0 auto;
+  display: inline-flex;
+}
+
+.model-brand-wrap__dot {
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
+  width: 9px;
+  height: 9px;
+  border: 2px solid var(--panel);
+  box-sizing: content-box;
+}
+
+.model-studio__dot {
+  flex: 0 0 auto;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--muted);
+  opacity: 0.5;
+}
+
+.model-studio__dot--ok {
+  background: #22c55e;
+  opacity: 1;
+}
+
+.model-studio__dot--warn {
+  background: #f59e0b;
+  opacity: 1;
+}
+
+.model-studio__dot--bad {
+  background: var(--danger);
+  opacity: 1;
+}
+
+.model-studio__providers {
+  display: grid;
+  gap: 6px;
+}
+
+.model-studio__provider {
+  border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
+  border-radius: 11px;
+  overflow: hidden;
+}
+
+.model-studio__provider--open {
+  border-color: color-mix(in srgb, var(--accent) 30%, transparent);
+}
+
+.model-studio__provider-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 11px 14px;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.model-studio__provider-head:hover {
+  background: color-mix(in srgb, var(--fg) 4%, transparent);
+}
+
+.model-studio__provider-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-strong);
+}
+
+.model-studio__provider-desc {
+  flex: 1;
+  font-size: 11.5px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.model-studio__connect {
+  display: grid;
+  gap: 10px;
+  padding: 4px 14px 14px;
+}
+
+.model-studio__field {
+  display: grid;
+  gap: 4px;
+}
+
+.model-studio__field span {
+  font-size: 11.5px;
+  font-weight: 550;
+  color: var(--muted);
+}
+
+.model-studio__field input {
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--bg-elevated);
+  color: inherit;
+  font-size: 13px;
+}
+
+.model-studio__field input:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.model-studio__keyhint {
+  font-size: 11.5px;
+  line-height: 1.55;
+  color: var(--muted);
+}
+
+.model-studio__keyhint a {
+  color: var(--accent);
+}
+
+.model-studio__connect-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.model-studio__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 20px;
+  padding-top: 12px;
+  border-top: 1px solid color-mix(in srgb, var(--border) 64%, transparent);
+}
+
+.model-studio__tip {
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
+.model-studio__tip code {
+  font-family: var(--mono);
+  font-size: 11px;
+  padding: 1px 5px;
+  border-radius: 5px;
+  background: var(--bg-muted);
+  border: 1px solid var(--border);
+}
+
+/* Nodes tab intro — two compact tiles + collapsible pairing guide. */
+.nodes-intro__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 12px;
+}
+
+.nodes-intro__tile {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px 16px;
+  border: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
+  border-radius: 12px;
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--accent) 4%, transparent),
+    transparent 55%
+  );
+}
+
+.nodes-intro__icon {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 11%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 22%, transparent);
+}
+
+.nodes-intro__icon svg {
+  width: 17px;
+  height: 17px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.nodes-intro__copy {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.nodes-intro__title {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--text-strong);
+  letter-spacing: -0.01em;
+}
+
+.nodes-intro__desc {
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--muted);
+}
+
+.nodes-pair {
+  margin-top: 12px;
+  border: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.nodes-pair__summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 16px;
+  cursor: pointer;
+  list-style: none;
+  font-size: 13px;
+  font-weight: 550;
+  color: var(--text-strong);
+  transition: background 0.15s ease;
+}
+
+.nodes-pair__summary::-webkit-details-marker {
+  display: none;
+}
+
+.nodes-pair__summary:hover {
+  background: color-mix(in srgb, var(--fg) 4%, transparent);
+}
+
+.nodes-pair__chevron {
+  flex: 0 0 auto;
+  width: 8px;
+  height: 8px;
+  border-right: 1.8px solid var(--muted);
+  border-bottom: 1.8px solid var(--muted);
+  transform: rotate(45deg);
+  transition: transform 0.18s ease;
+  margin-right: 2px;
+}
+
+.nodes-pair[open] .nodes-pair__chevron {
+  transform: rotate(-135deg);
+}
+
+.nodes-pair__steps {
+  margin: 0;
+  padding: 4px 16px 4px 36px;
+  display: grid;
+  gap: 14px;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.nodes-pair__steps li::marker {
+  color: var(--accent);
+  font-weight: 650;
+}
+
+.nodes-pair__step-title {
+  font-weight: 600;
+  color: var(--text-strong);
+}
+
+.nodes-pair__step-detail {
+  margin-top: 2px;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--muted);
+}
+
+.nodes-pair__step-detail code {
+  font-family: var(--mono);
+  font-size: 11.5px;
+  padding: 1px 5px;
+  border-radius: 5px;
+  background: var(--bg-muted);
+  border: 1px solid var(--border);
+}
+
+.nodes-pair__cmd {
+  margin-top: 8px;
+  padding: 10px 12px;
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-strong);
+  background: var(--bg-muted);
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  overflow-x: auto;
+  white-space: nowrap;
+}
+
+.nodes-pair__note {
+  margin: 12px 16px 14px;
+  padding: 10px 12px;
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--muted);
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--accent) 6%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 16%, transparent);
+}
+
 .contacts-add {
+  display: grid;
+  gap: 8px;
+}
+
+.contacts-add__row {
   flex-wrap: nowrap;
+}
+
+.contacts-name {
+  width: 100%;
 }
 
 .contacts-cc {
@@ -758,12 +1411,225 @@
   justify-content: center;
 }
 
+/* Guided channel setup (first-time connect flow inside the dialog). */
+.ch-setup {
+  max-width: 560px;
+}
+
+.ch-setup__intro {
+  margin: 0 0 14px;
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--text);
+}
+
+.ch-setup__steps {
+  margin: 0 0 18px;
+  padding-left: 20px;
+  display: grid;
+  gap: 12px;
+  font-size: 13.5px;
+  line-height: 1.55;
+  color: var(--text);
+}
+
+.ch-setup__step-title {
+  font-weight: 600;
+  color: var(--text-strong);
+}
+
+.ch-setup__step-detail {
+  margin-top: 2px;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--muted);
+}
+
+.ch-setup__after {
+  margin: 14px 0 0;
+  font-size: 12.5px;
+  line-height: 1.55;
+}
+
+.ch-setup__back {
+  margin-bottom: 14px;
+}
+
+.ch-setup__steps li::marker {
+  color: var(--accent);
+  font-weight: 650;
+}
+
+.ch-setup__steps code {
+  font-family: var(--mono);
+  font-size: 12px;
+  padding: 1px 5px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-muted);
+  border: 1px solid var(--border);
+}
+
+.ch-setup__fields {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.ch-setup__field {
+  display: grid;
+  gap: 6px;
+}
+
+.ch-setup__field-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted-strong);
+}
+
+.ch-setup__input {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 38px;
+  padding: 0 12px;
+  border: 1px solid var(--input);
+  border-radius: var(--radius-md);
+  background: var(--bg-elevated);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 13px;
+  transition:
+    border-color var(--duration-fast) ease,
+    box-shadow var(--duration-fast) ease;
+}
+
+.ch-setup__input:focus {
+  outline: none;
+  border-color: var(--ring);
+  box-shadow: var(--focus-ring);
+}
+
+.ch-setup__actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.ch-setup__qr {
+  margin-top: 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: #ffffff;
+}
+
+.ch-setup__qr-hint {
+  font-size: 13px;
+  font-weight: 550;
+  line-height: 1.5;
+  text-align: center;
+  color: #3c3f44;
+}
+
+.ch-setup__qr img {
+  width: 240px;
+  height: 240px;
+  image-rendering: pixelated;
+}
+
+.ch-setup__advanced {
+  margin-top: 22px;
+  border-top: 1px solid var(--border);
+  padding-top: 14px;
+}
+
+.ch-setup__advanced > summary {
+  cursor: pointer;
+  user-select: none;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.ch-setup__advanced > summary:hover {
+  color: var(--text);
+}
+
+/* Manage-mode action row at the top of the channel dialog. */
+.ch-manage {
+  display: grid;
+  gap: 10px;
+  padding: 14px 16px;
+  margin-bottom: 18px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: color-mix(in srgb, var(--bg-elevated) 72%, transparent);
+}
+
+.ch-manage__identity {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.ch-manage__identity strong {
+  color: var(--text-strong);
+  font-weight: 650;
+}
+
+.ch-manage__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 /* Channel config dialog — reuses the md-preview-dialog shell. */
 .ch-dialog__titlerow {
   display: flex;
   align-items: center;
   gap: 12px;
   flex-wrap: wrap;
+}
+
+.ch-dialog__close {
+  align-self: flex-start;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease;
+}
+
+.ch-dialog__close svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.ch-dialog__close:hover {
+  background: color-mix(in srgb, var(--fg) 8%, transparent);
+  color: var(--fg);
+}
+
+.ch-dialog__close:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
 }
 
 .ch-dialog__body {
@@ -1243,46 +2109,83 @@
 
 .confirm-dialog {
   padding: 0;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
+  border: 1px solid color-mix(in srgb, var(--border-strong, var(--border)) 80%, transparent);
+  border-radius: calc(var(--radius-lg) + 4px);
   background: var(--card);
   color: var(--text);
-  box-shadow: 0 24px 60px color-mix(in srgb, black 30%, transparent);
-  max-width: min(420px, calc(100vw - 32px));
+  box-shadow:
+    0 32px 80px color-mix(in srgb, black 34%, transparent),
+    0 4px 16px color-mix(in srgb, black 12%, transparent),
+    0 1px 0 rgba(255, 255, 255, 0.04) inset;
+  max-width: min(400px, calc(100vw - 32px));
   width: 100%;
+  animation: scale-in 0.18s var(--ease-out, ease-out);
 }
 
 .confirm-dialog::backdrop {
-  background: color-mix(in srgb, black 45%, transparent);
-  -webkit-backdrop-filter: blur(2px);
-  backdrop-filter: blur(2px);
+  background: color-mix(in srgb, black 52%, transparent);
+  -webkit-backdrop-filter: blur(4px);
+  backdrop-filter: blur(4px);
 }
 
 .confirm-dialog__panel {
   display: grid;
-  gap: 10px;
-  padding: 20px;
+  justify-items: start;
+  padding: 24px 24px 20px;
+}
+
+.confirm-dialog__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  margin-bottom: 14px;
+}
+
+.confirm-dialog__icon svg {
+  width: 21px;
+  height: 21px;
+}
+
+.confirm-dialog__panel--danger .confirm-dialog__icon {
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 10%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--danger) 16%, transparent) inset;
+}
+
+.confirm-dialog__panel--safe .confirm-dialog__icon {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 16%, transparent) inset;
 }
 
 .confirm-dialog__title {
-  font-size: 15px;
-  font-weight: 700;
-  letter-spacing: -0.01em;
+  font-size: 16px;
+  font-weight: 650;
+  letter-spacing: -0.012em;
   color: var(--text-strong);
 }
 
 .confirm-dialog__message {
-  font-size: 13px;
-  line-height: 1.55;
+  margin-top: 6px;
+  font-size: 13.5px;
+  line-height: 1.6;
   color: var(--muted);
   overflow-wrap: anywhere;
+  /* Multi-line messages (e.g. contact-import previews) keep their line breaks. */
+  white-space: pre-line;
+  max-height: 40vh;
+  overflow-y: auto;
 }
 
 .confirm-dialog__actions {
   display: flex;
   justify-content: flex-end;
-  gap: 8px;
-  margin-top: 6px;
+  justify-self: stretch;
+  gap: 10px;
+  margin-top: 22px;
 }
 
 .confirm-dialog__actions .btn {
@@ -1290,11 +2193,34 @@
   align-items: center;
   justify-content: center;
   gap: 7px;
+  min-height: 36px;
+  min-width: 84px;
+  padding: 7px 16px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 550;
 }
 
 .confirm-dialog__actions .btn:disabled {
   opacity: 0.85;
   cursor: default;
+}
+
+/* Destructive confirm reads as a solid red action, not an outline link. */
+.confirm-dialog__confirm--filled {
+  background: var(--danger);
+  border-color: transparent;
+  color: #fff;
+}
+
+.confirm-dialog__confirm--filled:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--danger) 88%, black 12%);
+  color: #fff;
+}
+
+.confirm-dialog__confirm--filled:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--danger) 55%, transparent);
+  outline-offset: 2px;
 }
 
 .confirm-dialog__spinner {

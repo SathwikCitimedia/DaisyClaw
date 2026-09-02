@@ -268,10 +268,20 @@ export type AppViewState = {
   channelDisconnectBusy: string | null;
   channelConnectBusy: string | null;
   channelContactsBusy: string | null;
+  channelContactsBusyOp: import("./controllers/channels.types.ts").ChannelContactsBusyOp | null;
   channelContactsError: string | null;
   pairingRequests: import("./controllers/channels.types.ts").PairingRequestEntry[] | null;
   pairingBusy: string | null;
   channelsFocus: string | null;
+  channelSetupBusy: string | null;
+  channelSetupForced: string | null;
+  contactEditKey: string | null;
+  modelStudioOpen: boolean;
+  modelStudioCatalog: import("./types.ts").ModelCatalogEntry[] | null;
+  modelStudioLoading: boolean;
+  modelStudioBusy: string | null;
+  modelStudioError: string | null;
+  modelStudioProvider: string | null;
   nostrProfileFormState: NostrProfileFormState | null;
   nostrProfileAccountId: string | null;
   configFormDirty: boolean;
@@ -507,8 +517,13 @@ export type AppViewState = {
     handleChannelDisconnect: (channelId: string) => Promise<void>;
     handleChannelEnable: (channelId: string) => Promise<void>;
     handleContactAdd: (channelId: string, value: string) => Promise<void>;
-    handleContactsAdd: (channelId: string, values: string[]) => Promise<void>;
-    handleContactRemove: (channelId: string, value: string) => Promise<void>;
+    handleContactsAdd: (
+      channelId: string,
+      values: string[],
+      labels?: Record<string, string>,
+    ) => Promise<void>;
+    handleContactRename: (channelId: string, contact: string, name: string) => Promise<void>;
+    handleContactRemove: (channelId: string, value: string) => Promise<boolean>;
     handleDmPolicyChange: (channelId: string, policy: string) => Promise<void>;
     handlePairingApprove: (
       entry: import("./controllers/channels.types.ts").PairingRequestEntry,

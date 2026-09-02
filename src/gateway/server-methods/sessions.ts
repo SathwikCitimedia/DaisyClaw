@@ -20,6 +20,7 @@ import {
   validateSessionsCompactionGetParams,
   validateSessionsCompactionListParams,
   validateSessionsCompactionRestoreParams,
+  validateSessionsForkFromMessageParams,
   validateSessionsCreateParams,
   validateSessionsDeleteParams,
   validateSessionsDescribeParams,
@@ -143,7 +144,10 @@ function filterSessionStoreToConfiguredAgents(
     if (!normalizedKey) {
       return false;
     }
-    const canonicalKey = resolveSessionStoreKey({ cfg, sessionKey: normalizedKey });
+    const canonicalKey = resolveSessionStoreKey({
+      cfg,
+      sessionKey: normalizedKey,
+    });
     const agentId = resolveSessionStoreAgentId(cfg, canonicalKey);
     return configuredAgentIds.has(normalizeAgentId(agentId));
   };
@@ -305,7 +309,7 @@ function emitSessionOperation(
 }
 
 function rejectWebchatSessionMutation(params: {
-  action: "patch" | "delete" | "compact" | "restore";
+  action: "patch" | "delete" | "compact" | "restore" | "fork";
   client: GatewayClient | null;
   isWebchatConnect: (params: GatewayClient["connect"] | null | undefined) => boolean;
   respond: RespondFn;
@@ -431,7 +435,11 @@ async function createAgentMainSessionForSend(params: {
   }
 
   let createResult:
-    | { ok: boolean; payload?: { key?: string }; error?: ReturnType<typeof errorShape> }
+    | {
+        ok: boolean;
+        payload?: { key?: string };
+        error?: ReturnType<typeof errorShape>;
+      }
     | undefined;
   await sessionsHandlers["sessions.create"]({
     req: params.req,
@@ -879,7 +887,13 @@ async function handleSessionSend(params: {
         typeof (payload as { runId?: unknown }).runId === "string"
           ? (payload as { runId: string }).runId
           : undefined;
-      if (ok && shouldAttachPendingMessageSeq({ payload, cached: meta?.cached === true })) {
+      if (
+        ok &&
+        shouldAttachPendingMessageSeq({
+          payload,
+          cached: meta?.cached === true,
+        })
+      ) {
         params.respond(
           true,
           {
@@ -909,7 +923,12 @@ async function handleSessionSend(params: {
     isWebchatConnect: params.isWebchatConnect,
   });
   if (sendAcked) {
-    if (shouldAttachPendingMessageSeq({ payload: sendPayload, cached: sendCached })) {
+    if (
+      shouldAttachPendingMessageSeq({
+        payload: sendPayload,
+        cached: sendCached,
+      })
+    ) {
       await reactivateCompletedSubagentSession({
         sessionKey: canonicalKey,
         runId: startedRunId,
@@ -1092,7 +1111,9 @@ export const sessionsHandlers: GatewayRequestHandlers = {
       return;
     }
     const requestedAgentId = requestedAgent.agentId;
-    const { canonicalKey } = loadSessionEntry(key, { agentId: requestedAgentId });
+    const { canonicalKey } = loadSessionEntry(key, {
+      agentId: requestedAgentId,
+    });
     const subscriptionKey = resolveSessionMessageSubscriptionKey({
       canonicalKey,
       agentId: requestedAgentId,
@@ -1129,7 +1150,9 @@ export const sessionsHandlers: GatewayRequestHandlers = {
       return;
     }
     const requestedAgentId = requestedAgent.agentId;
-    const { canonicalKey } = loadSessionEntry(key, { agentId: requestedAgentId });
+    const { canonicalKey } = loadSessionEntry(key, {
+      agentId: requestedAgentId,
+    });
     const subscriptionKey = resolveSessionMessageSubscriptionKey({
       canonicalKey,
       agentId: requestedAgentId,
@@ -1361,7 +1384,10 @@ export const sessionsHandlers: GatewayRequestHandlers = {
     let parentSessionEntry: SessionEntry | undefined;
     let parentSelectedAgentId: string | undefined;
     if (parentSessionKey) {
-      const parentCanonicalKey = resolveSessionStoreKey({ cfg, sessionKey: parentSessionKey });
+      const parentCanonicalKey = resolveSessionStoreKey({
+        cfg,
+        sessionKey: parentSessionKey,
+      });
       if (parentCanonicalKey === "global") {
         const parentRequestedAgent = resolveRequestedGlobalAgentId(
           cfg,
@@ -1401,7 +1427,10 @@ export const sessionsHandlers: GatewayRequestHandlers = {
           resolveAgentIdFromSessionKey(canonicalParentSessionKey) ??
           resolveDefaultAgentId(cfg),
       );
-      const parentMainKey = resolveAgentMainSessionKey({ cfg, agentId: parentAgentId });
+      const parentMainKey = resolveAgentMainSessionKey({
+        cfg,
+        agentId: parentAgentId,
+      });
       if (canonicalParentSessionKey === parentMainKey) {
         const { performGatewaySessionReset } = await loadSessionsRuntimeModule();
         const resetResult = await performGatewaySessionReset({
@@ -1788,7 +1817,14 @@ export const sessionsHandlers: GatewayRequestHandlers = {
     if (!key) {
       return;
     }
-    if (rejectWebchatSessionMutation({ action: "restore", client, isWebchatConnect, respond })) {
+    if (
+      rejectWebchatSessionMutation({
+        action: "restore",
+        client,
+        isWebchatConnect,
+        respond,
+      })
+    ) {
       return;
     }
     const checkpointId =
@@ -1880,6 +1916,276 @@ export const sessionsHandlers: GatewayRequestHandlers = {
         ? { agentId: requestedAgent.agentId }
         : {}),
       reason: "checkpoint-restore",
+    });
+  },
+  "sessions.forkFromMessage": async ({
+    req,
+    params,
+    respond,
+    context,
+    client,
+    isWebchatConnect,
+  }) => {
+    if (
+      !assertValidParams(
+        params,
+        validateSessionsForkFromMessageParams,
+        "sessions.forkFromMessage",
+        respond,
+      )
+    ) {
+      return;
+    }
+    const p = params;
+    const key = requireSessionKey(p.key, respond);
+    if (!key) {
+      return;
+    }
+    if (
+      rejectWebchatSessionMutation({
+        action: "fork",
+        client,
+        isWebchatConnect,
+        respond,
+      })
+    ) {
+      return;
+    }
+    const messageId = typeof p.messageId === "string" ? p.messageId.trim() : "";
+    const lastUser = p.lastUser === true;
+    if (!messageId && !lastUser) {
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.INVALID_REQUEST, "messageId or lastUser required"),
+      );
+      return;
+    }
+    const cfg = context.getRuntimeConfig();
+    const requestedAgent = resolveRequestedGlobalAgentId(cfg, key, p.agentId);
+    if (!requestedAgent.ok) {
+      respond(false, undefined, requestedAgent.error);
+      return;
+    }
+    const loaded = loadSessionEntry(key, { agentId: requestedAgent.agentId });
+    const { entry, canonicalKey, storePath } = loaded;
+    if (!entry?.sessionId) {
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.INVALID_REQUEST, `session not found: ${key}`),
+      );
+      return;
+    }
+    const sourceFile = resolveSessionTranscriptCandidates(
+      entry.sessionId,
+      storePath,
+      entry.sessionFile,
+    ).find((candidate) => fs.existsSync(candidate));
+    if (!sourceFile) {
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.INVALID_REQUEST, `session transcript not found: ${key}`),
+      );
+      return;
+    }
+
+    // Locate the edited user message in the transcript so the fork can end at
+    // its parent — everything from the edited turn onward leaves the context.
+    type TranscriptScanRecord = {
+      id: string;
+      parentId: string | null;
+      isUserMessage: boolean;
+    };
+    let parentId: string | null | undefined;
+    let resolvedMessageId = messageId;
+    let sourceHeaderCwd: string | undefined;
+    try {
+      const lines = fs.readFileSync(sourceFile, "utf-8").split(/\r?\n/);
+      const scanned: TranscriptScanRecord[] = [];
+      const scannedById = new Map<string, TranscriptScanRecord>();
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed) {
+          continue;
+        }
+        let record: unknown;
+        try {
+          record = JSON.parse(trimmed);
+        } catch {
+          continue;
+        }
+        const rec = record as {
+          type?: unknown;
+          id?: unknown;
+          parentId?: unknown;
+          cwd?: unknown;
+          message?: { role?: unknown };
+        };
+        if (rec.type === "session") {
+          if (typeof rec.cwd === "string") {
+            sourceHeaderCwd = rec.cwd;
+          }
+          continue;
+        }
+        if (typeof rec.id !== "string" || !rec.id) {
+          continue;
+        }
+        const scannedRecord: TranscriptScanRecord = {
+          id: rec.id,
+          parentId: typeof rec.parentId === "string" && rec.parentId ? rec.parentId : null,
+          isUserMessage: rec.type === "message" && rec.message?.role === "user",
+        };
+        scanned.push(scannedRecord);
+        scannedById.set(scannedRecord.id, scannedRecord);
+      }
+
+      let target: TranscriptScanRecord | undefined;
+      if (messageId) {
+        target = scannedById.get(messageId);
+        if (target && !target.isUserMessage) {
+          respond(
+            false,
+            undefined,
+            errorShape(
+              ErrorCodes.INVALID_REQUEST,
+              `messageId does not reference a user message: ${messageId}`,
+            ),
+          );
+          return;
+        }
+      } else {
+        // lastUser: walk the active branch (leaf = last appended entry) up to
+        // the most recent user message, mirroring what the UI shows as the
+        // final user bubble. File-order scanning would be wrong after a prior
+        // fork left abandoned branches in the transcript.
+        let cursor = scanned.at(-1);
+        const visited = new Set<string>();
+        while (cursor && !visited.has(cursor.id)) {
+          if (cursor.isUserMessage) {
+            target = cursor;
+            break;
+          }
+          visited.add(cursor.id);
+          cursor = cursor.parentId ? scannedById.get(cursor.parentId) : undefined;
+        }
+      }
+      if (target) {
+        parentId = target.parentId;
+        resolvedMessageId = target.id;
+      }
+    } catch (err) {
+      respond(
+        false,
+        undefined,
+        errorShape(
+          ErrorCodes.UNAVAILABLE,
+          `failed to read session transcript: ${formatErrorMessage(err)}`,
+        ),
+      );
+      return;
+    }
+    if (parentId === undefined) {
+      respond(
+        false,
+        undefined,
+        errorShape(
+          ErrorCodes.INVALID_REQUEST,
+          messageId
+            ? `message not found in session: ${messageId}`
+            : "no user message found in session",
+        ),
+      );
+      return;
+    }
+
+    const interruptResult = await interruptSessionRunIfActive({
+      req,
+      context,
+      client,
+      isWebchatConnect,
+      requestedKey: key,
+      canonicalKey,
+      agentId: requestedAgent.agentId,
+      sessionId: entry.sessionId,
+    });
+    if (interruptResult.error) {
+      respond(false, undefined, interruptResult.error);
+      return;
+    }
+
+    let forked: { sessionId: string; sessionFile: string } | null = null;
+    if (parentId === null) {
+      // Editing the first entry: fork to a fresh transcript (header only).
+      try {
+        const forkSessionId = randomUUID();
+        const timestamp = new Date().toISOString();
+        const fileTimestamp = timestamp.replace(/[:.]/g, "-");
+        const forkFile = path.join(
+          path.dirname(sourceFile),
+          `${fileTimestamp}_${forkSessionId}.jsonl`,
+        );
+        const header = {
+          type: "session",
+          version: CURRENT_SESSION_VERSION,
+          id: forkSessionId,
+          timestamp,
+          cwd: sourceHeaderCwd ?? process.cwd(),
+          parentSession: sourceFile,
+        };
+        fs.mkdirSync(path.dirname(forkFile), { recursive: true });
+        fs.writeFileSync(forkFile, `${JSON.stringify(header)}\n`, {
+          encoding: "utf-8",
+          flag: "wx",
+        });
+        forked = { sessionId: forkSessionId, sessionFile: forkFile };
+      } catch {
+        forked = null;
+      }
+    } else {
+      forked = await forkCompactionCheckpointTranscriptAsync({
+        sourceFile,
+        sourceLeafId: parentId,
+        sessionDir: path.dirname(sourceFile),
+      });
+    }
+    if (!forked?.sessionFile) {
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.UNAVAILABLE, "failed to fork session transcript"),
+      );
+      return;
+    }
+    const nextEntry = cloneCheckpointSessionEntry({
+      currentEntry: entry,
+      nextSessionId: forked.sessionId,
+      nextSessionFile: forked.sessionFile,
+      preserveCompactionCheckpoints: true,
+    });
+
+    await updateSessionStore(storePath, (store) => {
+      store[canonicalKey] = nextEntry;
+    });
+
+    respond(
+      true,
+      {
+        ok: true,
+        key: canonicalKey,
+        sessionId: nextEntry.sessionId,
+        forkedFromSessionId: entry.sessionId,
+        forkedAtMessageId: resolvedMessageId,
+      },
+      undefined,
+    );
+    emitSessionsChanged(context, {
+      sessionKey: canonicalKey,
+      ...(canonicalKey === "global" && requestedAgent.agentId
+        ? { agentId: requestedAgent.agentId }
+        : {}),
+      reason: "message-edit-fork",
     });
   },
   "sessions.send": async ({ req, params, respond, context, client, isWebchatConnect }) => {
@@ -1979,7 +2285,9 @@ export const sessionsHandlers: GatewayRequestHandlers = {
       return;
     }
     const requestedGlobalAgentId = requestedGlobalAgent.agentId;
-    const { canonicalKey } = loadSessionEntry(key, { agentId: requestedGlobalAgentId });
+    const { canonicalKey } = loadSessionEntry(key, {
+      agentId: requestedGlobalAgentId,
+    });
     const requestedKeyAliases =
       requestedKey &&
       requestedKey !== key &&
@@ -2085,7 +2393,14 @@ export const sessionsHandlers: GatewayRequestHandlers = {
     if (!key) {
       return;
     }
-    if (rejectWebchatSessionMutation({ action: "patch", client, isWebchatConnect, respond })) {
+    if (
+      rejectWebchatSessionMutation({
+        action: "patch",
+        client,
+        isWebchatConnect,
+        respond,
+      })
+    ) {
       return;
     }
 
@@ -2140,7 +2455,9 @@ export const sessionsHandlers: GatewayRequestHandlers = {
       provider: resolved.provider,
       model: resolved.model,
     });
-    const acpMeta = readAcpSessionMeta({ sessionKey: target.canonicalKey ?? key });
+    const acpMeta = readAcpSessionMeta({
+      sessionKey: target.canonicalKey ?? key,
+    });
     const agentRuntime = resolveModelAgentRuntimeMetadata({
       cfg,
       agentId,
@@ -2180,7 +2497,14 @@ export const sessionsHandlers: GatewayRequestHandlers = {
     if (!key) {
       return;
     }
-    if (rejectWebchatSessionMutation({ action: "patch", client, isWebchatConnect, respond })) {
+    if (
+      rejectWebchatSessionMutation({
+        action: "patch",
+        client,
+        isWebchatConnect,
+        respond,
+      })
+    ) {
       return;
     }
     const scopes = Array.isArray(client?.connect.scopes) ? client.connect.scopes : [];
@@ -2283,7 +2607,14 @@ export const sessionsHandlers: GatewayRequestHandlers = {
     if (!key) {
       return;
     }
-    if (rejectWebchatSessionMutation({ action: "delete", client, isWebchatConnect, respond })) {
+    if (
+      rejectWebchatSessionMutation({
+        action: "delete",
+        client,
+        isWebchatConnect,
+        respond,
+      })
+    ) {
       return;
     }
 
@@ -2322,7 +2653,14 @@ export const sessionsHandlers: GatewayRequestHandlers = {
     const { entry, legacyKey, canonicalKey } = loadSessionEntry(key, {
       agentId: requestedAgentId,
     });
-    if (rejectPluginRuntimeDeleteMismatch({ client, key: canonicalKey ?? key, entry, respond })) {
+    if (
+      rejectPluginRuntimeDeleteMismatch({
+        client,
+        key: canonicalKey ?? key,
+        entry,
+        respond,
+      })
+    ) {
       return;
     }
     const mutationCleanupError = await cleanupSessionBeforeMutation({
@@ -2449,7 +2787,14 @@ export const sessionsHandlers: GatewayRequestHandlers = {
     if (!key) {
       return;
     }
-    if (rejectWebchatSessionMutation({ action: "compact", client, isWebchatConnect, respond })) {
+    if (
+      rejectWebchatSessionMutation({
+        action: "compact",
+        client,
+        isWebchatConnect,
+        respond,
+      })
+    ) {
       return;
     }
 

@@ -7,17 +7,7 @@ metadata:
     "daisyclaw":
       {
         "emoji": "📋",
-        "requires": { "bins": ["jq"], "env": ["TRELLO_API_KEY", "TRELLO_TOKEN"] },
-        "install":
-          [
-            {
-              "id": "brew",
-              "kind": "brew",
-              "formula": "jq",
-              "bins": ["jq"],
-              "label": "Install jq (brew)",
-            },
-          ],
+        "requires": { "bins": ["curl"], "env": ["TRELLO_API_KEY", "TRELLO_TOKEN"] },
       },
   }
 ---
@@ -38,24 +28,25 @@ Manage Trello boards, lists, and cards directly from DaisyClaw.
 
 ## Usage
 
-All commands use curl to hit the Trello REST API.
+All commands use curl to hit the Trello REST API. Use the `fields` query
+parameter to trim responses server-side; pipe to `jq` only if it is installed.
 
 ### List boards
 
 ```bash
-curl -s "https://api.trello.com/1/members/me/boards?key=$TRELLO_API_KEY&token=$TRELLO_TOKEN" | jq '.[] | {name, id}'
+curl -s "https://api.trello.com/1/members/me/boards?key=$TRELLO_API_KEY&token=$TRELLO_TOKEN&fields=name,id"
 ```
 
 ### List lists in a board
 
 ```bash
-curl -s "https://api.trello.com/1/boards/{boardId}/lists?key=$TRELLO_API_KEY&token=$TRELLO_TOKEN" | jq '.[] | {name, id}'
+curl -s "https://api.trello.com/1/boards/{boardId}/lists?key=$TRELLO_API_KEY&token=$TRELLO_TOKEN&fields=name,id"
 ```
 
 ### List cards in a list
 
 ```bash
-curl -s "https://api.trello.com/1/lists/{listId}/cards?key=$TRELLO_API_KEY&token=$TRELLO_TOKEN" | jq '.[] | {name, id, desc}'
+curl -s "https://api.trello.com/1/lists/{listId}/cards?key=$TRELLO_API_KEY&token=$TRELLO_TOKEN&fields=name,id,desc"
 ```
 
 ### Create a card
@@ -97,12 +88,12 @@ curl -s -X PUT "https://api.trello.com/1/cards/{cardId}?key=$TRELLO_API_KEY&toke
 ## Examples
 
 ```bash
-# Get all boards
-curl -s "https://api.trello.com/1/members/me/boards?key=$TRELLO_API_KEY&token=$TRELLO_TOKEN&fields=name,id" | jq
+# Get all boards (name + id only)
+curl -s "https://api.trello.com/1/members/me/boards?key=$TRELLO_API_KEY&token=$TRELLO_TOKEN&fields=name,id"
 
-# Find a specific board by name
+# Get all cards on a board with their list ids
+curl -s "https://api.trello.com/1/boards/{boardId}/cards?key=$TRELLO_API_KEY&token=$TRELLO_TOKEN&fields=name,idList"
+
+# Optional, when jq is installed: find a board by name
 curl -s "https://api.trello.com/1/members/me/boards?key=$TRELLO_API_KEY&token=$TRELLO_TOKEN" | jq '.[] | select(.name | contains("Work"))'
-
-# Get all cards on a board
-curl -s "https://api.trello.com/1/boards/{boardId}/cards?key=$TRELLO_API_KEY&token=$TRELLO_TOKEN" | jq '.[] | {name, list: .idList}'
 ```

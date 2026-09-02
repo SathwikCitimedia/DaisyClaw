@@ -385,11 +385,11 @@ function renderDeleteConfirmFixture() {
     [
       createMessageGroup(
         {
-          role: "assistant",
-          content: "hello from assistant",
+          role: "user",
+          content: "hello from user",
           timestamp: 1000,
         },
-        "assistant",
+        "user",
       ),
     ],
     { onDelete },
@@ -592,7 +592,9 @@ describe("grouped chat rendering", () => {
       "user",
     );
 
-    expect(markdownRenderMock).toHaveBeenCalledWith(markdown, { codeBlockChrome: "none" });
+    expect(markdownRenderMock).toHaveBeenCalledWith(markdown, {
+      codeBlockChrome: "none",
+    });
   });
 
   it("keeps assistant markdown code-block copy chrome enabled", () => {
@@ -649,20 +651,12 @@ describe("grouped chat rendering", () => {
       "chat-delete-confirm--left",
     ]);
 
+    // Assistant responses are not individually deletable: deleting the user
+    // query cascades to its response instead.
     const assistantDeleteButton = container.querySelector<HTMLButtonElement>(
       ".chat-group.assistant .chat-group-delete",
     );
-    expect(assistantDeleteButton).toBeInstanceOf(HTMLButtonElement);
-    assistantDeleteButton!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-
-    const assistantConfirm = container.querySelector<HTMLElement>(
-      ".chat-group.assistant .chat-delete-confirm",
-    );
-    expect(assistantConfirm).toBeInstanceOf(HTMLElement);
-    expect([...assistantConfirm!.classList]).toEqual([
-      "chat-delete-confirm",
-      "chat-delete-confirm--right",
-    ]);
+    expect(assistantDeleteButton).toBeNull();
   });
 
   it("places the delete confirm below the trigger near the top viewport edge", () => {
@@ -678,7 +672,9 @@ describe("grouped chat rendering", () => {
     const popover = expectElement(fixture.container, ".chat-delete-confirm", HTMLElement);
     expect(popover.dataset.placement).toBe("below");
     expect(popover.style.top).toBe("34px");
-    expect(popover.style.left).toBe("20px");
+    // User-side popovers anchor to the trigger's right edge; the desired left
+    // (44 - 200 = -156) clamps to the 8px viewport margin.
+    expect(popover.style.left).toBe("8px");
   });
 
   it("places the delete confirm above the trigger near the bottom viewport edge", () => {
@@ -694,7 +690,7 @@ describe("grouped chat rendering", () => {
     const popover = expectElement(fixture.container, ".chat-delete-confirm", HTMLElement);
     expect(popover.dataset.placement).toBe("above");
     expect(popover.style.top).toBe("104px");
-    expect(popover.style.left).toBe("20px");
+    expect(popover.style.left).toBe("8px");
   });
 
   it("clamps the delete confirm horizontally inside narrow viewports", () => {
@@ -708,7 +704,7 @@ describe("grouped chat rendering", () => {
     openDeleteConfirm(fixture.deleteButton);
 
     const popover = expectElement(fixture.container, ".chat-delete-confirm", HTMLElement);
-    expect(popover.style.left).toBe("112px");
+    expect(popover.style.left).toBe("84px");
   });
 
   it("clamps the delete confirm inside shifted visual viewports", () => {
@@ -872,7 +868,11 @@ describe("grouped chat rendering", () => {
       messages: [
         {
           key: "forwarded-message",
-          message: { role: "assistant", content: "forwarded report", timestamp: 1000 },
+          message: {
+            role: "assistant",
+            content: "forwarded report",
+            timestamp: 1000,
+          },
         },
       ],
       timestamp: 1000,
@@ -2437,7 +2437,10 @@ describe("grouped chat rendering", () => {
       {
         role: "assistant",
         content: [{ type: "text", text: "mirrored text\n...(truncated)..." }],
-        daisyclawMessageToolMirror: { toolName: "message", toolCallId: "call-1" },
+        daisyclawMessageToolMirror: {
+          toolName: "message",
+          toolCallId: "call-1",
+        },
         __daisyclaw: { id: "msg-tool-result", seq: 2, truncated: true },
       },
       {
@@ -2454,5 +2457,71 @@ describe("grouped chat rendering", () => {
     const sidebar = requireFirstMockArg(onOpenSidebar, "sidebar open");
     expect(sidebar.kind).toBe("markdown");
     expect(sidebar.fullMessageRequest).toBeUndefined();
+  });
+});
+
+describe("inline message editing", () => {
+  it("starts inline edit from the pencil and replaces the bubble with an editor", () => {
+    const container = document.createElement("div");
+    const onEditStart = vi.fn();
+    const group = createMessageGroup(
+      { role: "user", content: "original question", timestamp: 4000 },
+      "user",
+    );
+    renderMessageGroups(container, [group], { onEditStart });
+
+    const editButton = container.querySelector<HTMLButtonElement>(".chat-group-edit");
+    expect(editButton).toBeInstanceOf(HTMLButtonElement);
+    editButton!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    expect(onEditStart).toHaveBeenCalledWith(group.key, "original question");
+
+    renderMessageGroups(container, [group], {
+      onEditStart,
+      editingGroupKey: group.key,
+      onEditCancel: vi.fn(),
+      onEditSubmit: vi.fn(),
+    });
+    const textarea = container.querySelector<HTMLTextAreaElement>(".chat-inline-edit__input");
+    expect(textarea).toBeInstanceOf(HTMLTextAreaElement);
+    expect(textarea!.value).toBe("original question");
+    expect(container.querySelector(".chat-bubble")).toBeNull();
+  });
+
+  it("submits the edited text and supports cancel via Escape", () => {
+    const container = document.createElement("div");
+    const onEditSubmit = vi.fn();
+    const onEditCancel = vi.fn();
+    const group = createMessageGroup(
+      { role: "user", content: "original question", timestamp: 4100 },
+      "user",
+    );
+    renderMessageGroups(container, [group], {
+      editingGroupKey: group.key,
+      onEditSubmit,
+      onEditCancel,
+    });
+
+    const textarea = container.querySelector<HTMLTextAreaElement>(".chat-inline-edit__input")!;
+    textarea.value = "edited question";
+    const send = container.querySelector<HTMLButtonElement>(".chat-inline-edit__send")!;
+    send.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    expect(onEditSubmit).toHaveBeenCalledWith(group.key, "edited question");
+
+    textarea.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    expect(onEditCancel).toHaveBeenCalledTimes(1);
+  });
+
+  it("never renders the inline editor for assistant groups", () => {
+    const container = document.createElement("div");
+    const group = createMessageGroup(
+      { role: "assistant", content: "an answer", timestamp: 4200 },
+      "assistant",
+    );
+    renderMessageGroups(container, [group], {
+      editingGroupKey: group.key,
+      onEditSubmit: vi.fn(),
+      onEditCancel: vi.fn(),
+    });
+    expect(container.querySelector(".chat-inline-edit")).toBeNull();
   });
 });

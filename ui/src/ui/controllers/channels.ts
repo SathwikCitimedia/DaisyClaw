@@ -1,6 +1,10 @@
 // Control UI controller manages channels gateway state.
 import type { ChannelsStatusSnapshot } from "../types.ts";
-import type { ChannelsState, PairingRequestEntry } from "./channels.types.ts";
+import type {
+  ChannelContactsBusyOp,
+  ChannelsState,
+  PairingRequestEntry,
+} from "./channels.types.ts";
 import {
   formatMissingOperatorReadScopeMessage,
   isMissingOperatorReadScopeError,
@@ -125,6 +129,18 @@ export async function enableAndStartChannel(state: ChannelsState, channelId: str
   }
 }
 
+/** Channels whose config schema accepts contactLabels (display names for allowFrom entries). */
+export const CONTACT_LABEL_CHANNELS = new Set([
+  "whatsapp",
+  "telegram",
+  "signal",
+  "imessage",
+  "discord",
+  "slack",
+  "irc",
+  "msteams",
+]);
+
 function normalizeAllowFromEntry(value: unknown): string {
   return String(value).trim();
 }
@@ -134,18 +150,37 @@ function readAllowFrom(channelConfig: Record<string, unknown> | undefined): Arra
   return Array.isArray(raw) ? (raw as Array<string | number>) : [];
 }
 
+function readContactLabels(
+  channelConfig: Record<string, unknown> | undefined,
+): Record<string, string> {
+  const raw = channelConfig?.contactLabels;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    return {};
+  }
+  const labels: Record<string, string> = {};
+  for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (typeof value === "string" && value.trim()) {
+      labels[key] = value;
+    }
+  }
+  return labels;
+}
+
 async function patchChannelContacts(
   state: ChannelsState,
   channelId: string,
+  op: ChannelContactsBusyOp,
   mutate: (params: {
     allowFrom: Array<string | number>;
+    contactLabels: Record<string, string>;
     channelConfig: Record<string, unknown> | undefined;
-  }) => { section: Record<string, unknown>; replace?: boolean } | null,
-) {
+  }) => { section: Record<string, unknown>; replaceKeys?: string[] } | null,
+): Promise<boolean> {
   if (!state.client || !state.connected || state.channelContactsBusy) {
-    return;
+    return false;
   }
   state.channelContactsBusy = channelId;
+  state.channelContactsBusyOp = op;
   state.channelContactsError = null;
   try {
     const snapshot = await state.client.request<{
@@ -154,19 +189,30 @@ async function patchChannelContacts(
     }>("config.get", {});
     const channelsConfig = (snapshot?.config?.channels ?? {}) as Record<string, unknown>;
     const channelConfig = channelsConfig[channelId] as Record<string, unknown> | undefined;
-    const result = mutate({ allowFrom: readAllowFrom(channelConfig), channelConfig });
+    const result = mutate({
+      allowFrom: readAllowFrom(channelConfig),
+      contactLabels: readContactLabels(channelConfig),
+      channelConfig,
+    });
     if (!result) {
-      return;
+      // Nothing to change — the config already matches the requested state.
+      return true;
     }
+    const replaceKeys = result.replaceKeys ?? [];
     await state.client.request("config.patch", {
       raw: JSON.stringify({ channels: { [channelId]: result.section } }),
       baseHash: snapshot?.hash,
-      ...(result.replace ? { replacePaths: [`channels.${channelId}.allowFrom`] } : {}),
+      ...(replaceKeys.length > 0
+        ? { replacePaths: replaceKeys.map((key) => `channels.${channelId}.${key}`) }
+        : {}),
     });
+    return true;
   } catch (err) {
     state.channelContactsError = String(err);
+    return false;
   } finally {
     state.channelContactsBusy = null;
+    state.channelContactsBusyOp = null;
   }
 }
 
@@ -174,12 +220,13 @@ export async function addAllowedContacts(
   state: ChannelsState,
   channelId: string,
   rawValues: string[],
+  rawLabels?: Record<string, string>,
 ) {
   const values = rawValues.map((value) => value.trim()).filter((value) => value.length > 0);
   if (values.length === 0) {
     return;
   }
-  await patchChannelContacts(state, channelId, ({ allowFrom, channelConfig }) => {
+  await patchChannelContacts(state, channelId, "add", ({ allowFrom, channelConfig }) => {
     const existing = new Set(allowFrom.map((entry) => normalizeAllowFromEntry(entry)));
     const additions: string[] = [];
     for (const value of values) {
@@ -188,13 +235,28 @@ export async function addAllowedContacts(
         additions.push(value);
       }
     }
-    if (additions.length === 0) {
+    const labels: Record<string, string> = {};
+    for (const [contact, label] of Object.entries(rawLabels ?? {})) {
+      const key = contact.trim();
+      const name = label.trim();
+      if (key && name && existing.has(key)) {
+        labels[key] = name;
+      }
+    }
+    if (additions.length === 0 && Object.keys(labels).length === 0) {
       return null;
     }
-    const section: Record<string, unknown> = { allowFrom: [...allowFrom, ...additions] };
+    const section: Record<string, unknown> = {};
+    if (additions.length > 0) {
+      section.allowFrom = [...allowFrom, ...additions];
+    }
+    if (Object.keys(labels).length > 0) {
+      // Object patches merge key-by-key, so this only adds/overwrites the named contacts.
+      section.contactLabels = labels;
+    }
     // First contact and no explicit DM policy yet: default to allowlist so
     // unknown senders are silently ignored instead of getting pairing codes.
-    if (channelConfig?.dmPolicy == null) {
+    if (additions.length > 0 && channelConfig?.dmPolicy == null) {
       section.dmPolicy = "allowlist";
     }
     return { section };
@@ -209,20 +271,55 @@ export async function removeAllowedContact(
   state: ChannelsState,
   channelId: string,
   rawValue: string,
-) {
+): Promise<boolean> {
   const value = rawValue.trim();
-  await patchChannelContacts(state, channelId, ({ allowFrom }) => {
+  return await patchChannelContacts(state, channelId, "remove", ({ allowFrom, contactLabels }) => {
     const next = allowFrom.filter((entry) => normalizeAllowFromEntry(entry) !== value);
     if (next.length === allowFrom.length) {
       return null;
     }
-    // Shrinking an array requires explicit intent (replacePaths) on the gateway.
-    return { section: { allowFrom: next }, replace: true };
+    // Shrinking an array requires explicit intent (replacePaths) on the
+    // gateway; label keys are dropped with merge-patch null-deletes because
+    // replacePaths only applies to arrays — sending the shrunken map would
+    // merge key-by-key and silently keep the removed entry.
+    const section: Record<string, unknown> = { allowFrom: next };
+    if (value in contactLabels) {
+      section.contactLabels = { [value]: null };
+    }
+    return { section, replaceKeys: ["allowFrom"] };
+  });
+}
+
+export async function renameAllowedContact(
+  state: ChannelsState,
+  channelId: string,
+  rawContact: string,
+  rawName: string,
+) {
+  const contact = rawContact.trim();
+  const name = rawName.trim();
+  if (!contact) {
+    return;
+  }
+  await patchChannelContacts(state, channelId, "rename", ({ contactLabels }) => {
+    if (name) {
+      if (contactLabels[contact] === name) {
+        return null;
+      }
+      return { section: { contactLabels: { [contact]: name } } };
+    }
+    if (!(contact in contactLabels)) {
+      return null;
+    }
+    // Merge-patch null deletes the key; replacePaths would not (arrays only).
+    return { section: { contactLabels: { [contact]: null } } };
   });
 }
 
 export async function setChannelDmPolicy(state: ChannelsState, channelId: string, policy: string) {
-  await patchChannelContacts(state, channelId, () => ({ section: { dmPolicy: policy } }));
+  await patchChannelContacts(state, channelId, "policy", () => ({
+    section: { dmPolicy: policy },
+  }));
 }
 
 export async function loadPairingRequests(state: ChannelsState) {
@@ -254,7 +351,15 @@ export async function approvePairingRequest(state: ChannelsState, entry: Pairing
     // Persist access in the channel allowlist so approval works in allowlist
     // mode (the pairing store alone is only honored in pairing mode).
     state.pairingBusy = null;
-    await addAllowedContacts(state, entry.channel, [entry.id]);
+    // Carry the requester's display name over as the contact label so the
+    // allowlist entry stays recognizable after approval.
+    const label = typeof entry.name === "string" ? entry.name.trim() : "";
+    await addAllowedContacts(
+      state,
+      entry.channel,
+      [entry.id],
+      label && CONTACT_LABEL_CHANNELS.has(entry.channel) ? { [entry.id]: label } : undefined,
+    );
   } catch (err) {
     state.channelsError = String(err);
   } finally {
@@ -306,7 +411,7 @@ export async function connectWhatsApp(state: ChannelsState, force: boolean) {
       message?: string;
       qrDataUrl?: string;
       connected?: boolean;
-    }>("web.login.start", { force, timeoutMs: 30000 });
+    }>("web.login.start", { force, timeoutMs: 30000 }, { timeoutMs: 45_000 });
     if (start.connected === true && !start.qrDataUrl) {
       state.whatsappLoginConnected = true;
       state.whatsappLoginQrDataUrl = null;
@@ -329,10 +434,15 @@ export async function connectWhatsApp(state: ChannelsState, force: boolean) {
           message?: string;
           connected?: boolean;
           qrDataUrl?: string;
-        }>("web.login.wait", {
-          timeoutMs: 30000,
-          currentQrDataUrl: state.whatsappLoginQrDataUrl ?? undefined,
-        });
+        }>(
+          "web.login.wait",
+          {
+            timeoutMs: 30000,
+            currentQrDataUrl: state.whatsappLoginQrDataUrl ?? undefined,
+          },
+          // Server holds this long-poll up to its own 30s budget.
+          { timeoutMs: 45_000 },
+        );
         consecutiveErrors = 0;
         if (wait.connected === true) {
           state.whatsappLoginConnected = true;
@@ -370,17 +480,14 @@ export async function disconnectChannel(state: ChannelsState, channelId: string)
   state.channelDisconnectBusy = channelId;
   state.channelsError = null;
   try {
-    // Best-effort: stop the runtime and clear stored credentials. Some
-    // token-based channels do not implement logout — disabling below still
-    // disconnects them.
+    // Stop the runtime, keeping stored credentials so reconnect is one click.
+    // (channels.logout is intentionally NOT used here: for token channels like
+    // Telegram it deletes the saved token, and it triggers an extra config
+    // write + hot reload that made disconnects take minutes under load.)
     try {
-      await state.client.request("channels.logout", { channel: channelId });
+      await state.client.request("channels.stop", { channel: channelId });
     } catch {
-      try {
-        await state.client.request("channels.stop", { channel: channelId });
-      } catch {
-        // Channel may not be running at all; disabling below is what matters.
-      }
+      // Channel may not be running at all; disabling below is what matters.
     }
     // Persist the disable so the channel stays disconnected across restarts.
     // config.patch deep-merges the raw object and requires the current hash.

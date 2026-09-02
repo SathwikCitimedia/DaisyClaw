@@ -269,6 +269,12 @@
   border-top: 1px solid color-mix(in srgb, var(--border) 50%, transparent);
 }
 
+/* "+ Add channel" footer row on the Channels quick card. */
+.qs-row.qs-add-channel {
+  justify-content: flex-start;
+  min-height: 36px;
+}
+
 .qs-row__label {
   display: flex;
   align-items: center;
@@ -290,6 +296,19 @@
   font-size: 0.8125rem;
   color: var(--muted);
   text-align: right;
+}
+
+.qs-row__value--split code {
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-muted);
+  border: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
 }
 
 .qs-row__value--action {
@@ -735,9 +754,40 @@
   transition: background var(--duration-normal) var(--ease-out);
 }
 
+/* Connected = a small glowing LED: bright core, soft halo, slow breathing. */
 .qs-status-dot--ok {
-  background: var(--ok);
-  box-shadow: 0 0 6px var(--ok-subtle);
+  background: radial-gradient(
+    circle at 38% 35%,
+    color-mix(in srgb, var(--ok) 45%, white 55%) 0%,
+    var(--ok) 62%
+  );
+  box-shadow:
+    0 0 0 2px color-mix(in srgb, var(--ok) 18%, transparent),
+    0 0 6px 1px color-mix(in srgb, var(--ok) 60%, transparent),
+    0 0 14px 4px color-mix(in srgb, var(--ok) 26%, transparent);
+  animation: qs-status-glow 2.6s ease-in-out infinite;
+}
+
+@keyframes qs-status-glow {
+  0%,
+  100% {
+    box-shadow:
+      0 0 0 2px color-mix(in srgb, var(--ok) 14%, transparent),
+      0 0 5px 1px color-mix(in srgb, var(--ok) 45%, transparent),
+      0 0 10px 3px color-mix(in srgb, var(--ok) 18%, transparent);
+  }
+  50% {
+    box-shadow:
+      0 0 0 2.5px color-mix(in srgb, var(--ok) 24%, transparent),
+      0 0 8px 2px color-mix(in srgb, var(--ok) 70%, transparent),
+      0 0 18px 6px color-mix(in srgb, var(--ok) 34%, transparent);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .qs-status-dot--ok {
+    animation: none;
+  }
 }
 
 /* ── Masked value ── */

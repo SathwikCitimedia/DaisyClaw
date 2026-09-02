@@ -407,6 +407,34 @@
   font-weight: 500;
 }
 
+/* Off-state call to action shown under the status line. */
+.dreams__enable {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  margin: 20px auto 0;
+  max-width: 440px;
+  text-align: center;
+}
+
+.dreams__enable-text {
+  margin: 0;
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: var(--muted);
+}
+
+.dreams__enable-btn {
+  min-width: 180px;
+}
+
+.dreams__enable-note {
+  font-size: 11.5px;
+  color: var(--muted);
+  opacity: 0.8;
+}
+
 .dreams__status-detail {
   display: flex;
   align-items: center;

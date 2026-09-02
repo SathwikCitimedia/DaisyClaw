@@ -174,6 +174,15 @@ export type ChatProps = {
   onHistoryKeydown?: (input: ChatInputHistoryKeyInput) => ChatInputHistoryKeyResult;
   onSlashIntent?: () => void | Promise<void>;
   onSend: () => void;
+  /** Send a specific text (inline message edits) without touching the composer draft. */
+  onSendText?: (text: string) => void;
+  /**
+   * ChatGPT-style edit: fork the server-side session so history ends just
+   * before the edited message, then send the edited text as a fresh query.
+   * `lastUser` targets the most recent user message when the edited bubble is
+   * optimistic and its transcript id is not known yet.
+   */
+  onEditFork?: (target: { messageId?: string; lastUser?: boolean }, text: string) => void;
   onCompact?: () => void | Promise<void>;
   onOpenSessionCheckpoints?: () => void | Promise<void>;
   onToggleRealtimeTalk?: () => void;
@@ -191,7 +200,11 @@ export type ChatProps = {
   onNewSession: () => void;
   onClearHistory?: () => void;
   agentsList: {
-    agents: Array<{ id: string; name?: string; identity?: { name?: string; avatarUrl?: string } }>;
+    agents: Array<{
+      id: string;
+      name?: string;
+      identity?: { name?: string; avatarUrl?: string };
+    }>;
     defaultId?: string;
   } | null;
   currentAgentId: string;
@@ -498,6 +511,19 @@ function renderRealtimeTalkConversation(props: ChatProps) {
   `;
 }
 
+/** Read the gateway transcript entry id riding on a history message. */
+function readTranscriptMessageId(message: unknown): string | null {
+  if (!message || typeof message !== "object") {
+    return null;
+  }
+  const marker = (message as Record<string, unknown>)["__daisyclaw"];
+  if (!marker || typeof marker !== "object" || Array.isArray(marker)) {
+    return null;
+  }
+  const id = (marker as Record<string, unknown>).id;
+  return typeof id === "string" && id.length > 0 ? id : null;
+}
+
 interface ChatEphemeralState {
   slashMenuOpen: boolean;
   slashMenuItems: SlashCommandDef[];
@@ -512,6 +538,8 @@ interface ChatEphemeralState {
   pinnedExpanded: boolean;
   /** Raw text of the message being quoted/replied-to, shown as a chip above the composer. */
   quotedReply: string | null;
+  /** Key of the user message group currently being edited in place. */
+  editingGroupKey: string | null;
   historyRenderSessionKey: string | null;
   historyRenderMessagesRef: unknown[] | null;
   historyRenderMessageCount: number;
@@ -539,6 +567,7 @@ function createChatEphemeralState(): ChatEphemeralState {
     searchQuery: "",
     pinnedExpanded: false,
     quotedReply: null,
+    editingGroupKey: null,
     historyRenderSessionKey: null,
     historyRenderMessagesRef: null,
     historyRenderMessageCount: 0,
@@ -1266,7 +1295,9 @@ function updateSlashMenu(
     if (!opts.skipSlashIntent) {
       requestSlashCommandRefresh(value, props, requestUpdate, getCurrentValue);
     }
-    const items = getSlashCommandCompletions(match[1], { showAll: vs.slashMenuExpanded });
+    const items = getSlashCommandCompletions(match[1], {
+      showAll: vs.slashMenuExpanded,
+    });
     vs.slashMenuItems = items;
     vs.slashMenuOpen = items.length > 0;
     vs.slashMenuIndex = 0;
@@ -1914,12 +1945,32 @@ export function renderChat(props: ChatProps) {
             // not the TemplateResult identity, which changes every render.
             lastAssistantGroupKey ?? "",
             props.actionChips && props.actionChips !== nothing ? "1" : "0",
+            vs.editingGroupKey ?? "",
           ],
-          () =>
-            repeat(
+          () => {
+            // Hiding a user turn also hides everything it produced (assistant
+            // replies, activity) up to the next user message, so the thread
+            // never shows an orphaned answer.
+            const hideTurnCascade = (turn: { key: string; role?: string }, fromIndex: number) => {
+              deleted.delete(turn.key);
+              if (turn.role !== "user") {
+                return;
+              }
+              for (let i = fromIndex + 1; i < chatItems.length; i++) {
+                const next = chatItems[i];
+                if (next.kind !== "group") {
+                  continue;
+                }
+                if (next.role === "user") {
+                  break;
+                }
+                deleted.delete(next.key);
+              }
+            };
+            return repeat(
               chatItems,
               (item) => item.key,
-              (item) => {
+              (item, itemIndex) => {
                 if (item.kind === "divider") {
                   return html`
                     <div class="chat-divider" data-ts=${String(item.timestamp)}>
@@ -2009,13 +2060,49 @@ export function renderChat(props: ChatProps) {
                     actionChips:
                       item.key === lastAssistantGroupKey ? (props.actionChips ?? nothing) : nothing,
                     onDelete: () => {
-                      deleted.delete(item.key);
+                      hideTurnCascade(item, itemIndex);
                       requestUpdate();
                     },
-                    onEdit: (text: string) => {
-                      props.onDraftChange(text);
+                    editingGroupKey: vs.editingGroupKey,
+                    onEditStart: (key: string) => {
+                      vs.editingGroupKey = key;
                       requestUpdate();
-                      focusChatComposerEnd();
+                    },
+                    onEditCancel: () => {
+                      vs.editingGroupKey = null;
+                      requestUpdate();
+                    },
+                    onEditSubmit: (_key: string, text: string) => {
+                      // ChatGPT-style edit: the original turn (and its
+                      // response) disappears and the edited text is sent as a
+                      // fresh query, producing a new answer in its place.
+                      // When the message carries its transcript id, the
+                      // session is forked server-side too, so the old
+                      // exchange truly leaves the model's context.
+                      vs.editingGroupKey = null;
+                      const editMessageId = readTranscriptMessageId(item.messages[0]?.message);
+                      // Optimistic (just-sent) messages don't carry their
+                      // transcript id yet; when the edited bubble is the last
+                      // user turn, fork at "the most recent user message".
+                      const isLastUserGroup = !chatItems.some(
+                        (candidate, candidateIndex) =>
+                          candidateIndex > itemIndex &&
+                          candidate.kind === "group" &&
+                          candidate.role === "user",
+                      );
+                      hideTurnCascade(item, itemIndex);
+                      if (props.onEditFork && (editMessageId || isLastUserGroup)) {
+                        props.onEditFork(
+                          editMessageId ? { messageId: editMessageId } : { lastUser: true },
+                          text,
+                        );
+                      } else if (props.onSendText) {
+                        props.onSendText(text);
+                      } else {
+                        props.onDraftChange(text);
+                        focusChatComposerEnd();
+                      }
+                      requestUpdate();
                     },
                     onQuote: (text: string) => {
                       // Stage the quote as a dismissible chip above the composer
@@ -2029,7 +2116,8 @@ export function renderChat(props: ChatProps) {
                 }
                 return nothing;
               },
-            ),
+            );
+          },
         )}
         ${renderRealtimeTalkConversation(props)}
       </div>

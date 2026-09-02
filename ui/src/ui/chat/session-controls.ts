@@ -16,13 +16,18 @@ import {
 import { confirmDialog } from "../confirm-dialog.ts";
 import { refreshVisibleToolsEffectiveForCurrentSession } from "../controllers/agents.ts";
 import { loadSessions } from "../controllers/sessions.ts";
-import { formatDateTimeMs } from "../format.ts";
+import { formatContextualDateTimeMs } from "../format.ts";
 import { icons } from "../icons.ts";
 import { isMonitoredAuthProvider } from "../model-auth-helpers.ts";
 import { pathForTab } from "../navigation.ts";
 import { collectQuotaWindowsFromAuthStatus, formatQuotaReset } from "../provider-quota-summary.ts";
 import { pushUniqueTrimmedSelectOption } from "../select-options.ts";
-import { isCronSessionKey, resolveSessionDisplayName } from "../session-display.ts";
+import {
+  isCronSessionKey,
+  lookupSessionContactName,
+  parseSessionKey,
+  resolveSessionDisplayName,
+} from "../session-display.ts";
 import {
   buildAgentMainSessionKey,
   isSessionKeyTiedToAgent,
@@ -528,17 +533,7 @@ function resolveSelectedChatSessionLabel(
 
 function formatChatSessionPickerMeta(row: SessionsListResult["sessions"][number]): string {
   const parts = [normalizeOptionalString(row.surface)].filter(Boolean);
-  const updatedAt = formatDateTimeMs(
-    row.updatedAt,
-    {
-      year: "numeric",
-      month: "numeric",
-      day: "numeric",
-      hour: "numeric",
-      minute: "2-digit",
-    },
-    "",
-  );
+  const updatedAt = formatContextualDateTimeMs(row.updatedAt);
   if (updatedAt) {
     parts.push(updatedAt);
   }
@@ -1892,6 +1887,17 @@ function resolveSessionScopedOptionLabel(
   const displayName = normalizeOptionalString(row.displayName) ?? "";
   if ((label && label !== key) || (displayName && displayName !== key)) {
     return resolveSessionDisplayName(key, row);
+  }
+
+  // No saved title: prefer a saved contact name or the human dashboard
+  // fallback over echoing raw keys/UUIDs.
+  const parsed = parseSessionKey(key);
+  const contactName = lookupSessionContactName(parsed.channel, parsed.peerId);
+  if (contactName) {
+    return contactName;
+  }
+  if (/^(dashboard|webchat):/i.test(key)) {
+    return parsed.fallbackName;
   }
 
   return base;

@@ -1,5 +1,5 @@
 // Control UI module implements app behavior.
-import { LitElement } from "lit";
+import { html, LitElement } from "lit";
 import { state } from "lit/decorators.js";
 import { i18n, I18nController, isSupportedLocale, t } from "../i18n/index.ts";
 import type { ActivityEntry, ActivityStatus } from "./activity-model.ts";
@@ -16,6 +16,7 @@ import {
   handleChannelEnable as handleChannelEnableInternal,
   handleContactAdd as handleContactAddInternal,
   handleContactRemove as handleContactRemoveInternal,
+  handleContactRename as handleContactRenameInternal,
   handleContactsAdd as handleContactsAddInternal,
   handleDmPolicyChange as handleDmPolicyChangeInternal,
   handlePairingApprove as handlePairingApproveInternal,
@@ -451,10 +452,24 @@ export class DaisyClawApp extends LitElement {
   @state() channelDisconnectBusy: string | null = null;
   @state() channelConnectBusy: string | null = null;
   @state() channelContactsBusy: string | null = null;
+  @state() channelContactsBusyOp:
+    | import("./controllers/channels.types.ts").ChannelContactsBusyOp
+    | null = null;
   @state() channelContactsError: string | null = null;
   @state() pairingRequests: PairingRequestEntry[] | null = null;
   @state() pairingBusy: string | null = null;
   @state() channelsFocus: string | null = null;
+  @state() channelSetupBusy: string | null = null;
+  @state() channelSetupForced: string | null = null;
+  /** "<channelId>:<contact>" while a contact-name inline editor is open. */
+  @state() contactEditKey: string | null = null;
+  // Model Studio dialog (guided AI-model manager launched from Quick Settings).
+  @state() modelStudioOpen = false;
+  @state() modelStudioCatalog: ModelCatalogEntry[] | null = null;
+  @state() modelStudioLoading = false;
+  @state() modelStudioBusy: string | null = null;
+  @state() modelStudioError: string | null = null;
+  @state() modelStudioProvider: string | null = null;
   @state() nostrProfileFormState: NostrProfileFormState | null = null;
   @state() nostrProfileAccountId: string | null = null;
 
@@ -1375,8 +1390,13 @@ export class DaisyClawApp extends LitElement {
     await handleContactAddInternal(this, channelId, value);
   }
 
-  async handleContactsAdd(channelId: string, values: string[]) {
-    await handleContactsAddInternal(this, channelId, values);
+  async handleContactsAdd(channelId: string, values: string[], labels?: Record<string, string>) {
+    await handleContactsAddInternal(this, channelId, values, labels);
+  }
+
+  async handleContactRename(channelId: string, contact: string, name: string) {
+    await handleContactRenameInternal(this, channelId, contact, name);
+    this.contactEditKey = null;
   }
 
   async handlePairingApprove(entry: PairingRequestEntry) {
@@ -1388,7 +1408,7 @@ export class DaisyClawApp extends LitElement {
   }
 
   async handleContactRemove(channelId: string, value: string) {
-    await handleContactRemoveInternal(this, channelId, value);
+    return await handleContactRemoveInternal(this, channelId, value);
   }
 
   async handleDmPolicyChange(channelId: string, policy: string) {
@@ -1698,7 +1718,26 @@ export class DaisyClawApp extends LitElement {
   }
 
   override render() {
-    return renderApp(this as unknown as AppViewState);
+    // Error boundary: a template bug must show a diagnosable error screen,
+    // never freeze the app as a silent blank page.
+    try {
+      return renderApp(this as unknown as AppViewState);
+    } catch (err) {
+      console.error("app render failed", err);
+      const message = err instanceof Error ? (err.stack ?? err.message) : String(err);
+      return html`
+        <div class="app-render-error">
+          <div class="app-render-error__panel">
+            <div class="app-render-error__title">Something went wrong while drawing this page</div>
+            <div class="app-render-error__sub">
+              Reloading usually fixes it. If it keeps happening, send this error text to support:
+            </div>
+            <pre class="app-render-error__detail">${message}</pre>
+            <button class="btn primary" @click=${() => globalThis.location.reload()}>Reload</button>
+          </div>
+        </div>
+      `;
+    }
   }
 }
 

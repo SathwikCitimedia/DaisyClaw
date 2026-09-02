@@ -27,13 +27,27 @@ export type ConfirmDialogOptions = {
  * completes successfully (with the confirm button in a loading state), or false
  * if the user cancels.
  */
+// Static inline glyphs (24x24, stroke-based) — this module is imperative DOM,
+// so the lit icon set can't be reused here.
+const DANGER_ICON_SVG =
+  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>';
+const INFO_ICON_SVG =
+  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>';
+
 export function confirmDialog(options: ConfirmDialogOptions): Promise<boolean> {
   return new Promise((resolve) => {
+    const danger = options.danger !== false;
     const dialog = document.createElement("dialog");
     dialog.className = "confirm-dialog";
 
     const panel = document.createElement("div");
-    panel.className = "confirm-dialog__panel";
+    panel.className = `confirm-dialog__panel ${
+      danger ? "confirm-dialog__panel--danger" : "confirm-dialog__panel--safe"
+    }`;
+
+    const icon = document.createElement("div");
+    icon.className = "confirm-dialog__icon";
+    icon.innerHTML = danger ? DANGER_ICON_SVG : INFO_ICON_SVG;
 
     const title = document.createElement("div");
     title.className = "confirm-dialog__title";
@@ -53,7 +67,7 @@ export function confirmDialog(options: ConfirmDialogOptions): Promise<boolean> {
 
     const confirmBtn = document.createElement("button");
     confirmBtn.type = "button";
-    confirmBtn.className = options.danger === false ? "btn primary" : "btn danger";
+    confirmBtn.className = danger ? "btn danger confirm-dialog__confirm--filled" : "btn primary";
     const confirmLabelText = options.confirmLabel ?? "OK";
 
     const confirmLabel = document.createElement("span");
@@ -65,7 +79,7 @@ export function confirmDialog(options: ConfirmDialogOptions): Promise<boolean> {
     confirmBtn.append(spinner, confirmLabel);
 
     actions.append(cancelBtn, confirmBtn);
-    panel.append(title, message, actions);
+    panel.append(icon, title, message, actions);
     dialog.append(panel);
 
     let settled = false;

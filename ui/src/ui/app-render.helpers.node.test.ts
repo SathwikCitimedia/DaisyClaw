@@ -84,6 +84,7 @@ import {
   switchChatSessionAndWait,
 } from "./app-render.helpers.ts";
 import type { AppViewState } from "./app-view-state.ts";
+import { setSessionContactNames } from "./session-display.ts";
 import type { SessionsListResult } from "./types.ts";
 
 type SessionRow = SessionsListResult["sessions"][number];
@@ -359,6 +360,53 @@ describe("resolveSessionDisplayName", () => {
 
   it("returns raw key for unknown display-name patterns", () => {
     expect(resolveSessionDisplayName("something-custom")).toBe("something-custom");
+  });
+
+  it("shows 'Dashboard chat' for untitled dashboard sessions instead of the UUID", () => {
+    expect(resolveSessionDisplayName("dashboard:dd75051a-2467-4a0b-9d5e-1f2a3b4c5d6e")).toBe(
+      "Dashboard chat",
+    );
+  });
+
+  // ── Contact names from channel config ────────────
+
+  it("labels channel sessions with saved contact names and prefers custom titles", () => {
+    setSessionContactNames({
+      channels: {
+        whatsapp: { contactLabels: { "+916305865365": "Abhinash" } },
+      },
+    });
+    try {
+      // Key-only lookup.
+      expect(resolveSessionDisplayName("agent:main:whatsapp:direct:+916305865365")).toBe(
+        "Abhinash",
+      );
+      // A displayName that is just the raw number loses to the contact name…
+      expect(
+        resolveSessionDisplayName(
+          "agent:main:whatsapp:direct:+916305865365",
+          row({
+            key: "agent:main:whatsapp:direct:+916305865365",
+            displayName: "+916305865365",
+          }),
+        ),
+      ).toBe("Abhinash");
+      // …but a deliberate custom title wins over the contact name.
+      expect(
+        resolveSessionDisplayName(
+          "agent:main:whatsapp:direct:+916305865365",
+          row({ key: "agent:main:whatsapp:direct:+916305865365", label: "Project chat" }),
+        ),
+      ).toBe("Project chat");
+      // Digits-only drift (JID form) still matches the saved "+91…" key.
+      expect(resolveSessionDisplayName("whatsapp:916305865365@s.whatsapp.net")).toBe("Abhinash");
+      // Other senders keep the plain fallback.
+      expect(resolveSessionDisplayName("agent:main:whatsapp:direct:+10000000000")).toBe(
+        "WhatsApp · +10000000000",
+      );
+    } finally {
+      setSessionContactNames(null);
+    }
   });
 
   // ── With row data (label / displayName) ──────────

@@ -153,6 +153,179 @@ describe("renderSkills", () => {
     expect(updatedToggles[0].checked).toBe(false);
   });
 
+  it("shows the starter overview with ready chips and connect cards on the All tab", async () => {
+    const container = document.createElement("div");
+    document.body.append(container);
+    dialogRestores.push(() => container.remove());
+    const onDetailOpen = vi.fn();
+
+    const readySkill = createSkill({
+      skillKey: "weather",
+      name: "Weather",
+      bundled: true,
+      eligible: true,
+    });
+    const connectSkill = createSkill({
+      skillKey: "spotify-player",
+      name: "Spotify",
+      description: "Spotify playback",
+      bundled: true,
+      eligible: false,
+      missing: { bins: ["spogo"], env: [], config: [], os: [] },
+    });
+    const report: SkillStatusReport = {
+      workspaceDir: "/tmp/workspace",
+      managedSkillsDir: "/tmp/skills",
+      skills: [readySkill, connectSkill],
+    };
+
+    render(renderSkills(createProps({ report, onDetailOpen })), container);
+    await Promise.resolve();
+
+    const starter = container.querySelector(".skills-starter");
+    expect(starter).toBeInstanceOf(HTMLElement);
+    expect(normalizeText(starter as Element)).toContain("Ready to use");
+    expect(normalizeText(starter as Element)).toContain("Connect to unlock");
+
+    const readyChip = Array.from(starter!.querySelectorAll<HTMLButtonElement>("button")).find(
+      (btn) => normalizeText(btn) === "Weather",
+    );
+    expect(readyChip).toBeDefined();
+    readyChip!.click();
+    expect(onDetailOpen).toHaveBeenCalledWith("weather");
+
+    const connectCard = starter!.querySelector(".skills-starter-connect");
+    expect(connectCard).toBeInstanceOf(HTMLElement);
+    expect(normalizeText(connectCard as Element)).toContain("Spotify");
+    const connectButton = Array.from(
+      connectCard!.querySelectorAll<HTMLButtonElement>("button"),
+    ).find((btn) => normalizeText(btn) === "Connect");
+    expect(connectButton).toBeDefined();
+    connectButton!.click();
+    expect(onDetailOpen).toHaveBeenCalledWith("spotify-player");
+  });
+
+  it("renders an input for every missing env var and saves each separately", async () => {
+    const container = document.createElement("div");
+    document.body.append(container);
+    dialogRestores.push(() => container.remove());
+    installDialogMethod("showModal", function (this: HTMLDialogElement) {
+      this.setAttribute("open", "");
+    });
+    const onSaveKey = vi.fn();
+
+    const trelloSkill = createSkill({
+      skillKey: "trello",
+      name: "Trello",
+      primaryEnv: undefined,
+      eligible: false,
+      missing: { bins: [], env: ["TRELLO_API_KEY", "TRELLO_TOKEN"], config: [], os: [] },
+    });
+    const report: SkillStatusReport = {
+      workspaceDir: "/tmp/workspace",
+      managedSkillsDir: "/tmp/skills",
+      skills: [trelloSkill],
+    };
+
+    render(renderSkills(createProps({ report, detailKey: "trello", onSaveKey })), container);
+    await Promise.resolve();
+
+    const inputs = container.querySelectorAll<HTMLInputElement>(
+      '.md-preview-dialog__body input[type="password"]',
+    );
+    expect(inputs).toHaveLength(2);
+
+    const saveButtons = Array.from(
+      container.querySelectorAll<HTMLButtonElement>(".md-preview-dialog__body .btn.primary"),
+    );
+    expect(saveButtons.map((btn) => normalizeText(btn))).toEqual([
+      "Save TRELLO_API_KEY",
+      "Save TRELLO_TOKEN",
+    ]);
+    saveButtons[1].click();
+    expect(onSaveKey).toHaveBeenCalledWith("trello", "TRELLO_TOKEN", false);
+  });
+
+  it("shows the connect-in-chat hint for non-bundled skills without key inputs", async () => {
+    const container = document.createElement("div");
+    document.body.append(container);
+    dialogRestores.push(() => container.remove());
+    installDialogMethod("showModal", function (this: HTMLDialogElement) {
+      this.setAttribute("open", "");
+    });
+
+    const gmailSkill = createSkill({
+      skillKey: "gmail-skill",
+      name: "gmail-skill",
+      bundled: false,
+      primaryEnv: undefined,
+      eligible: true,
+    });
+    const report: SkillStatusReport = {
+      workspaceDir: "/tmp/workspace",
+      managedSkillsDir: "/tmp/skills",
+      skills: [gmailSkill],
+    };
+
+    render(renderSkills(createProps({ report, detailKey: "gmail-skill" })), container);
+    await Promise.resolve();
+
+    const hint = container.querySelector(".skills-connect-hint");
+    expect(hint).toBeInstanceOf(HTMLElement);
+    expect(normalizeText(hint as Element)).toContain("connect it in chat");
+    expect(normalizeText(hint as Element)).toContain("set up gmail-skill");
+  });
+
+  it("splits macOS-only skills into their own group with an apple badge", async () => {
+    const container = document.createElement("div");
+    document.body.append(container);
+    dialogRestores.push(() => container.remove());
+
+    const macSkill = createSkill({
+      skillKey: "apple-notes",
+      name: "apple-notes",
+      eligible: false,
+      requirements: { bins: [], env: [], config: [], os: ["darwin"] },
+      missing: { bins: [], env: [], config: [], os: ["darwin"] },
+    });
+    const crossSkill = createSkill({ skillKey: "weather", name: "Weather" });
+    const report: SkillStatusReport = {
+      workspaceDir: "/tmp/workspace",
+      managedSkillsDir: "/tmp/skills",
+      skills: [crossSkill, macSkill],
+    };
+
+    render(renderSkills(createProps({ report })), container);
+    await Promise.resolve();
+
+    const headers = Array.from(container.querySelectorAll(".agent-skills-header")).map((el) =>
+      normalizeText(el),
+    );
+    expect(headers.some((label) => label.includes("macOS Only 1"))).toBe(true);
+
+    const macGroup = Array.from(container.querySelectorAll(".agent-skills-group")).find((group) =>
+      normalizeText(group).includes("macOS Only"),
+    );
+    expect(macGroup).toBeDefined();
+    expect(normalizeText(macGroup as Element)).toContain("apple-notes");
+    expect(normalizeText(macGroup as Element)).not.toContain("Weather");
+    expect(macGroup!.querySelector('.skill-icon--mac[title="macOS only"]')).not.toBeNull();
+  });
+
+  it("hides the starter overview on other tabs and while text-filtering", async () => {
+    const container = document.createElement("div");
+    document.body.append(container);
+    dialogRestores.push(() => container.remove());
+
+    render(renderSkills(createProps({ statusFilter: "ready" })), container);
+    await Promise.resolve();
+    expect(container.querySelector(".skills-starter")).toBeNull();
+
+    render(renderSkills(createProps({ filter: "repo" })), container);
+    await Promise.resolve();
+    expect(container.querySelector(".skills-starter")).toBeNull();
+  });
+
   it("defers detail dialog opening until the dialog is connected", async () => {
     const container = document.createElement("div");
     const showModal = vi.fn(function (this: HTMLDialogElement) {
@@ -365,7 +538,8 @@ describe("renderSkills", () => {
     await Promise.resolve();
 
     expect(normalizeText(container)).toContain("Review");
-    expect(normalizeText(container)).toContain("security.suspicious");
+    expect(normalizeText(container)).toContain("flagged this version for manual review");
+    expect(container.querySelector('[title="security.suspicious"]')).not.toBeNull();
     expect(
       container.querySelector<HTMLAnchorElement>('a[href*="security-audit"]')?.textContent?.trim(),
     ).toBe("Full security report");

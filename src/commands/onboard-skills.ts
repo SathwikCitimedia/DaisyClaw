@@ -10,6 +10,12 @@ import { resolveBrewExecutable } from "../infra/brew.js";
 import { isContainerEnvironment } from "../infra/container-environment.js";
 import type { RuntimeEnv } from "../runtime.js";
 import { patchSkillConfigEntry } from "../skills/config/mutations.js";
+import {
+  DEFAULT_SKILL_PACK_CONNECT,
+  DEFAULT_SKILL_PACK_INSTANT,
+  applyDefaultSkillPack,
+  previewDefaultSkillPack,
+} from "../skills/default-skill-pack.js";
 import { buildWorkspaceSkillStatus } from "../skills/discovery/status.js";
 import { installSkill } from "../skills/lifecycle/install.js";
 import { t } from "../wizard/i18n/index.js";
@@ -57,7 +63,33 @@ export async function setupSkills(
   runtime: RuntimeEnv,
   prompter: WizardPrompter,
 ): Promise<DaisyClawConfig> {
-  const report = buildWorkspaceSkillStatus(workspaceDir, { config: cfg });
+  let next: DaisyClawConfig = cfg;
+  const packPreview = previewDefaultSkillPack(next);
+  if (packPreview.toHide.length > 0) {
+    // Curated starter pack: hide developer/advanced bundled skills so first-run
+    // users only see the consumer set. Skills the user already toggled keep
+    // their setting, and every hidden skill stays one UI toggle away.
+    const useStarterPack = await prompter.confirm({
+      message: t("wizard.skills.starterPack", { count: packPreview.toHide.length }),
+      initialValue: true,
+    });
+    if (useStarterPack) {
+      next = applyDefaultSkillPack(next).config;
+      await prompter.note(
+        [
+          t("wizard.skills.starterPackApplied", { count: packPreview.toHide.length }),
+          t("wizard.skills.starterPackInstant", {
+            skills: DEFAULT_SKILL_PACK_INSTANT.join(", "),
+          }),
+          t("wizard.skills.starterPackConnect", {
+            skills: DEFAULT_SKILL_PACK_CONNECT.join(", "),
+          }),
+        ].join("\n"),
+        t("wizard.skills.starterPackTitle"),
+      );
+    }
+  }
+  const report = buildWorkspaceSkillStatus(workspaceDir, { config: next });
   const eligible = report.skills.filter((s) => s.eligible);
   const unsupportedOs = report.skills.filter(
     (s) => !s.disabled && !s.blockedByAllowlist && s.missing.os.length > 0,
@@ -82,7 +114,7 @@ export async function setupSkills(
     initialValue: true,
   });
   if (!shouldConfigure) {
-    return cfg;
+    return next;
   }
 
   const baseInstallable = missing.filter(
@@ -109,7 +141,6 @@ export async function setupSkills(
       );
     }
   }
-  let next: DaisyClawConfig = cfg;
   if (installable.length === 0 && missing.length === 0) {
     await prompter.note(
       [

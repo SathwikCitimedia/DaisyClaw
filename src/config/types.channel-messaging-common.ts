@@ -27,6 +27,8 @@ export type CommonChannelMessagingConfig = {
   dmPolicy?: DmPolicy;
   /** Optional allowlist for inbound DM senders. */
   allowFrom?: Array<string | number>;
+  /** Display names for allowFrom entries keyed by sender id — cosmetic only, never used for matching. */
+  contactLabels?: Record<string, string>;
   /** Default delivery target for CLI --deliver when no explicit --reply-to is provided. */
   defaultTo?: string;
   /** Optional allowlist for group/channel senders. */

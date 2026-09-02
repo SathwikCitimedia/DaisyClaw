@@ -798,6 +798,8 @@ export type ModelCatalogEntry = {
   contextWindow?: number;
   reasoning?: boolean;
   input?: Array<"text" | "image" | "document">;
+  /** Gateway-computed: provider credentials exist for this model (env, config, or profile). */
+  available?: boolean;
 };
 
 export type ToolCatalogProfile =

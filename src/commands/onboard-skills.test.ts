@@ -105,6 +105,7 @@ function mockMissingBrewStatus(skills: Array<ReturnType<typeof createBundledSkil
 function createPrompter(params: {
   configure?: boolean;
   showBrewInstall?: boolean;
+  starterPack?: boolean;
   multiselect?: string[];
 }): { prompter: WizardPrompter; notes: Array<{ title?: string; message: string }> } {
   const notes: Array<{ title?: string; message: string }> = [];
@@ -124,6 +125,9 @@ function createPrompter(params: {
     ) as unknown as WizardPrompter["multiselect"],
     text: vi.fn(async () => ""),
     confirm: vi.fn(async ({ message }) => {
+      if (message.startsWith("Use the recommended starter skill pack")) {
+        return params.starterPack ?? false;
+      }
       if (message === "Show Homebrew install command?") {
         return params.showBrewInstall ?? false;
       }
@@ -265,6 +269,29 @@ describe("setupSkills", () => {
 
     const brewNote = notes.find((n) => n.title === "Homebrew recommended");
     expect(brewNote?.title).toBe("Homebrew recommended");
+  });
+
+  it("applies the starter skill pack when accepted", async () => {
+    mockMissingBrewStatus([]);
+
+    const { prompter, notes } = createPrompter({ starterPack: true });
+    const result = await setupSkills({} as DaisyClawConfig, "/tmp/ws", runtime, prompter);
+
+    expect(notes.find((n) => n.title === "Starter skill pack")).toBeDefined();
+    expect(result.skills?.entries?.tmux?.enabled).toBe(false);
+    expect(result.skills?.entries?.healthcheck?.enabled).toBe(false);
+    expect(result.skills?.entries?.weather).toBeUndefined();
+    expect(result.skills?.entries?.["spotify-player"]).toBeUndefined();
+  });
+
+  it("keeps the config untouched when the starter skill pack is declined", async () => {
+    mockMissingBrewStatus([]);
+
+    const { prompter, notes } = createPrompter({ starterPack: false });
+    const result = await setupSkills({} as DaisyClawConfig, "/tmp/ws", runtime, prompter);
+
+    expect(notes.find((n) => n.title === "Starter skill pack")).toBeUndefined();
+    expect(result.skills?.entries).toBeUndefined();
   });
 
   it("displays a clear empty state note when all skill dependencies are ready", async () => {

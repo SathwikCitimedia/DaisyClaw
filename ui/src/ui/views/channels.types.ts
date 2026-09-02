@@ -39,17 +39,33 @@ export type ChannelsProps = {
   nostrProfileFormState: NostrProfileFormState | null;
   nostrProfileAccountId: string | null;
   contactsBusy: string | null;
+  contactsBusyOp?: "add" | "remove" | "rename" | "policy" | null;
   contactsError: string | null;
   pairingRequests: PairingRequestEntry[] | null;
   pairingBusy: string | null;
   onContactAdd: (channelId: string, value: string) => void;
-  onContactsAdd: (channelId: string, values: string[]) => void;
-  onContactRemove: (channelId: string, value: string) => void;
+  onContactsAdd: (channelId: string, values: string[], labels?: Record<string, string>) => void;
+  /** Resolves true when the contact was actually removed (false on failure). */
+  onContactRemove: (channelId: string, value: string) => Promise<boolean>;
+  onContactRename: (channelId: string, contact: string, name: string) => void;
+  /** "<channelId>:<contact>" for the row whose name editor is open. */
+  contactEditKey?: string | null;
+  onContactEditStart: (channelId: string, contact: string) => void;
+  onContactEditCancel: () => void;
   onDmPolicyChange: (channelId: string, policy: string) => void;
   onPairingApprove: (entry: PairingRequestEntry) => void;
   onPairingReject: (entry: PairingRequestEntry) => void;
   onOpenChannel: (channelId: string) => void;
   onCloseChannel: () => void;
+  onChannelSetupConnect: (channelId: string) => void;
+  channelSetupBusy?: string | null;
+  onChannelDisconnect: (channelId: string) => void;
+  channelDisconnectBusy?: string | null;
+  onChannelEnable: (channelId: string) => void;
+  channelEnableBusy?: string | null;
+  /** When set, the dialog for this channel shows the guided setup even if configured. */
+  setupForcedChannel?: string | null;
+  onForceSetup: (channelId: string | null) => void;
   onRefresh: (probe: boolean) => void;
   onWhatsAppConnect: (force: boolean) => void;
   onWhatsAppLogout: () => void;

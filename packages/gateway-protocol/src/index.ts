@@ -327,6 +327,8 @@ import {
   SessionsCompactionListParamsSchema,
   type SessionsCompactionRestoreParams,
   SessionsCompactionRestoreParamsSchema,
+  type SessionsForkFromMessageParams,
+  SessionsForkFromMessageParamsSchema,
   type SessionOperationEvent,
   type SessionsCreateParams,
   SessionsCreateParamsSchema,
@@ -671,6 +673,9 @@ export const validateSessionsCompactionBranchParams = lazyCompile<SessionsCompac
 );
 export const validateSessionsCompactionRestoreParams = lazyCompile<SessionsCompactionRestoreParams>(
   SessionsCompactionRestoreParamsSchema,
+);
+export const validateSessionsForkFromMessageParams = lazyCompile<SessionsForkFromMessageParams>(
+  SessionsForkFromMessageParamsSchema,
 );
 export const validateSessionsUsageParams =
   lazyCompile<SessionsUsageParams>(SessionsUsageParamsSchema);
@@ -1024,6 +1029,7 @@ export {
   SessionsCompactionGetParamsSchema,
   SessionsCompactionBranchParamsSchema,
   SessionsCompactionRestoreParamsSchema,
+  SessionsForkFromMessageParamsSchema,
   SessionsCreateParamsSchema,
   SessionsSendParamsSchema,
   SessionsAbortParamsSchema,

@@ -823,6 +823,7 @@ export const en: TranslationMap = {
       refreshing: "Refreshing…",
       on: "Dreaming On",
       off: "Dreaming Off",
+      enable: "Enable Dreaming",
     },
     restartConfirmation: {
       title: "Restart Gateway to Apply Change",
@@ -836,10 +837,16 @@ export const en: TranslationMap = {
     status: {
       active: "Dreaming Active",
       idle: "Dreaming Idle",
+      off: "Dreaming Off",
       promotedSuffix: "promoted",
       nextSweepPrefix: "next sweep",
     },
     scene: {
+      offExplainer:
+        "While Daisy sleeps, dreaming tidies her memory — merging duplicates, keeping what matters, and spotting patterns — so answers stay sharp as memories grow.",
+      offRestartNote: "Turning it on restarts the gateway once (a few seconds).",
+      enableCta: "Enable dreaming",
+      enabling: "Enabling…",
       backfill: "Backfill",
       dedupeDiary: "Dedupe Diary",
       reset: "Reset",
@@ -1254,7 +1261,8 @@ export const en: TranslationMap = {
         title: "Could not connect",
         summary:
           "The browser could not complete the Gateway connection. Check the target and transport before retrying credentials.",
-        stepGateway: "Confirm the Gateway is running with daisyclaw status or daisyclaw gateway run.",
+        stepGateway:
+          "Confirm the Gateway is running with daisyclaw status or daisyclaw gateway run.",
         stepUrl:
           "Check the WebSocket URL and use wss:// when the Gateway is behind HTTPS/Tailscale Serve.",
         stepDashboard:

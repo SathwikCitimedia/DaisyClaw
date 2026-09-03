@@ -17,6 +17,7 @@ export const DEFAULT_SKILL_PACK_INSTANT = [
   "meme-maker",
   "quick-notes",
   "reminders",
+  "skill-installer",
   "taskflow",
   "weather",
 ] as const;

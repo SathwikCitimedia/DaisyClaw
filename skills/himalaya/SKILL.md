@@ -17,6 +17,18 @@ metadata:
               "bins": ["himalaya"],
               "label": "Install Himalaya (brew)",
             },
+            {
+              "id": "download-win-x64",
+              "kind": "download",
+              "os": ["win32"],
+              "url": "https://github.com/pimalaya/himalaya/releases/download/v2.1.0/himalaya.x86_64-windows.zip",
+              "sha256": "dd2682bf61baabd52c1dfead872e09156862b9b3ea076595a1f7f9559c8d4435",
+              "archive": "zip",
+              "extract": true,
+              "targetDir": "bin",
+              "bins": ["himalaya"],
+              "label": "Download Himalaya (Windows x64)",
+            },
           ],
       },
   }

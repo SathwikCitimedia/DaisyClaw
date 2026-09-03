@@ -19,6 +19,7 @@ import type {
   ClawHubSkillSecurityVerdict,
   ClawHubSkillDetail,
   SkillMessage,
+  SkillSetupItemState,
 } from "./controllers/skills.ts";
 import type { EmbedSandboxMode } from "./embed-sandbox.ts";
 import type { GatewayBrowserClient, GatewayHelloOk } from "./gateway.ts";
@@ -427,6 +428,8 @@ export type AppViewState = {
     skillEdits: Record<string, string>;
     skillMessages: Record<string, SkillMessage>;
     skillsBusyKey: string | null;
+    skillsSetupItems: SkillSetupItemState[] | null;
+    skillsSetupOpen: boolean;
     skillsDetailKey: string | null;
     skillsDetailTab: "overview" | "card";
     clawhubSearchQuery: string;

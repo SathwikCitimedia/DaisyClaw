@@ -330,6 +330,12 @@ export const en = {
       nodeManager: "Preferred node manager for skill installs",
       setEnv: "Set {env} for {name}?",
       skipDepsHint: "Continue without installing dependencies",
+      starterAutoInstallFailed: "Could not set up {name} (retry from the dashboard)",
+      starterAutoInstalled: "Set up {name}",
+      starterAutoInstalling: "Setting up {name}...",
+      starterAutoSummaryFailed: "Needs attention: {skills} — retry from the dashboard Skills page.",
+      starterAutoSummaryReady: "Ready to use: {skills}",
+      starterAutoTitle: "Starter tools",
       starterPack:
         "Use the recommended starter skill pack? It hides {count} developer/advanced skills; you can re-enable any of them later in the dashboard.",
       starterPackApplied: "Hidden {count} advanced skills (re-enable anytime in the dashboard).",

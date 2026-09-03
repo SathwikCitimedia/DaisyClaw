@@ -1,4 +1,5 @@
 // Install download tests cover downloading skill archives before extraction.
+import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { Readable } from "node:stream";
@@ -162,6 +163,126 @@ beforeEach(() => {
   fetchWithSsrFGuardMock.mockReset();
   hasBinaryMock.mockReset();
   hasBinaryMock.mockReturnValue(true);
+});
+
+describe("installDownloadSpec sha256 verification", () => {
+  it("accepts a download whose sha256 matches", async () => {
+    const payload = new TextEncoder().encode("verified payload");
+    mockArchiveResponse(payload);
+    const expected = createHash("sha256").update(payload).digest("hex");
+    const entry = buildEntry("sha-ok");
+
+    const result = await installDownloadSpec({
+      entry,
+      spec: {
+        kind: "download",
+        id: "dl",
+        url: "https://example.invalid/tool.bin",
+        extract: false,
+        targetDir: "bin",
+        sha256: expected,
+      },
+      timeoutMs: 30_000,
+    });
+
+    expect(result.ok).toBe(true);
+    await expect(
+      fileExists(path.join(resolveSkillToolsRootDir(entry), "bin", "tool.bin")),
+    ).resolves.toBe(true);
+  });
+
+  it("rejects and deletes a download whose sha256 mismatches", async () => {
+    mockArchiveResponse(new TextEncoder().encode("tampered payload"));
+    const entry = buildEntry("sha-mismatch");
+
+    const result = await installDownloadSpec({
+      entry,
+      spec: {
+        kind: "download",
+        id: "dl",
+        url: "https://example.invalid/tool.bin",
+        extract: false,
+        targetDir: "bin",
+        sha256: "a".repeat(64),
+      },
+      timeoutMs: 30_000,
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.message).toContain("sha256 mismatch");
+    await expect(
+      fileExists(path.join(resolveSkillToolsRootDir(entry), "bin", "tool.bin")),
+    ).resolves.toBe(false);
+  });
+
+  it("saves bare downloads under an explicit filename", async () => {
+    mockArchiveResponse(new TextEncoder().encode("jq binary"));
+    const entry = buildEntry("filename-rename");
+
+    const result = await installDownloadSpec({
+      entry,
+      spec: {
+        kind: "download",
+        id: "dl",
+        url: "https://example.invalid/jq-windows-amd64.exe",
+        filename: "jq.exe",
+        extract: false,
+        targetDir: "bin",
+      },
+      timeoutMs: 30_000,
+    });
+
+    expect(result.ok).toBe(true);
+    await expect(
+      fileExists(path.join(resolveSkillToolsRootDir(entry), "bin", "jq.exe")),
+    ).resolves.toBe(true);
+    await expect(
+      fileExists(path.join(resolveSkillToolsRootDir(entry), "bin", "jq-windows-amd64.exe")),
+    ).resolves.toBe(false);
+  });
+
+  it("rejects unsafe filename values", async () => {
+    const beforeFetchCalls = fetchWithSsrFGuardMock.mock.calls.length;
+    const result = await installDownloadSpec({
+      entry: buildEntry("filename-unsafe"),
+      spec: {
+        kind: "download",
+        id: "dl",
+        url: "https://example.invalid/tool.exe",
+        filename: "../evil.exe",
+        extract: false,
+        targetDir: "bin",
+      },
+      timeoutMs: 30_000,
+    });
+    expect(result.ok).toBe(false);
+    expect(result.message).toContain("invalid filename");
+    expect(fetchWithSsrFGuardMock.mock.calls.length).toBe(beforeFetchCalls);
+  });
+
+  it("rejects malformed sha256 values without keeping the file", async () => {
+    mockArchiveResponse(new TextEncoder().encode("payload"));
+    const entry = buildEntry("sha-malformed");
+
+    const result = await installDownloadSpec({
+      entry,
+      spec: {
+        kind: "download",
+        id: "dl",
+        url: "https://example.invalid/tool.bin",
+        extract: false,
+        targetDir: "bin",
+        sha256: "not-a-hash",
+      },
+      timeoutMs: 30_000,
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.message).toContain("invalid sha256");
+    await expect(
+      fileExists(path.join(resolveSkillToolsRootDir(entry), "bin", "tool.bin")),
+    ).resolves.toBe(false);
+  });
 });
 
 describe("installDownloadSpec extraction safety", () => {

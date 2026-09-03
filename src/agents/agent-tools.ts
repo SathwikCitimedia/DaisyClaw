@@ -12,8 +12,8 @@ import type { SourceReplyDeliveryMode } from "../auto-reply/get-reply-options.ty
 import { HEARTBEAT_RESPONSE_TOOL_NAME } from "../auto-reply/heartbeat-tool-response.js";
 import type { InboundEventKind } from "../channels/inbound-event/kind.js";
 import { resolveExecCommandHighlighting } from "../config/exec-command-highlighting.js";
-import type { ModelCompatConfig } from "../config/types.models.js";
 import type { DaisyClawConfig } from "../config/types.daisyclaw.js";
+import type { ModelCompatConfig } from "../config/types.models.js";
 import type { DiagnosticTraceContext } from "../infra/diagnostic-trace-context.js";
 import { resolveEventSessionRoutingPolicy } from "../infra/event-session-routing.js";
 import {
@@ -26,6 +26,7 @@ import { resolveMergedSafeBinProfileFixtures } from "../infra/exec-safe-bin-runt
 import { logWarn } from "../logger.js";
 import { getPluginToolMeta } from "../plugins/tools.js";
 import { createLazyImportLoader } from "../shared/lazy-promise.js";
+import { collectSkillToolPathDirs } from "../skills/runtime/tool-bins.js";
 import type { SkillSnapshot } from "../skills/types.js";
 import { resolveGatewayMessageChannel } from "../utils/message-channel.js";
 import { resolveAgentConfig } from "./agent-scope.js";
@@ -67,14 +68,14 @@ import type { ProcessToolDefaults } from "./bash-tools.process.js";
 import { execSchema, processSchema } from "./bash-tools.schemas.js";
 import { listChannelAgentTools } from "./channel-tools.js";
 import { shouldSuppressManagedWebSearchTool } from "./codex-native-web-search.js";
+import { resolveDaisyClawPluginToolsForOptions } from "./daisyclaw-plugin-tools.js";
+import { createDaisyClawTools } from "./daisyclaw-tools.js";
 import { resolveImageSanitizationLimits } from "./image-sanitization.js";
 import {
   filterLocalModelLeanTools,
   resolveLocalModelLeanPreserveToolNames,
 } from "./local-model-lean.js";
 import type { ModelAuthMode } from "./model-auth.js";
-import { resolveDaisyClawPluginToolsForOptions } from "./daisyclaw-plugin-tools.js";
-import { createDaisyClawTools } from "./daisyclaw-tools.js";
 import type { SandboxContext } from "./sandbox.js";
 import { SANDBOX_AGENT_WORKSPACE_MOUNT } from "./sandbox/constants.js";
 import { resolveReadOnlyWorkspaceSkillMounts } from "./sandbox/workspace-mounts.js";
@@ -354,6 +355,20 @@ function applyExecPolicyLayer(base: ExecPolicyLayer, layer?: ExecPolicyLayer): E
   return base;
 }
 
+function mergeExecPathPrepend(configured: string[] | undefined): string[] | undefined {
+  const skillToolDirs = collectSkillToolPathDirs();
+  if (skillToolDirs.length === 0) {
+    return configured;
+  }
+  const merged = [...(configured ?? [])];
+  for (const dir of skillToolDirs) {
+    if (!merged.includes(dir)) {
+      merged.push(dir);
+    }
+  }
+  return merged;
+}
+
 function resolveExecConfig(params: { cfg?: DaisyClawConfig; agentId?: string }) {
   const cfg = params.cfg;
   const globalExec = cfg?.tools?.exec;
@@ -366,7 +381,9 @@ function resolveExecConfig(params: { cfg?: DaisyClawConfig; agentId?: string }) 
     security: layeredPolicy.security,
     ask: layeredPolicy.ask,
     node: agentExec?.node ?? globalExec?.node,
-    pathPrepend: agentExec?.pathPrepend ?? globalExec?.pathPrepend,
+    // Configured prepends keep precedence; skill tool dirs (downloads made by
+    // the skill installer) follow so the agent can run those tools by name.
+    pathPrepend: mergeExecPathPrepend(agentExec?.pathPrepend ?? globalExec?.pathPrepend),
     safeBins: agentExec?.safeBins ?? globalExec?.safeBins,
     strictInlineEval: agentExec?.strictInlineEval ?? globalExec?.strictInlineEval,
     commandHighlighting: resolveExecCommandHighlighting({

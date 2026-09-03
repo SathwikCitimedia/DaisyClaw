@@ -17,6 +17,17 @@ metadata:
               "bins": ["ffmpeg"],
               "label": "Install ffmpeg (brew)",
             },
+            {
+              "id": "download-win-x64",
+              "kind": "download",
+              "os": ["win32"],
+              "url": "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-09-02-13-13/ffmpeg-n8.1.2-50-g1a748fe2cd-win64-gpl-8.1.zip",
+              "sha256": "954c2f5a219d6d34280393ceaf611777f6fcc96b785263328fb263df35dc1f8a",
+              "archive": "zip",
+              "extract": true,
+              "bins": ["ffmpeg"],
+              "label": "Download ffmpeg (Windows x64)",
+            },
           ],
       },
   }

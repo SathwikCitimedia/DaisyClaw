@@ -11,6 +11,10 @@ export type SkillInstallSpec = {
   package?: string;
   module?: string;
   url?: string;
+  /** Expected SHA-256 (hex) of the downloaded file; mismatches abort the install. */
+  sha256?: string;
+  /** Save the download under this name instead of the URL basename (single path segment). */
+  filename?: string;
   archive?: string;
   extract?: boolean;
   stripComponents?: number;

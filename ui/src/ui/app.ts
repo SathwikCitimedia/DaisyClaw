@@ -125,6 +125,7 @@ import type {
   ClawHubSkillSecurityVerdict,
   ClawHubSkillDetail,
   SkillMessage,
+  SkillSetupItemState,
 } from "./controllers/skills.ts";
 import { importCustomThemeFromUrl } from "./custom-theme.ts";
 import type { GatewayBrowserClient, GatewayHelloOk } from "./gateway.ts";
@@ -649,6 +650,8 @@ export class DaisyClawApp extends LitElement {
   @state() skillsStatusFilter: "all" | "ready" | "needs-setup" | "disabled" = "all";
   @state() skillEdits: Record<string, string> = {};
   @state() skillsBusyKey: string | null = null;
+  @state() skillsSetupItems: SkillSetupItemState[] | null = null;
+  @state() skillsSetupOpen = false;
   @state() skillMessages: Record<string, SkillMessage> = {};
   @state() skillsDetailKey: string | null = null;
   @state() skillsDetailTab: "overview" | "card" = "overview";

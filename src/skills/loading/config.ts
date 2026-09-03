@@ -13,6 +13,7 @@ import {
   resolveConfigPath,
   resolveRuntimePlatform,
 } from "../../shared/config-eval.js";
+import { createSkillBinChecker } from "../runtime/tool-bins.js";
 import type { SkillEligibilityContext, SkillEntry, SkillsInstallPreferences } from "../types.js";
 import { resolveSkillKey } from "./frontmatter.js";
 import { resolveSkillSource } from "./source.js";
@@ -25,7 +26,9 @@ const DEFAULT_CONFIG_VALUES: Record<string, boolean> = {
 /** Platform helpers re-exported for skill loading callers and tests. */
 export { hasBinary, resolveConfigPath, resolveRuntimePlatform };
 
-export function resolveSkillsInstallPreferences(config?: DaisyClawConfig): SkillsInstallPreferences {
+export function resolveSkillsInstallPreferences(
+  config?: DaisyClawConfig,
+): SkillsInstallPreferences {
   const raw = config?.skills?.install;
   const preferBrew = raw?.preferBrew ?? true;
   const manager = normalizeLowercaseStringOrEmpty(normalizeOptionalString(raw?.nodeManager));
@@ -108,7 +111,8 @@ export function shouldIncludeSkill(params: {
     remotePlatforms: eligibility?.remote?.platforms,
     always: entry.metadata?.always,
     requires: entry.metadata?.requires,
-    hasBin: hasBinary,
+    // Tools installed into the skill's own tools dir count as present too.
+    hasBin: createSkillBinChecker(entry),
     hasRemoteBin: eligibility?.remote?.hasBin,
     hasAnyRemoteBin: eligibility?.remote?.hasAnyBin,
     hasEnv: (envName) =>

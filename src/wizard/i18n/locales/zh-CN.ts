@@ -323,6 +323,12 @@ export const zh_CN = {
       nodeManager: "技能安装首选 Node 管理器",
       setEnv: "为 {name} 设置 {env}？",
       skipDepsHint: "继续，不安装依赖",
+      starterAutoInstallFailed: "无法安装 {name}（可在控制台重试）",
+      starterAutoInstalled: "已安装 {name}",
+      starterAutoInstalling: "正在安装 {name}...",
+      starterAutoSummaryFailed: "需要处理：{skills} — 请在控制台技能页面重试。",
+      starterAutoSummaryReady: "开箱即用：{skills}",
+      starterAutoTitle: "入门工具",
       starterPack:
         "使用推荐的入门技能包？将隐藏 {count} 个开发者/高级技能；之后可随时在控制台重新启用。",
       starterPackApplied: "已隐藏 {count} 个高级技能（可随时在控制台重新启用）。",

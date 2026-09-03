@@ -17,6 +17,18 @@ metadata:
               "bins": ["op"],
               "label": "Install 1Password CLI (brew)",
             },
+            {
+              "id": "download-win-x64",
+              "kind": "download",
+              "os": ["win32"],
+              "url": "https://cache.agilebits.com/dist/1P/op2/pkg/v2.39.0/op_windows_amd64_v2.39.0.zip",
+              "sha256": "38b3748d76d104469eb6e2744f843d2a7e03d1b6d330cc42d600cff379c37bab",
+              "archive": "zip",
+              "extract": true,
+              "targetDir": "bin",
+              "bins": ["op"],
+              "label": "Download 1Password CLI (Windows x64)",
+            },
           ],
       },
   }

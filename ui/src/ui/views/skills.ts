@@ -9,6 +9,7 @@ import type {
   ClawHubSearchResult,
   ClawHubSkillDetail,
   SkillMessageMap,
+  SkillSetupItemState,
 } from "../controllers/skills.ts";
 import { clawhubVerdictKey } from "../controllers/skills.ts";
 import { clampText } from "../format.ts";
@@ -19,8 +20,9 @@ import { normalizeLowercaseStringOrEmpty } from "../string-coerce.ts";
 import type { SkillStatusEntry, SkillStatusReport } from "../types.ts";
 import { groupSkills } from "./skills-grouping.ts";
 import {
-  computeSkillMissing,
   computeSkillReasons,
+  computeSkillSetupItems,
+  isSelfGateBlocked,
   renderSkillStatusChips,
 } from "./skills-shared.ts";
 
@@ -175,6 +177,12 @@ export type SkillsProps = {
   onStatusFilterChange: (next: SkillsStatusFilter) => void;
   onRefresh: () => void;
   onToggle: (skillKey: string, enabled: boolean) => void;
+  onOpenChannels?: () => void;
+  onFinishSetup?: () => void;
+  setupItems: SkillSetupItemState[] | null;
+  setupOpen: boolean;
+  onSetupClose: () => void;
+  onSetupRetry: (skillKey: string) => void;
   onEdit: (editKey: string, value: string) => void;
   onSaveKey: (skillKey: string, envName: string, asApiKey: boolean) => void;
   onInstall: (skillKey: string, name: string, installId: string) => void;
@@ -300,8 +308,42 @@ function renderStarterOverview(props: SkillsProps, skills: SkillStatusEntry[]) {
   }
   const readyShown = ready.slice(0, STARTER_READY_MAX);
   const connectShown = connect.slice(0, STARTER_CONNECT_MAX);
+  const installable = skills.filter(
+    (s) =>
+      !s.disabled &&
+      !s.eligible &&
+      s.install.length > 0 &&
+      (s.missing.bins.length > 0 || (s.missing.anyBins?.length ?? 0) > 0),
+  );
   return html`
     <div class="skills-starter" style="margin-top: 14px; display: grid; gap: 14px;">
+      ${(() => {
+        const setupRunning = (props.setupItems ?? []).some(
+          (item) => item.status === "queued" || item.status === "installing",
+        );
+        if ((installable.length === 0 && !setupRunning) || !props.onFinishSetup) {
+          return nothing;
+        }
+        return html`
+          <div
+            class="skills-finish-setup"
+            style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;"
+          >
+            <button class="btn primary" @click=${() => props.onFinishSetup?.()}>
+              ${setupRunning
+                ? html`<span class="skills-setup-spinner" aria-hidden="true"></span> Setting up…`
+                : `Finish setup (${installable.length})`}
+            </button>
+            <span class="muted" style="font-size: 13px;">
+              ${setupRunning
+                ? "Installs are running — click to see progress."
+                : `Installs the missing programs for ${installable
+                    .map((s) => s.name)
+                    .join(", ")} automatically.`}
+            </span>
+          </div>
+        `;
+      })()}
       ${readyShown.length > 0
         ? html`
             <div>
@@ -576,6 +618,130 @@ export function renderSkills(props: SkillsProps) {
 
     ${detailSkill ? renderSkillDetail(detailSkill, props) : nothing}
     ${props.clawhubDetailSlug ? renderClawHubDetailDialog(props) : nothing}
+    ${props.setupOpen && props.setupItems ? renderSetupProgressDialog(props) : nothing}
+  `;
+}
+
+function setupItemStatusView(item: SkillSetupItemState): {
+  icon: TemplateResult;
+  label: string;
+  labelClass: string;
+} {
+  switch (item.status) {
+    case "installing":
+      return {
+        icon: html`<span class="skills-setup-spinner" aria-hidden="true"></span>`,
+        label: "Installing…",
+        labelClass: "",
+      };
+    case "done":
+      return {
+        icon: html`<span class="statusDot ok"></span>`,
+        label: "Ready",
+        labelClass: "",
+      };
+    case "failed":
+      return {
+        icon: html`<span class="statusDot warn"></span>`,
+        label: "Failed",
+        labelClass: "",
+      };
+    default:
+      return {
+        icon: html`<span class="skill-icon" aria-hidden="true" style="opacity: 0.55;"
+          >${icons.clock}</span
+        >`,
+        label: "Waiting",
+        labelClass: "muted",
+      };
+  }
+}
+
+function renderSetupProgressDialog(props: SkillsProps) {
+  const items = props.setupItems ?? [];
+  const running = items.some((item) => item.status === "queued" || item.status === "installing");
+  const doneCount = items.filter(
+    (item) => item.status === "done" || item.status === "failed",
+  ).length;
+  const failedCount = items.filter((item) => item.status === "failed").length;
+  const summary = running
+    ? `${doneCount} of ${items.length} done`
+    : failedCount > 0
+      ? `${items.length - failedCount} ready, ${failedCount} failed`
+      : `All ${items.length} ready`;
+
+  return html`
+    <dialog
+      class="md-preview-dialog skills-setup-dialog"
+      ${ref(showDialogWhenClosed)}
+      @click=${(e: Event) => {
+        const dialog = e.currentTarget as HTMLDialogElement;
+        if (e.target === dialog) {
+          dialog.close();
+        }
+      }}
+      @close=${props.onSetupClose}
+    >
+      <div class="md-preview-dialog__panel">
+        <div class="md-preview-dialog__header">
+          <div class="md-preview-dialog__title">Setting up your skills</div>
+          <button
+            class="btn btn--sm"
+            @click=${(e: Event) => {
+              (e.currentTarget as HTMLElement).closest("dialog")?.close();
+            }}
+          >
+            Close
+          </button>
+        </div>
+        <div class="md-preview-dialog__body" style="display: grid; gap: 4px;">
+          ${repeat(
+            items,
+            (item) => item.skillKey,
+            (item) => {
+              const view = setupItemStatusView(item);
+              return html`
+                <div
+                  class="skills-setup-row"
+                  style="display: flex; align-items: center; gap: 10px; padding: 8px 4px; border-bottom: 1px solid var(--border);"
+                >
+                  <span
+                    style="display: inline-flex; width: 18px; justify-content: center;"
+                    aria-hidden="true"
+                    >${view.icon}</span
+                  >
+                  <span style="font-weight: 600; font-size: 13px;">${item.name}</span>
+                  <span class="${view.labelClass}" style="font-size: 13px;">${view.label}</span>
+                  ${item.status === "failed" && item.detail
+                    ? html`<span
+                        class="muted"
+                        style="font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 40%;"
+                        title=${item.detail}
+                        >${item.detail}</span
+                      >`
+                    : nothing}
+                  ${item.status === "failed"
+                    ? html`
+                        <button
+                          class="btn btn--sm"
+                          style="margin-left: auto;"
+                          ?disabled=${running}
+                          @click=${() => props.onSetupRetry(item.skillKey)}
+                        >
+                          Retry
+                        </button>
+                      `
+                    : nothing}
+                </div>
+              `;
+            },
+          )}
+          <div class="muted skills-setup-summary" style="font-size: 13px; padding-top: 10px;">
+            ${summary}
+          </div>
+        </div>
+      </div>
+    </dialog>
   `;
 }
 
@@ -735,11 +901,11 @@ function renderSkill(skill: SkillStatusEntry, props: SkillsProps) {
           <input
             type="checkbox"
             class="skill-toggle"
-            .checked=${!skill.disabled}
+            .checked=${!skill.disabled && !isSelfGateBlocked(skill)}
             ?disabled=${busy}
             @change=${(e: Event) => {
               e.stopPropagation();
-              props.onToggle(skill.skillKey, skill.disabled);
+              props.onToggle(skill.skillKey, skill.disabled || isSelfGateBlocked(skill));
             }}
           />
         </label>
@@ -773,9 +939,12 @@ function skillEnvInputs(skill: SkillStatusEntry): Array<{ name: string; primary:
 function renderSkillDetail(skill: SkillStatusEntry, props: SkillsProps) {
   const busy = props.busyKey === skill.skillKey;
   const message = props.messages[skill.skillKey] ?? null;
-  const canInstall = skill.install.length > 0 && skill.missing.bins.length > 0;
+  const canInstall =
+    skill.install.length > 0 &&
+    (skill.missing.bins.length > 0 || (skill.missing.anyBins?.length ?? 0) > 0);
   const showBundledBadge = Boolean(skill.bundled && skill.source !== "daisyclaw-bundled");
-  const missing = computeSkillMissing(skill);
+  const setupItems = computeSkillSetupItems(skill);
+  const selfGated = isSelfGateBlocked(skill);
   const reasons = computeSkillReasons(skill);
   const verdict = verdictForSkill(skill, props.clawhubVerdicts);
   const detailTab: SkillDetailTab =
@@ -846,14 +1015,37 @@ function renderSkillDetail(skill: SkillStatusEntry, props: SkillsProps) {
           ${detailTab === "overview"
             ? renderInstalledClawHubOverview(skill, props, verdict)
             : renderInstalledSkillCard(skill, props)}
-          ${missing.length > 0
+          ${setupItems.length > 0
             ? html`
                 <div
-                  class="callout"
+                  class="callout skills-setup-callout"
                   style="border-color: var(--warn-subtle); background: var(--warn-subtle); color: var(--warn);"
                 >
-                  <div style="font-weight: 600; margin-bottom: 4px;">Missing requirements</div>
-                  <div>${missing.join(", ")}</div>
+                  <div style="font-weight: 600; margin-bottom: 4px;">To finish setup</div>
+                  <div style="display: grid; gap: 6px;">
+                    ${setupItems.map(
+                      (item) => html`
+                        <div
+                          style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;"
+                        >
+                          <span>${item.text}</span>
+                          ${item.kind === "channel" && props.onOpenChannels
+                            ? html`
+                                <button
+                                  class="btn btn--sm"
+                                  @click=${(e: Event) => {
+                                    (e.currentTarget as HTMLElement).closest("dialog")?.close();
+                                    props.onOpenChannels?.();
+                                  }}
+                                >
+                                  Go to Channels
+                                </button>
+                              `
+                            : nothing}
+                        </div>
+                      `,
+                    )}
+                  </div>
                 </div>
               `
             : nothing}
@@ -868,13 +1060,13 @@ function renderSkillDetail(skill: SkillStatusEntry, props: SkillsProps) {
               <input
                 type="checkbox"
                 class="skill-toggle"
-                .checked=${!skill.disabled}
+                .checked=${!skill.disabled && !selfGated}
                 ?disabled=${busy}
-                @change=${() => props.onToggle(skill.skillKey, skill.disabled)}
+                @change=${() => props.onToggle(skill.skillKey, skill.disabled || selfGated)}
               />
             </label>
             <span style="font-size: 13px; font-weight: 500;">
-              ${skill.disabled ? "Disabled" : "Enabled"}
+              ${selfGated ? "Off (default)" : skill.disabled ? "Disabled" : "Enabled"}
             </span>
             ${canInstall
               ? html`<button

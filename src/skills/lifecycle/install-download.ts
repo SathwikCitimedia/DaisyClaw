@@ -1,5 +1,5 @@
 // Install download helpers fetch remote skill artifacts into temporary storage.
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { Readable } from "node:stream";
@@ -123,6 +123,12 @@ async function downloadFile(params: {
   }
 }
 
+async function hashFileSha256(filePath: string): Promise<string> {
+  const hash = createHash("sha256");
+  await pipeline(fs.createReadStream(filePath), hash);
+  return hash.digest("hex");
+}
+
 export async function installDownloadSpec(params: {
   entry: SkillEntry;
   spec: SkillInstallSpec;
@@ -142,11 +148,22 @@ export async function installDownloadSpec(params: {
   }
 
   let filename;
-  try {
-    const parsed = new URL(url);
-    filename = path.basename(parsed.pathname);
-  } catch {
-    filename = path.basename(url);
+  const explicitFilename = spec.filename?.trim();
+  if (explicitFilename) {
+    // Rename support for bare-binary downloads (e.g. jq-windows-amd64.exe →
+    // jq.exe). Must stay a single safe path segment.
+    if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(explicitFilename)) {
+      const message = `invalid filename in install spec: ${spec.filename}`;
+      return { ok: false, message, stdout: "", stderr: message, code: null };
+    }
+    filename = explicitFilename;
+  } else {
+    try {
+      const parsed = new URL(url);
+      filename = path.basename(parsed.pathname);
+    } catch {
+      filename = path.basename(url);
+    }
   }
   if (!filename) {
     filename = "download";
@@ -205,6 +222,22 @@ export async function installDownloadSpec(params: {
   } catch (err) {
     const message = formatErrorMessage(err);
     return { ok: false, message, stdout: "", stderr: message, code: null };
+  }
+
+  const expectedSha256 = spec.sha256?.trim().toLowerCase();
+  if (expectedSha256) {
+    if (!/^[0-9a-f]{64}$/.test(expectedSha256)) {
+      await fs.promises.rm(archivePath, { force: true }).catch(() => undefined);
+      const message = `invalid sha256 in install spec: ${spec.sha256}`;
+      return { ok: false, message, stdout: "", stderr: message, code: null };
+    }
+    const actualSha256 = await hashFileSha256(archivePath);
+    if (actualSha256 !== expectedSha256) {
+      // Never keep an artifact that failed verification.
+      await fs.promises.rm(archivePath, { force: true }).catch(() => undefined);
+      const message = `sha256 mismatch for ${filename}: expected ${expectedSha256}, got ${actualSha256}`;
+      return { ok: false, message, stdout: "", stderr: message, code: null };
+    }
   }
 
   const archiveType = resolveArchiveType(spec, filename);

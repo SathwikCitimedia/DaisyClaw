@@ -60,6 +60,16 @@ export type ClawHubSkillSecurityVerdict = {
   };
 };
 
+export type SkillSetupStatus = "queued" | "installing" | "done" | "failed";
+
+export type SkillSetupItemState = {
+  skillKey: string;
+  name: string;
+  installIds: string[];
+  status: SkillSetupStatus;
+  detail?: string;
+};
+
 export type SkillsState = {
   client: GatewayBrowserClient | null;
   connected: boolean;
@@ -67,6 +77,8 @@ export type SkillsState = {
   skillsReport: SkillStatusReport | null;
   skillsError: string | null;
   skillsBusyKey: string | null;
+  skillsSetupItems: SkillSetupItemState[] | null;
+  skillsSetupOpen: boolean;
   skillEdits: Record<string, string>;
   skillMessages: SkillMessageMap;
   clawhubSearchQuery: string;
@@ -397,6 +409,130 @@ export async function installSkill(
       message: result?.message ?? "Installed",
     };
   });
+}
+
+/** Skills that are blocked on a missing program and have an install recipe. */
+export function listInstallableSkills(
+  report: SkillsState["skillsReport"],
+): Array<{ skillKey: string; name: string; installIds: string[] }> {
+  const skills = report?.skills ?? [];
+  const installable: Array<{ skillKey: string; name: string; installIds: string[] }> = [];
+  for (const skill of skills) {
+    if (skill.disabled || skill.eligible || skill.install.length === 0) {
+      continue;
+    }
+    const missing = new Set([...skill.missing.bins, ...(skill.missing.anyBins ?? [])]);
+    if (missing.size === 0) {
+      continue;
+    }
+    // A skill can need several tools (e.g. git + gh), each with its own
+    // recipe: run every recipe that provides a still-missing binary. Recipes
+    // without a bins list fall back to the primary recipe only.
+    const installIds: string[] = [];
+    for (const option of skill.install) {
+      const bins = option.bins ?? [];
+      if (bins.some((bin) => missing.has(bin)) && option.id && !installIds.includes(option.id)) {
+        installIds.push(option.id);
+      }
+    }
+    if (installIds.length === 0 && skill.install[0]?.id) {
+      installIds.push(skill.install[0].id);
+    }
+    if (installIds.length > 0) {
+      installable.push({ skillKey: skill.skillKey, name: skill.name, installIds });
+    }
+  }
+  return installable;
+}
+
+/** True while the one-click setup run still has work in flight. */
+export function isSkillsSetupRunning(state: SkillsState): boolean {
+  return (state.skillsSetupItems ?? []).some(
+    (item) => item.status === "queued" || item.status === "installing",
+  );
+}
+
+function updateSetupItem(
+  state: SkillsState,
+  skillKey: string,
+  patch: Partial<SkillSetupItemState>,
+) {
+  // Reassign so Lit change detection sees the update.
+  state.skillsSetupItems = (state.skillsSetupItems ?? []).map((item) =>
+    item.skillKey === skillKey ? { ...item, ...patch } : item,
+  );
+}
+
+async function runSetupInstall(
+  state: SkillsState,
+  item: Pick<SkillSetupItemState, "skillKey" | "name" | "installIds">,
+) {
+  const client = state.client;
+  if (!client || !state.connected) {
+    updateSetupItem(state, item.skillKey, {
+      status: "failed",
+      detail: "Not connected to gateway.",
+    });
+    return;
+  }
+  updateSetupItem(state, item.skillKey, { status: "installing", detail: undefined });
+  let lastMessage: string | undefined;
+  for (const installId of item.installIds) {
+    try {
+      const result = await client.request<{ message?: string }>(
+        "skills.install",
+        { name: item.name, installId, timeoutMs: 120000 },
+        // Server-side install budget is 120s; keep the client timeout above it.
+        { timeoutMs: 150_000 },
+      );
+      lastMessage = result?.message;
+    } catch (err) {
+      updateSetupItem(state, item.skillKey, { status: "failed", detail: getErrorMessage(err) });
+      return;
+    }
+  }
+  updateSetupItem(state, item.skillKey, { status: "done", detail: lastMessage });
+}
+
+/**
+ * One-click setup: installs every missing-but-installable skill tool in
+ * sequence, tracking per-skill progress for the setup dialog. A failure does
+ * not stop the remaining installs. Re-invoking while a run is active just
+ * reopens the dialog.
+ */
+export async function finishSkillsSetup(state: SkillsState) {
+  if (isSkillsSetupRunning(state)) {
+    state.skillsSetupOpen = true;
+    return;
+  }
+  const targets = listInstallableSkills(state.skillsReport);
+  if (targets.length === 0) {
+    return;
+  }
+  state.skillsSetupItems = targets.map((target) => ({ ...target, status: "queued" as const }));
+  state.skillsSetupOpen = true;
+  for (const target of targets) {
+    await runSetupInstall(state, target);
+  }
+  await loadSkills(state);
+}
+
+/** Re-runs one failed setup item; no-op while a setup run is active. */
+export async function retrySkillSetup(state: SkillsState, skillKey: string) {
+  if (isSkillsSetupRunning(state)) {
+    return;
+  }
+  const item = state.skillsSetupItems?.find((entry) => entry.skillKey === skillKey);
+  if (!item) {
+    return;
+  }
+  await runSetupInstall(state, item);
+  await loadSkills(state);
+}
+
+/** Closes the setup dialog; an active run keeps going in the background. */
+export function closeSkillsSetup(state: SkillsState) {
+  state.skillsSetupOpen = false;
 }
 
 export async function searchClawHub(state: SkillsState, query: string) {

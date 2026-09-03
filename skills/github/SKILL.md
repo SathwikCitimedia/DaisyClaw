@@ -23,6 +23,17 @@ metadata:
               "bins": ["gh"],
               "label": "Install GitHub CLI (apt)",
             },
+            {
+              "id": "download-win-x64",
+              "kind": "download",
+              "os": ["win32"],
+              "url": "https://github.com/cli/cli/releases/download/v2.99.0/gh_2.99.0_windows_amd64.zip",
+              "sha256": "ea040d0ba03176440d13481caf67f742236c3b38ce1d4442a9da37e9bb98d8f2",
+              "archive": "zip",
+              "extract": true,
+              "bins": ["gh"],
+              "label": "Download GitHub CLI (Windows x64)",
+            },
           ],
       },
   }

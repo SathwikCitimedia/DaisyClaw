@@ -5,6 +5,8 @@ import {
   loadSkills,
   loadSkillCard,
   loadClawHubDetail,
+  finishSkillsSetup,
+  retrySkillSetup,
   saveSkillApiKey,
   saveSkillEnvValue,
   searchClawHub,
@@ -26,6 +28,8 @@ function createState(): { state: SkillsState; request: ReturnType<typeof vi.fn<T
     skillsReport: null,
     skillsError: null,
     skillsBusyKey: null,
+    skillsSetupItems: null,
+    skillsSetupOpen: false,
     skillEdits: {},
     skillMessages: {},
     clawhubSearchQuery: "github",
@@ -487,6 +491,125 @@ describe("loadClawHubDetail", () => {
 
     expect(state.clawhubDetailLoading).toBe(false);
     expect(state.clawhubDetail?.skill?.slug).toBe("gitlab");
+  });
+});
+
+describe("finishSkillsSetup", () => {
+  it("installs every missing-but-installable skill and survives one failure", async () => {
+    const { state, request } = createState();
+    state.skillsReport = {
+      workspaceDir: "/tmp/workspace",
+      managedSkillsDir: "/tmp/skills",
+      skills: [
+        {
+          name: "spotify-player",
+          skillKey: "spotify-player",
+          source: "daisyclaw-bundled",
+          disabled: false,
+          eligible: false,
+          missing: { bins: [], anyBins: ["spotify_player"], env: [], config: [], os: [] },
+          install: [{ id: "download-win-x64", kind: "download", label: "Download", bins: [] }],
+        },
+        {
+          name: "gog",
+          skillKey: "gog",
+          source: "daisyclaw-bundled",
+          disabled: false,
+          eligible: false,
+          missing: { bins: ["gog"], env: [], config: [], os: [] },
+          install: [{ id: "download-win-x64", kind: "download", label: "Download", bins: [] }],
+        },
+        {
+          name: "weather",
+          skillKey: "weather",
+          source: "daisyclaw-bundled",
+          disabled: false,
+          eligible: true,
+          missing: { bins: [], env: [], config: [], os: [] },
+          install: [],
+        },
+      ],
+    } as never;
+    request.mockImplementation(async (method: string, payload?: unknown) => {
+      if (
+        method === "skills.install" &&
+        (payload as { name?: string })?.name === "spotify-player"
+      ) {
+        throw new Error("network down");
+      }
+      return {};
+    });
+
+    await finishSkillsSetup(state);
+
+    const installCalls = request.mock.calls.filter((call) => call[0] === "skills.install");
+    expect(installCalls.map((call) => (call[1] as { name: string }).name)).toEqual([
+      "spotify-player",
+      "gog",
+    ]);
+    expect(state.skillsSetupOpen).toBe(true);
+    expect(state.skillsSetupItems?.map((item) => [item.skillKey, item.status])).toEqual([
+      ["spotify-player", "failed"],
+      ["gog", "done"],
+    ]);
+    expect(state.skillsSetupItems?.[0]?.detail).toContain("network down");
+    // Final refresh reloads the skills report.
+    expect(request.mock.calls.filter((call) => call[0] === "skills.status")).toHaveLength(1);
+  });
+
+  it("runs every recipe covering a still-missing binary for one skill", async () => {
+    const { state, request } = createState();
+    state.skillsReport = {
+      workspaceDir: "/tmp/workspace",
+      managedSkillsDir: "/tmp/skills",
+      skills: [
+        {
+          name: "gh-issues",
+          skillKey: "gh-issues",
+          source: "daisyclaw-bundled",
+          disabled: false,
+          eligible: false,
+          missing: { bins: ["git", "gh"], env: [], config: [], os: [] },
+          install: [
+            { id: "download-win-gh", kind: "download", label: "gh", bins: ["gh"] },
+            { id: "download-win-git", kind: "download", label: "git", bins: ["git"] },
+          ],
+        },
+      ],
+    } as never;
+    request.mockResolvedValue({});
+
+    await finishSkillsSetup(state);
+
+    const installCalls = request.mock.calls.filter((call) => call[0] === "skills.install");
+    expect(installCalls.map((call) => (call[1] as { installId: string }).installId)).toEqual([
+      "download-win-gh",
+      "download-win-git",
+    ]);
+    expect(state.skillsSetupItems?.[0]?.status).toBe("done");
+  });
+
+  it("retries a single failed item", async () => {
+    const { state, request } = createState();
+    state.skillsSetupItems = [
+      {
+        skillKey: "spotify-player",
+        name: "spotify-player",
+        installIds: ["download-win-x64"],
+        status: "failed",
+        detail: "network down",
+      },
+    ];
+    request.mockResolvedValue({});
+
+    await retrySkillSetup(state, "spotify-player");
+
+    expect(request).toHaveBeenCalledWith(
+      "skills.install",
+      expect.objectContaining({ name: "spotify-player", installId: "download-win-x64" }),
+      expect.anything(),
+    );
+    expect(state.skillsSetupItems?.[0]?.status).toBe("done");
   });
 });
 

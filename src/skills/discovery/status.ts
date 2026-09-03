@@ -22,6 +22,7 @@ import {
   resolveSkillsInstallPreferences,
 } from "../loading/config.js";
 import { loadWorkspaceSkillEntries } from "../loading/workspace.js";
+import { createSkillBinChecker } from "../runtime/tool-bins.js";
 import type {
   SkillEntry,
   SkillEligibilityContext,
@@ -193,7 +194,19 @@ function normalizeInstallOptions(
   const platform = process.platform;
   const filtered = install.filter((spec) => {
     const osList = spec.os ?? [];
-    return osList.length === 0 || osList.includes(platform);
+    if (osList.length > 0 && !osList.includes(platform)) {
+      return false;
+    }
+    if (platform === "win32") {
+      // Allowlist, not blocklist: only downloads and npm installs are
+      // universally viable on Windows (no Homebrew/apt), plus go/uv when the
+      // toolchain happens to be installed. Anything else would fail.
+      if (spec.kind === "download" || spec.kind === "node") {
+        return true;
+      }
+      return (spec.kind === "go" || spec.kind === "uv") && hasBinary(spec.kind);
+    }
+    return true;
   });
   if (filtered.length === 0) {
     return [];
@@ -274,7 +287,8 @@ function buildSkillStatus(
     evaluateEntryRequirementsForCurrentPlatform({
       always,
       entry,
-      hasLocalBin: hasBinary,
+      // Tools installed into the skill's own tools dir count as present too.
+      hasLocalBin: createSkillBinChecker(entry),
       remote: eligibility?.remote,
       isEnvSatisfied,
       isConfigSatisfied,

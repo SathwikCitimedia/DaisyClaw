@@ -1,4 +1,4 @@
-/* @vitest-environment jsdom */
+﻿/* @vitest-environment jsdom */
 
 import { render } from "lit";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -64,6 +64,10 @@ function createProps(overrides: Partial<SkillsProps> = {}): SkillsProps {
     messages: {},
     detailKey: null,
     detailTab: "overview",
+    setupItems: null,
+    setupOpen: false,
+    onSetupClose: () => undefined,
+    onSetupRetry: () => undefined,
     clawhubVerdicts: {},
     clawhubVerdictsLoading: false,
     clawhubVerdictsError: null,
@@ -244,6 +248,269 @@ describe("renderSkills", () => {
     ]);
     saveButtons[1].click();
     expect(onSaveKey).toHaveBeenCalledWith("trello", "TRELLO_TOKEN", false);
+  });
+
+  it("shows a Finish setup button when installable skills are missing programs", async () => {
+    const container = document.createElement("div");
+    document.body.append(container);
+    dialogRestores.push(() => container.remove());
+    const onFinishSetup = vi.fn();
+
+    const installableSkill = createSkill({
+      skillKey: "spotify-player",
+      name: "spotify-player",
+      bundled: true,
+      primaryEnv: undefined,
+      eligible: false,
+      missing: { bins: [], anyBins: ["spotify_player"], env: [], config: [], os: [] },
+      install: [{ id: "download-win-x64", kind: "download", label: "Download", bins: [] }],
+    });
+    const report: SkillStatusReport = {
+      workspaceDir: "/tmp/workspace",
+      managedSkillsDir: "/tmp/skills",
+      skills: [createSkill(), installableSkill],
+    };
+
+    render(renderSkills(createProps({ report, onFinishSetup })), container);
+    await Promise.resolve();
+
+    const button = container.querySelector<HTMLButtonElement>(".skills-finish-setup .btn");
+    expect(button).toBeInstanceOf(HTMLButtonElement);
+    expect(normalizeText(button as Element)).toBe("Finish setup (1)");
+    button!.click();
+    expect(onFinishSetup).toHaveBeenCalledTimes(1);
+
+    render(
+      renderSkills(
+        createProps({
+          report,
+          onFinishSetup,
+          setupItems: [
+            {
+              skillKey: "spotify-player",
+              name: "spotify-player",
+              installIds: ["download-win-x64"],
+              status: "installing",
+            },
+          ],
+        }),
+      ),
+      container,
+    );
+    await Promise.resolve();
+    const busyButton = container.querySelector<HTMLButtonElement>(".skills-finish-setup .btn");
+    expect(normalizeText(busyButton as Element)).toContain("Setting up");
+    expect(busyButton!.querySelector(".skills-setup-spinner")).not.toBeNull();
+  });
+
+  it("renders the setup progress dialog with per-skill states and retry", async () => {
+    const container = document.createElement("div");
+    document.body.append(container);
+    dialogRestores.push(() => container.remove());
+    installDialogMethod("showModal", function (this: HTMLDialogElement) {
+      this.setAttribute("open", "");
+    });
+    const onSetupRetry = vi.fn();
+
+    render(
+      renderSkills(
+        createProps({
+          setupOpen: true,
+          setupItems: [
+            {
+              skillKey: "spotify-player",
+              name: "spotify-player",
+              installIds: ["dl"],
+              status: "done",
+            },
+            {
+              skillKey: "camsnap",
+              name: "camsnap",
+              installIds: ["dl"],
+              status: "failed",
+              detail: "sha256 mismatch",
+            },
+            { skillKey: "blucli", name: "blucli", installIds: ["dl"], status: "queued" },
+          ],
+          onSetupRetry,
+        }),
+      ),
+      container,
+    );
+    await Promise.resolve();
+
+    const dialog = container.querySelector(".skills-setup-dialog");
+    expect(dialog).toBeInstanceOf(HTMLElement);
+    const rows = Array.from(dialog!.querySelectorAll(".skills-setup-row")).map((row) =>
+      normalizeText(row),
+    );
+    expect(rows[0]).toContain("spotify-player Ready");
+    expect(rows[1]).toContain("camsnap Failed");
+    expect(rows[1]).toContain("sha256 mismatch");
+    expect(rows[2]).toContain("blucli Waiting");
+    expect(normalizeText(dialog!.querySelector(".skills-setup-summary")!)).toBe("2 of 3 done");
+
+    const retryButton = Array.from(dialog!.querySelectorAll<HTMLButtonElement>("button")).find(
+      (btn) => normalizeText(btn) === "Retry",
+    );
+    expect(retryButton).toBeDefined();
+    expect(retryButton!.disabled).toBe(true);
+
+    render(
+      renderSkills(
+        createProps({
+          setupOpen: true,
+          setupItems: [
+            {
+              skillKey: "camsnap",
+              name: "camsnap",
+              installIds: ["dl"],
+              status: "failed",
+              detail: "sha256 mismatch",
+            },
+          ],
+          onSetupRetry,
+        }),
+      ),
+      container,
+    );
+    await Promise.resolve();
+    const activeRetry = Array.from(
+      container.querySelectorAll<HTMLButtonElement>(".skills-setup-dialog button"),
+    ).find((btn) => normalizeText(btn) === "Retry");
+    expect(activeRetry!.disabled).toBe(false);
+    activeRetry!.click();
+    expect(onSetupRetry).toHaveBeenCalledWith("camsnap");
+  });
+
+  it("hides the Finish setup button when nothing is installable", async () => {
+    const container = document.createElement("div");
+    document.body.append(container);
+    dialogRestores.push(() => container.remove());
+
+    render(renderSkills(createProps({ onFinishSetup: vi.fn() })), container);
+    await Promise.resolve();
+    expect(container.querySelector(".skills-finish-setup")).toBeNull();
+  });
+
+  it("shows either/or program requirements in the setup checklist", async () => {
+    const container = document.createElement("div");
+    document.body.append(container);
+    dialogRestores.push(() => container.remove());
+    installDialogMethod("showModal", function (this: HTMLDialogElement) {
+      this.setAttribute("open", "");
+    });
+
+    const spotifySkill = createSkill({
+      skillKey: "spotify-player",
+      name: "spotify-player",
+      bundled: true,
+      primaryEnv: undefined,
+      eligible: false,
+      missing: { bins: [], anyBins: ["spogo", "spotify_player"], env: [], config: [], os: [] },
+    });
+    const report: SkillStatusReport = {
+      workspaceDir: "/tmp/workspace",
+      managedSkillsDir: "/tmp/skills",
+      skills: [spotifySkill],
+    };
+
+    render(renderSkills(createProps({ report, detailKey: "spotify-player" })), container);
+    await Promise.resolve();
+
+    const callout = container.querySelector(".skills-setup-callout");
+    expect(callout).toBeInstanceOf(HTMLElement);
+    expect(normalizeText(callout as Element)).toContain(
+      "Needs one of these programs installed: spogo, spotify_player.",
+    );
+  });
+
+  it("offers a Go to Channels action for channel-gated skills", async () => {
+    const container = document.createElement("div");
+    document.body.append(container);
+    dialogRestores.push(() => container.remove());
+    installDialogMethod("showModal", function (this: HTMLDialogElement) {
+      this.setAttribute("open", "");
+    });
+    installDialogMethod("close", function (this: HTMLDialogElement) {
+      this.removeAttribute("open");
+      this.dispatchEvent(new Event("close"));
+    });
+    const onOpenChannels = vi.fn();
+
+    const slackSkill = createSkill({
+      skillKey: "slack",
+      name: "slack",
+      bundled: true,
+      primaryEnv: undefined,
+      eligible: false,
+      missing: { bins: [], env: [], config: ["channels.slack"], os: [] },
+    });
+    const report: SkillStatusReport = {
+      workspaceDir: "/tmp/workspace",
+      managedSkillsDir: "/tmp/skills",
+      skills: [slackSkill],
+    };
+
+    render(renderSkills(createProps({ report, detailKey: "slack", onOpenChannels })), container);
+    await Promise.resolve();
+
+    const callout = container.querySelector(".skills-setup-callout");
+    expect(normalizeText(callout as Element)).toContain("Needs the slack channel connected");
+    const goButton = Array.from(callout!.querySelectorAll<HTMLButtonElement>("button")).find(
+      (btn) => normalizeText(btn) === "Go to Channels",
+    );
+    expect(goButton).toBeDefined();
+    goButton!.click();
+    expect(onOpenChannels).toHaveBeenCalledTimes(1);
+  });
+
+  it("treats self-gated skills as off until explicitly enabled", async () => {
+    const container = document.createElement("div");
+    document.body.append(container);
+    dialogRestores.push(() => container.remove());
+    installDialogMethod("showModal", function (this: HTMLDialogElement) {
+      this.setAttribute("open", "");
+    });
+    const onToggle = vi.fn();
+
+    const codingAgent = createSkill({
+      skillKey: "coding-agent",
+      name: "coding-agent",
+      bundled: true,
+      primaryEnv: undefined,
+      eligible: false,
+      missing: {
+        bins: [],
+        env: [],
+        config: ["skills.entries.coding-agent.enabled"],
+        os: [],
+      },
+    });
+    const report: SkillStatusReport = {
+      workspaceDir: "/tmp/workspace",
+      managedSkillsDir: "/tmp/skills",
+      skills: [codingAgent],
+    };
+
+    render(renderSkills(createProps({ report, detailKey: "coding-agent", onToggle })), container);
+    await Promise.resolve();
+
+    expect(normalizeText(container.querySelector(".skills-setup-callout")!)).toContain(
+      "Off by default for safety",
+    );
+
+    const dialogToggle = container.querySelector<HTMLInputElement>(
+      ".md-preview-dialog__body .skill-toggle",
+    );
+    expect(dialogToggle).toBeInstanceOf(HTMLInputElement);
+    expect(dialogToggle!.checked).toBe(false);
+    expect(normalizeText(container.querySelector(".md-preview-dialog__body")!)).toContain(
+      "Off (default)",
+    );
+
+    dialogToggle!.dispatchEvent(new Event("change", { bubbles: true }));
+    expect(onToggle).toHaveBeenCalledWith("coding-agent", true);
   });
 
   it("shows the connect-in-chat hint for non-bundled skills without key inputs", async () => {

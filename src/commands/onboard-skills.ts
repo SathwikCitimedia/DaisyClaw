@@ -56,6 +56,81 @@ function isBrewOnlyInstallableSkill(skill: {
   );
 }
 
+// Recipe kinds safe to run unattended during onboarding: verified downloads
+// and npm installs. Brew/go/uv stay in the interactive flow (they may need
+// Homebrew/toolchains and their own prompts).
+const STARTER_AUTO_INSTALL_KINDS = new Set(["download", "node"]);
+
+/**
+ * Installs missing tools for starter-pack skills without further prompting.
+ * The user consented by accepting the starter pack; a failing install is
+ * reported and skipped so the rest of setup continues.
+ */
+async function autoInstallStarterSkillTools(params: {
+  config: DaisyClawConfig;
+  workspaceDir: string;
+  runtime: RuntimeEnv;
+  prompter: WizardPrompter;
+}): Promise<void> {
+  const { config, workspaceDir, runtime, prompter } = params;
+  const starterNames: ReadonlySet<string> = new Set([
+    ...DEFAULT_SKILL_PACK_INSTANT,
+    ...DEFAULT_SKILL_PACK_CONNECT,
+  ]);
+  const report = buildWorkspaceSkillStatus(workspaceDir, { config });
+  const candidates = report.skills.filter(
+    (skill) =>
+      starterNames.has(skill.skillKey) &&
+      !skill.disabled &&
+      !skill.eligible &&
+      (skill.missing.bins.length > 0 || skill.missing.anyBins.length > 0) &&
+      skill.install.length > 0 &&
+      STARTER_AUTO_INSTALL_KINDS.has(skill.install[0].kind),
+  );
+  if (candidates.length === 0) {
+    return;
+  }
+  const ready: string[] = [];
+  const failed: string[] = [];
+  for (const skill of candidates) {
+    const installId = skill.install[0]?.id;
+    if (!installId) {
+      continue;
+    }
+    const spin = prompter.progress(t("wizard.skills.starterAutoInstalling", { name: skill.name }));
+    const result = await installSkill({
+      workspaceDir,
+      skillName: skill.name,
+      installId,
+      config,
+    });
+    if (result.ok) {
+      spin.stop(t("wizard.skills.starterAutoInstalled", { name: skill.name }));
+      ready.push(skill.name);
+    } else {
+      spin.stop(t("wizard.skills.starterAutoInstallFailed", { name: skill.name }));
+      const detail = summarizeInstallFailure(result.message);
+      if (detail) {
+        runtime.log(detail);
+      }
+      failed.push(skill.name);
+    }
+  }
+  await prompter.note(
+    [
+      ready.length > 0
+        ? t("wizard.skills.starterAutoSummaryReady", { skills: ready.join(", ") })
+        : undefined,
+      failed.length > 0
+        ? t("wizard.skills.starterAutoSummaryFailed", { skills: failed.join(", ") })
+        : undefined,
+    ]
+      .filter(Boolean)
+      .join("\n"),
+    t("wizard.skills.starterAutoTitle"),
+  );
+}
+
 /** Runs the interactive skills setup step and returns the updated config. */
 export async function setupSkills(
   cfg: DaisyClawConfig,
@@ -87,6 +162,7 @@ export async function setupSkills(
         ].join("\n"),
         t("wizard.skills.starterPackTitle"),
       );
+      await autoInstallStarterSkillTools({ config: next, workspaceDir, runtime, prompter });
     }
   }
   const report = buildWorkspaceSkillStatus(workspaceDir, { config: next });
@@ -118,7 +194,9 @@ export async function setupSkills(
   }
 
   const baseInstallable = missing.filter(
-    (skill) => skill.install.length > 0 && skill.missing.bins.length > 0,
+    (skill) =>
+      skill.install.length > 0 &&
+      (skill.missing.bins.length > 0 || skill.missing.anyBins.length > 0),
   );
   let brewAvailable: boolean | undefined;
   const detectBrewOnce = async () => {

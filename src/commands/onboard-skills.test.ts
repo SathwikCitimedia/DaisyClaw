@@ -271,6 +271,68 @@ describe("setupSkills", () => {
     expect(brewNote?.title).toBe("Homebrew recommended");
   });
 
+  it("auto-installs starter-pack tools with unattended recipes when the pack is accepted", async () => {
+    const spotify = {
+      ...createBundledSkill({
+        name: "spotify-player",
+        description: "Spotify",
+        bins: [],
+        installLabel: "unused",
+      }),
+      missing: { bins: [], anyBins: ["spogo", "spotify_player"], env: [], config: [], os: [] },
+      install: [
+        {
+          id: "download-win-x64",
+          kind: "download",
+          label: "Download spotify_player (Windows x64)",
+          bins: ["spotify_player"],
+        },
+      ],
+    };
+    const gog = {
+      ...createBundledSkill({
+        name: "gog",
+        description: "Google",
+        bins: ["gog"],
+        installLabel: "unused",
+      }),
+      install: [{ id: "download-win-x64", kind: "download", label: "Download gog", bins: ["gog"] }],
+    };
+    // Brew recipes stay interactive; the auto-installer must skip them.
+    const brewOnly = createBundledSkill({
+      name: "weather",
+      description: "brew-only",
+      bins: ["curl"],
+      installLabel: "Install curl (brew)",
+    });
+    mockMissingBrewStatus([spotify, gog, brewOnly] as never);
+    // Call history is shared across tests in this file; scope assertions to this test.
+    mocks.installSkill.mockClear();
+    mocks.installSkill
+      .mockResolvedValueOnce({
+        ok: false,
+        message: "network down",
+        stdout: "",
+        stderr: "",
+        code: 1,
+      })
+      .mockResolvedValue({ ok: true, message: "Installed", stdout: "", stderr: "", code: 0 });
+
+    const { prompter, notes } = createPrompter({ starterPack: true, configure: false });
+    await setupSkills({} as DaisyClawConfig, "/tmp/ws", runtime, prompter);
+
+    const autoInstallCalls = mocks.installSkill.mock.calls.map(
+      (call) => (call[0] as { skillName: string; installId: string }).skillName,
+    );
+    expect(autoInstallCalls).toEqual(["spotify-player", "gog"]);
+    expect(mocks.installSkill).toHaveBeenCalledWith(
+      expect.objectContaining({ skillName: "gog", installId: "download-win-x64" }),
+    );
+    const summary = notes.find((n) => n.title === "Starter tools");
+    expect(summary?.message).toContain("Ready to use: gog");
+    expect(summary?.message).toContain("Needs attention: spotify-player");
+  });
+
   it("applies the starter skill pack when accepted", async () => {
     mockMissingBrewStatus([]);
 

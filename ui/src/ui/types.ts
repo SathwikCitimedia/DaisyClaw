@@ -747,6 +747,7 @@ export type SkillStatusEntry = {
     os: string[];
   };
   missing: {
+    anyBins?: string[];
     bins: string[];
     env: string[];
     config: string[];

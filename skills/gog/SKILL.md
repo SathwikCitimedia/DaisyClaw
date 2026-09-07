@@ -7,6 +7,12 @@ metadata:
     "daisyclaw":
       {
         "emoji": "🎮",
+        "highlights":
+          [
+            "Search and send Gmail",
+            "Check and create Calendar events",
+            "Find files in Drive, read Sheets and Docs",
+          ],
         "requires": { "bins": ["gog"] },
         "install":
           [

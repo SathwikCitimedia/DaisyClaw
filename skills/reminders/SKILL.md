@@ -1,7 +1,20 @@
 ---
 name: reminders
 description: "Set, list, and cancel one-shot or recurring reminders delivered to the user's chat channel via cron."
-metadata: { "daisyclaw": { "emoji": "⏰" } }
+metadata:
+  {
+    "daisyclaw":
+      {
+        "emoji": "⏰",
+        "highlights":
+          [
+            "Set one-time reminders — 'remind me at 6pm to call mom'",
+            "Set repeating ones — 'every weekday at 9am'",
+            "Deliver them to the same chat you asked from",
+            "List, change, or cancel anything you've set",
+          ],
+      },
+  }
 ---
 
 # Reminders

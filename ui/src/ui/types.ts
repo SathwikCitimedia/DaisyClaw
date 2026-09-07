@@ -731,6 +731,7 @@ export type SkillStatusEntry = {
   primaryEnv?: string;
   emoji?: string;
   homepage?: string;
+  highlights?: string[];
   always: boolean;
   disabled: boolean;
   blockedByAllowlist: boolean;

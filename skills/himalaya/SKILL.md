@@ -7,6 +7,12 @@ metadata:
     "daisyclaw":
       {
         "emoji": "📧",
+        "highlights":
+          [
+            "Read and search your email (IMAP)",
+            "Compose, reply, and forward from chat",
+            "Move and organize messages",
+          ],
         "requires": { "bins": ["himalaya"] },
         "install":
           [

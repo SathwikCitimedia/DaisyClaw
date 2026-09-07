@@ -5,6 +5,12 @@ metadata:
   {
     "daisyclaw":
       {
+        "highlights":
+          [
+            "Search and install skills from ClawHub",
+            "Update installed skills to newer versions",
+            "Publish your own skills to the registry",
+          ],
         "requires": { "bins": ["clawhub"] },
         "install":
           [

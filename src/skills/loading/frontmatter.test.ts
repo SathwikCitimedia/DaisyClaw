@@ -28,6 +28,21 @@ describe("resolveDaisyClawMetadata install validation", () => {
     return resolveDaisyClawMetadata(frontmatter)?.install;
   }
 
+  it("parses highlights as a trimmed string list", () => {
+    const metadata = resolveDaisyClawMetadata({
+      metadata:
+        '{"daisyclaw":{"emoji":"x","highlights":["Draw flowcharts","Make mind maps", "", 42]}}',
+    });
+    expect(metadata?.highlights).toEqual(["Draw flowcharts", "Make mind maps"]);
+  });
+
+  it("omits highlights when absent or empty", () => {
+    const metadata = resolveDaisyClawMetadata({
+      metadata: '{"daisyclaw":{"emoji":"x","highlights":[]}}',
+    });
+    expect(metadata?.highlights).toBeUndefined();
+  });
+
   it("accepts safe install specs", () => {
     const install = resolveInstall({
       metadata:

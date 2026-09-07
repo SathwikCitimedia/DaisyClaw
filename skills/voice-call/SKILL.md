@@ -6,6 +6,7 @@ metadata:
     "daisyclaw":
       {
         "emoji": "📞",
+        "highlights": ["Start voice calls with your assistant"],
         "skillKey": "voice-call",
         "requires": { "config": ["plugins.entries.voice-call.enabled"] },
       },

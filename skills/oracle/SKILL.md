@@ -7,6 +7,11 @@ metadata:
     "daisyclaw":
       {
         "emoji": "🧿",
+        "highlights":
+          [
+            "Get a second AI model to review or debug work",
+            "Compare designs and refactors with fresh eyes",
+          ],
         "requires": { "bins": ["oracle"] },
         "install":
           [

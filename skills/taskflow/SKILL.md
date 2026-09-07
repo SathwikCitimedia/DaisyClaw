@@ -1,7 +1,19 @@
 ---
 name: taskflow
 description: "Coordinate multi-step detached tasks as one durable TaskFlow job with owner context, state, waits, and child tasks."
-metadata: { "daisyclaw": { "emoji": "🪝" } }
+metadata:
+  {
+    "daisyclaw":
+      {
+        "emoji": "🪝",
+        "highlights":
+          [
+            "Run long multi-step jobs in the background",
+            "Keep you posted and pick up where it left off",
+            "Wait for replies or events before continuing",
+          ],
+      },
+  }
 ---
 
 # TaskFlow

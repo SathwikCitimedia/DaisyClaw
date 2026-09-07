@@ -1,7 +1,15 @@
 ---
 name: spike
 description: Run throwaway prototypes to validate feasibility, compare approaches, and report a verdict.
-metadata: { "daisyclaw": { "emoji": "🧪" } }
+metadata:
+  {
+    "daisyclaw":
+      {
+        "emoji": "🧪",
+        "highlights":
+          ["Build quick throwaway prototypes", "Test whether an idea works before committing"],
+      },
+  }
 ---
 
 # Spike

@@ -7,6 +7,8 @@ metadata:
     "daisyclaw":
       {
         "emoji": "🧲",
+        "highlights":
+          ["Search Tenor and Giphy for the right GIF", "Download results and extract still frames"],
         "requires": { "bins": ["gifgrep"] },
         "install":
           [

@@ -7,6 +7,12 @@ metadata:
     "daisyclaw":
       {
         "emoji": "📝",
+        "highlights":
+          [
+            "Read and search your Notion pages",
+            "Create and update pages from chat",
+            "Query databases and add entries",
+          ],
         "requires": { "anyBins": ["ntn", "curl"] },
         "primaryEnv": "NOTION_API_TOKEN",
         "install":

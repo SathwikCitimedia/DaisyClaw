@@ -6,6 +6,12 @@ metadata:
     "daisyclaw":
       {
         "emoji": "🧩",
+        "highlights":
+          [
+            "Hand coding tasks to Claude Code or Codex",
+            "Run them in the background and report back",
+            "Open pull requests when the work is done",
+          ],
         "requires":
           {
             "anyBins": ["claude", "codex", "opencode"],

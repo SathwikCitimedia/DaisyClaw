@@ -7,6 +7,7 @@ metadata:
     "daisyclaw":
       {
         "emoji": "✅",
+        "highlights": ["Add and complete todos in Things 3", "Review today, inbox, and projects"],
         "os": ["darwin"],
         "requires": { "bins": ["things"] },
         "install":

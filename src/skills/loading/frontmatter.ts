@@ -195,12 +195,18 @@ export function resolveDaisyClawMetadata(
   const requires = resolveDaisyClawManifestRequires(metadataObj);
   const install = resolveDaisyClawManifestInstall(metadataObj, parseInstallSpec);
   const osRaw = resolveDaisyClawManifestOs(metadataObj);
+  const highlights = Array.isArray(metadataObj.highlights)
+    ? metadataObj.highlights
+        .map((item) => readStringValue(item))
+        .filter((item): item is string => Boolean(item))
+    : [];
   return {
     always: typeof metadataObj.always === "boolean" ? metadataObj.always : undefined,
     emoji: readStringValue(metadataObj.emoji),
     homepage: readStringValue(metadataObj.homepage),
     skillKey: readStringValue(metadataObj.skillKey),
     primaryEnv: readStringValue(metadataObj.primaryEnv),
+    highlights: highlights.length > 0 ? highlights : undefined,
     os: osRaw.length > 0 ? osRaw : undefined,
     requires,
     install: install.length > 0 ? install : undefined,

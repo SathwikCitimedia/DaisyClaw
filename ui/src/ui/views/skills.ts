@@ -952,7 +952,7 @@ function renderSkillDetail(skill: SkillStatusEntry, props: SkillsProps) {
 
   return html`
     <dialog
-      class="md-preview-dialog"
+      class="md-preview-dialog skills-detail-dialog"
       ${ref(showDialogWhenClosed)}
       @click=${(e: Event) => {
         const dialog = e.currentTarget as HTMLDialogElement;
@@ -984,7 +984,10 @@ function renderSkillDetail(skill: SkillStatusEntry, props: SkillsProps) {
             Close
           </button>
         </div>
-        <div class="md-preview-dialog__body" style="display: grid; gap: 16px;">
+        <div
+          class="md-preview-dialog__body"
+          style="display: grid; gap: 14px; align-content: start;"
+        >
           <div>
             <div style="font-size: 14px; line-height: 1.5; color: var(--text);">
               ${skill.description}
@@ -992,6 +995,31 @@ function renderSkillDetail(skill: SkillStatusEntry, props: SkillsProps) {
             ${renderSkillStatusChips({ skill, showBundledBadge })}
           </div>
 
+          ${skill.highlights?.length
+            ? html`
+                <div class="skills-highlights">
+                  <div
+                    style="font-weight: 600; margin-bottom: 12px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted);"
+                  >
+                    What it can do
+                  </div>
+                  <div style="display: grid; gap: 11px;">
+                    ${skill.highlights.map(
+                      (item) => html`
+                        <div style="display: flex; gap: 10px; align-items: baseline;">
+                          <span
+                            style="width: 5px; height: 5px; border-radius: 9999px; background: var(--accent); flex-shrink: 0; transform: translateY(-2px);"
+                          ></span>
+                          <span style="font-size: 13.5px; line-height: 1.5; color: var(--text);"
+                            >${item}</span
+                          >
+                        </div>
+                      `,
+                    )}
+                  </div>
+                </div>
+              `
+            : nothing}
           ${skill.clawhub || skill.skillCard?.present
             ? html`
                 <div class="agent-tabs">
@@ -1019,10 +1047,14 @@ function renderSkillDetail(skill: SkillStatusEntry, props: SkillsProps) {
             ? html`
                 <div
                   class="callout skills-setup-callout"
-                  style="border-color: var(--warn-subtle); background: var(--warn-subtle); color: var(--warn);"
+                  style="border: 1px solid color-mix(in srgb, var(--warn) 24%, var(--border)); background: color-mix(in srgb, var(--warn) 6%, var(--panel)); color: var(--text); padding: 12px 14px;"
                 >
-                  <div style="font-weight: 600; margin-bottom: 4px;">To finish setup</div>
-                  <div style="display: grid; gap: 6px;">
+                  <div
+                    style="font-weight: 600; margin-bottom: 6px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--warn);"
+                  >
+                    To finish setup
+                  </div>
+                  <div style="display: grid; gap: 6px; font-size: 13px; color: var(--muted);">
                     ${setupItems.map(
                       (item) => html`
                         <div
@@ -1051,7 +1083,7 @@ function renderSkillDetail(skill: SkillStatusEntry, props: SkillsProps) {
             : nothing}
           ${reasons.length > 0
             ? html`
-                <div class="muted" style="font-size: 13px;">Reason: ${reasons.join(", ")}</div>
+                <div class="muted" style="font-size: 12.5px;">Status: ${reasons.join(", ")}</div>
               `
             : nothing}
 

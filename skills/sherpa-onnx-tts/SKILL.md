@@ -6,6 +6,7 @@ metadata:
     "daisyclaw":
       {
         "emoji": "🔉",
+        "highlights": ["Speak replies aloud fully offline", "No cloud, no key — local voices"],
         "os": ["darwin", "linux", "win32"],
         "requires": { "env": ["SHERPA_ONNX_RUNTIME_DIR", "SHERPA_ONNX_MODEL_DIR"] },
         "install":

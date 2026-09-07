@@ -1,7 +1,19 @@
 ---
 name: node-inspect-debugger
 description: Debug Node.js with node inspect, --inspect, breakpoints, CDP, heap, and CPU profiles.
-metadata: { "daisyclaw": { "emoji": "🪲", "requires": { "bins": ["node"] } } }
+metadata:
+  {
+    "daisyclaw":
+      {
+        "emoji": "🪲",
+        "highlights":
+          [
+            "Debug Node.js with breakpoints and stepping",
+            "Capture heap snapshots and CPU profiles",
+          ],
+        "requires": { "bins": ["node"] },
+      },
+  }
 ---
 
 # Node Inspect Debugger

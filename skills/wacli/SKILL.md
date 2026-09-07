@@ -7,6 +7,11 @@ metadata:
     "daisyclaw":
       {
         "emoji": "📱",
+        "highlights":
+          [
+            "Sync and search WhatsApp history via wacli",
+            "Send messages through a separate WhatsApp setup",
+          ],
         "requires": { "bins": ["wacli"] },
         "install":
           [

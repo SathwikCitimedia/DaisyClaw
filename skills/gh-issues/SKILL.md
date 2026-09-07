@@ -6,6 +6,12 @@ metadata:
   {
     "daisyclaw":
       {
+        "highlights":
+          [
+            "Fetch open GitHub issues and pick candidates",
+            "Spawn background agents to fix them",
+            "Open pull requests and track review comments",
+          ],
         "requires": { "bins": ["git", "gh"] },
         "primaryEnv": "GH_TOKEN",
         "install":

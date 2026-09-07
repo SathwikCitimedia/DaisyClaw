@@ -6,6 +6,12 @@ metadata:
     "daisyclaw":
       {
         "emoji": "🐙",
+        "highlights":
+          [
+            "Work with issues, pull requests, and reviews",
+            "Check CI runs and read failure logs",
+            "Manage releases and repositories",
+          ],
         "requires": { "bins": ["gh"] },
         "install":
           [

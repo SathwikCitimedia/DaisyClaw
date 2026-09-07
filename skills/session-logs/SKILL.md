@@ -6,6 +6,8 @@ metadata:
     "daisyclaw":
       {
         "emoji": "📜",
+        "highlights":
+          ["Search your older conversations with Daisy", "Answer 'what did we discuss last week?'"],
         "requires": { "bins": ["jq", "rg"] },
         "install":
           [

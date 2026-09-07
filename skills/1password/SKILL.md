@@ -7,6 +7,12 @@ metadata:
     "daisyclaw":
       {
         "emoji": "🔐",
+        "highlights":
+          [
+            "Sign in to your 1Password vaults",
+            "Read secrets your assistant needs, with your approval",
+            "Inject credentials into commands without exposing them",
+          ],
         "requires": { "bins": ["op"] },
         "install":
           [

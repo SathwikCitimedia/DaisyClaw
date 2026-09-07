@@ -7,6 +7,12 @@ metadata:
     "daisyclaw":
       {
         "emoji": "📋",
+        "highlights":
+          [
+            "List your boards, lists, and cards",
+            "Create and move cards from chat",
+            "Add comments and archive cards",
+          ],
         "requires": { "bins": ["curl"], "env": ["TRELLO_API_KEY", "TRELLO_TOKEN"] },
       },
   }

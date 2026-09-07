@@ -7,6 +7,7 @@ metadata:
     "daisyclaw":
       {
         "emoji": "🛌",
+        "highlights": ["Check your Eight Sleep pod status", "Set bed temperature and alarms"],
         "requires": { "bins": ["eightctl"] },
         "install":
           [

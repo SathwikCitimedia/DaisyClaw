@@ -1,7 +1,16 @@
 ---
 name: slack
 description: "Slack tool actions: send/read/edit/delete messages, react, pin/unpin, list pins/reactions/emoji, member info."
-metadata: { "daisyclaw": { "emoji": "💬", "requires": { "config": ["channels.slack"] } } }
+metadata:
+  {
+    "daisyclaw":
+      {
+        "emoji": "💬",
+        "highlights":
+          ["Send and read messages in your workspace", "React, pin, and look up members"],
+        "requires": { "config": ["channels.slack"] },
+      },
+  }
 ---
 
 # Slack

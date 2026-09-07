@@ -27,6 +27,8 @@ export type DaisyClawSkillMetadata = {
   primaryEnv?: string;
   emoji?: string;
   homepage?: string;
+  /** User-facing capability bullets shown in the skill dialog ("What it can do"). */
+  highlights?: string[];
   os?: string[];
   requires?: {
     bins?: string[];

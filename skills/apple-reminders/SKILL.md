@@ -7,6 +7,7 @@ metadata:
     "daisyclaw":
       {
         "emoji": "⏰",
+        "highlights": ["Add and complete Apple Reminders", "Manage reminder lists from chat"],
         "os": ["darwin"],
         "requires": { "bins": ["remindctl"] },
         "install":

@@ -1,7 +1,20 @@
 ---
 name: discord
 description: "Discord message-tool ops: send/read/edit/delete, react, poll, pin, thread, search, presence, media/components."
-metadata: { "daisyclaw": { "emoji": "🎮", "requires": { "config": ["channels.discord.token"] } } }
+metadata:
+  {
+    "daisyclaw":
+      {
+        "emoji": "🎮",
+        "highlights":
+          [
+            "Send and read messages in your servers",
+            "React, pin, and manage threads",
+            "Run polls and search history",
+          ],
+        "requires": { "config": ["channels.discord.token"] },
+      },
+  }
 allowed-tools: ["message"]
 ---
 

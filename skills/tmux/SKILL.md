@@ -6,6 +6,8 @@ metadata:
     "daisyclaw":
       {
         "emoji": "🧵",
+        "highlights":
+          ["Drive interactive terminal programs", "Capture output and send keystrokes to sessions"],
         "os": ["darwin", "linux"],
         "requires": { "bins": ["tmux"] },
         "install":

@@ -1,7 +1,15 @@
 ---
 name: python-debugpy
 description: Debug Python with pdb, breakpoint(), post-mortem inspection, and debugpy remote attach.
-metadata: { "daisyclaw": { "requires": { "bins": ["python3"] } } }
+metadata:
+  {
+    "daisyclaw":
+      {
+        "highlights":
+          ["Debug Python with breakpoints and post-mortems", "Attach remotely with debugpy"],
+        "requires": { "bins": ["python3"] },
+      },
+  }
 ---
 
 # Python Debugpy

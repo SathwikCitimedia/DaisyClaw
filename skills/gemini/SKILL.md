@@ -7,6 +7,11 @@ metadata:
     "daisyclaw":
       {
         "emoji": "✨",
+        "highlights":
+          [
+            "Ask Google's Gemini for a second opinion",
+            "Summaries and generation via the Gemini CLI",
+          ],
         "requires": { "bins": ["gemini"] },
         "install":
           [

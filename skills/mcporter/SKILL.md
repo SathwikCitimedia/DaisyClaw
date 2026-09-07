@@ -7,6 +7,11 @@ metadata:
     "daisyclaw":
       {
         "emoji": "📦",
+        "highlights":
+          [
+            "List and inspect MCP servers and their tools",
+            "Authenticate and call MCP tools directly",
+          ],
         "requires": { "bins": ["mcporter"] },
         "install":
           [

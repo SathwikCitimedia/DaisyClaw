@@ -1,7 +1,20 @@
 ---
 name: diagram-maker
 description: Create SVG/HTML or Excalidraw diagrams for concepts, architecture, flows, and whiteboards.
-metadata: { "daisyclaw": { "emoji": "🧭" } }
+metadata:
+  {
+    "daisyclaw":
+      {
+        "emoji": "🧭",
+        "highlights":
+          [
+            "Draw flowcharts and process diagrams",
+            "Sketch architecture and system diagrams",
+            "Make mind maps and whiteboards",
+            "Deliver them as SVG, HTML, or Excalidraw",
+          ],
+      },
+  }
 ---
 
 # Diagram Maker

@@ -6,6 +6,8 @@ metadata:
     "daisyclaw":
       {
         "emoji": "📊",
+        "highlights":
+          ["Summarize your local AI usage costs by model", "Show current session and daily totals"],
         "os": ["darwin"],
         "requires": { "bins": ["codexbar"] },
         "install":

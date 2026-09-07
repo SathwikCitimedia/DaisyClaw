@@ -56,6 +56,8 @@ export type SkillStatusEntry = {
   primaryEnv?: string;
   emoji?: string;
   homepage?: string;
+  /** User-facing capability bullets for the skill dialog. */
+  highlights?: string[];
   always: boolean;
   disabled: boolean;
   blockedByAllowlist: boolean;
@@ -319,6 +321,7 @@ function buildSkillStatus(
     primaryEnv: entry.metadata?.primaryEnv,
     emoji,
     homepage,
+    ...(entry.metadata?.highlights?.length ? { highlights: entry.metadata.highlights } : {}),
     always,
     disabled,
     blockedByAllowlist,

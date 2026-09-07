@@ -2,7 +2,16 @@
 name: obsidian
 description: "Work with Obsidian vaults using the official obsidian CLI: read/search/create/edit notes, tasks, links, properties, plugins."
 homepage: https://obsidian.md/cli
-metadata: { "daisyclaw": { "emoji": "💎", "requires": { "bins": ["obsidian"] } } }
+metadata:
+  {
+    "daisyclaw":
+      {
+        "emoji": "💎",
+        "highlights":
+          ["Read, search, and create notes in your vault", "Manage tasks, links, and properties"],
+        "requires": { "bins": ["obsidian"] },
+      },
+  }
 ---
 
 # Obsidian

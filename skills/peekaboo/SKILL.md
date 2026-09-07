@@ -7,6 +7,8 @@ metadata:
     "daisyclaw":
       {
         "emoji": "👀",
+        "highlights":
+          ["Capture your Mac's screen from chat", "Automate clicks and UI actions on macOS"],
         "os": ["darwin"],
         "requires": { "bins": ["peekaboo"] },
         "install":

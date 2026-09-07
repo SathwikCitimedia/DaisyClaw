@@ -7,6 +7,8 @@ metadata:
     "daisyclaw":
       {
         "emoji": "🫐",
+        "highlights":
+          ["Control Bluesound and NAD speakers", "Play, pause, group rooms, and set volume"],
         "requires": { "bins": ["blu"] },
         "install":
           [

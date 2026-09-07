@@ -7,6 +7,7 @@ metadata:
     "daisyclaw":
       {
         "emoji": "🛵",
+        "highlights": ["Check your recent Foodora orders", "Track an active delivery's status"],
         "requires": { "bins": ["ordercli"] },
         "install":
           [

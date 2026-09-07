@@ -7,6 +7,12 @@ metadata:
     "daisyclaw":
       {
         "emoji": "☔",
+        "highlights":
+          [
+            "Tell you the current weather in any city",
+            "Give tomorrow's or the whole week's forecast",
+            "Help plan trips around rain and temperature",
+          ],
         "install":
           [
             {

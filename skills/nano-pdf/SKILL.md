@@ -7,6 +7,8 @@ metadata:
     "daisyclaw":
       {
         "emoji": "📄",
+        "highlights":
+          ["Edit PDFs with plain-language instructions", "Fix typos, swap text, and adjust pages"],
         "requires": { "bins": ["nano-pdf"] },
         "install":
           [

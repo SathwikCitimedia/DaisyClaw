@@ -1,7 +1,19 @@
 ---
 name: skill-installer
 description: "Find, install, and set up new skills from ClawHub when the user asks for a capability the assistant doesn't have yet."
-metadata: { "daisyclaw": { "emoji": "🧩" } }
+metadata:
+  {
+    "daisyclaw":
+      {
+        "emoji": "🧩",
+        "highlights":
+          [
+            "Find new skills when you ask for a missing ability",
+            "Install them from ClawHub after your okay",
+            "Tell you exactly what's ready or still needed",
+          ],
+      },
+  }
 ---
 
 # Skill Installer

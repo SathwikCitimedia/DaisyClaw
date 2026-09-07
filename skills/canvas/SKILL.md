@@ -1,7 +1,19 @@
 ---
 name: canvas
 description: "Present HTML on connected DaisyClaw node canvases, navigate/eval/snapshot, and debug canvas host URLs."
-metadata: { "daisyclaw": { "emoji": "🖼️" } }
+metadata:
+  {
+    "daisyclaw":
+      {
+        "emoji": "🖼️",
+        "highlights":
+          [
+            "Show live visuals on your paired phone or desktop",
+            "Present pages, dashboards, and snapshots",
+            "Update what's on screen as you chat",
+          ],
+      },
+  }
 ---
 
 # Canvas

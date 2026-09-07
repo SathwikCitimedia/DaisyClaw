@@ -7,6 +7,7 @@ metadata:
     "daisyclaw":
       {
         "emoji": "🎬",
+        "highlights": ["Extract frames or thumbnails from videos", "Cut short clips with ffmpeg"],
         "requires": { "bins": ["ffmpeg"] },
         "install":
           [

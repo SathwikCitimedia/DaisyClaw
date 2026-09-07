@@ -1,7 +1,19 @@
 ---
 name: meme-maker
 description: Search meme templates, suggest formats, and generate local or hosted image memes.
-metadata: { "daisyclaw": { "emoji": "🖼️", "requires": { "bins": ["node"] } } }
+metadata:
+  {
+    "daisyclaw":
+      {
+        "emoji": "🖼️",
+        "highlights":
+          [
+            "Find the right meme template for the moment",
+            "Put your caption on it and send it in chat",
+          ],
+        "requires": { "bins": ["node"] },
+      },
+  }
 ---
 
 # Meme Maker

@@ -2245,6 +2245,9 @@
   margin: 18vh auto 0;
 }
 
+/* Skill detail dialog keeps the standard preview frame size; only the inner
+   content spacing is adjusted (content packs to the top via align-content). */
+
 .skills-setup-dialog .md-preview-dialog__body {
   padding-top: 6px;
   padding-bottom: 14px;
@@ -6777,6 +6780,123 @@ td.data-table-key-col {
   overscroll-behavior: contain;
   padding: clamp(18px, 3vw, 28px);
   background: var(--bg);
+}
+
+/* Settings "How to use this page" help dialog: narrower reading-width frame
+   on the standard preview dialog chrome. */
+.settings-help-dialog .md-preview-dialog__panel {
+  width: min(720px, calc(100vw - 32px));
+  min-height: 0;
+  max-height: calc(100vh - 64px);
+  margin: 5vh auto;
+}
+
+.settings-help-open-btn svg {
+  width: 14px;
+  height: 14px;
+}
+
+.settings-help {
+  display: grid;
+  gap: 24px;
+  align-content: start;
+}
+
+.settings-help__tagline {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.settings-help__intro {
+  font-size: 14px;
+  line-height: 1.65;
+  color: var(--text);
+}
+
+.settings-help__section {
+  display: grid;
+  gap: 12px;
+}
+
+.settings-help__heading {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.settings-help__section-intro {
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: var(--text);
+}
+
+.settings-help__entries {
+  display: grid;
+  gap: 11px;
+}
+
+.settings-help__entry {
+  display: grid;
+  grid-template-columns: 148px 1fr;
+  gap: 14px;
+  font-size: 13.5px;
+  line-height: 1.55;
+}
+
+.settings-help__term {
+  font-weight: 600;
+  color: var(--text-strong, var(--text));
+}
+
+.settings-help__entry-text {
+  color: var(--muted);
+}
+
+.settings-help__example {
+  border: 1px solid color-mix(in srgb, var(--accent) 22%, var(--border));
+  background: color-mix(in srgb, var(--accent) 5%, var(--panel));
+  border-radius: var(--radius-lg);
+  padding: 13px 15px;
+  display: grid;
+  gap: 9px;
+}
+
+.settings-help__example-title {
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.settings-help__example ol {
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 6px;
+  font-size: 13.5px;
+  line-height: 1.55;
+  color: var(--text);
+}
+
+.settings-help__note {
+  border: 1px solid color-mix(in srgb, var(--warn) 24%, var(--border));
+  background: color-mix(in srgb, var(--warn) 6%, var(--panel));
+  border-radius: var(--radius-lg);
+  padding: 11px 15px;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--text);
+}
+
+@media (max-width: 640px) {
+  .settings-help__entry {
+    grid-template-columns: 1fr;
+    gap: 3px;
+  }
 }
 
 .md-preview-dialog__meta {

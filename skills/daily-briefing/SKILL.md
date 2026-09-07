@@ -1,7 +1,19 @@
 ---
 name: daily-briefing
 description: "Compose and schedule a personal morning briefing: weather, today's reminders, and recent notes."
-metadata: { "daisyclaw": { "emoji": "🌅" } }
+metadata:
+  {
+    "daisyclaw":
+      {
+        "emoji": "🌅",
+        "highlights":
+          [
+            "Send a morning summary at a time you pick",
+            "Include weather, today's reminders, and recent notes",
+            "Answer 'what does my day look like?' anytime",
+          ],
+      },
+  }
 ---
 
 # Daily Briefing

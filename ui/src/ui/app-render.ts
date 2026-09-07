@@ -226,6 +226,11 @@ import { renderLoginGate } from "./views/login-gate.ts";
 import { renderMcp } from "./views/mcp.ts";
 import { renderModelStudio } from "./views/model-studio.ts";
 import { renderOverview } from "./views/overview.ts";
+import {
+  hasSettingsHelp,
+  renderSettingsHelpButton,
+  renderSettingsHelpDialog,
+} from "./views/settings-help.ts";
 
 let pendingUpdate: (() => void) | undefined;
 
@@ -2933,6 +2938,11 @@ export function renderApp(state: AppViewState) {
                 <div class="page-sub">${subtitleForTab(state.tab)}</div>
               </div>
               <div class="page-meta">
+                ${hasSettingsHelp(state.tab)
+                  ? renderSettingsHelpButton(() => {
+                      state.settingsHelpOpen = true;
+                    })
+                  : nothing}
                 ${state.tab === "skillWorkshop"
                   ? renderSkillWorkshopHeaderControls(state)
                   : nothing}
@@ -2977,6 +2987,11 @@ export function renderApp(state: AppViewState) {
                 ${headerError ? html`<div class="pill danger">${headerError}</div>` : nothing}
               </div>
             </section>`}
+        ${state.settingsHelpOpen && hasSettingsHelp(state.tab)
+          ? renderSettingsHelpDialog(state.tab, () => {
+              state.settingsHelpOpen = false;
+            })
+          : nothing}
         ${state.tab === "overview"
           ? renderOverview({
               connected: state.connected,

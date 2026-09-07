@@ -7,6 +7,7 @@ metadata:
     "daisyclaw":
       {
         "emoji": "💡",
+        "highlights": ["Turn Philips Hue lights on and off", "Set scenes, colors, and brightness"],
         "requires": { "bins": ["openhue"] },
         "install":
           [

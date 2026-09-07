@@ -7,6 +7,8 @@ metadata:
     "daisyclaw":
       {
         "emoji": "🔊",
+        "highlights":
+          ["Speak text aloud with ElevenLabs voices", "Pick voices and save audio files"],
         "requires": { "bins": ["sag"], "env": ["ELEVENLABS_API_KEY"] },
         "primaryEnv": "ELEVENLABS_API_KEY",
         "install":

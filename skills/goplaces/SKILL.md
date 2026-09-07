@@ -7,6 +7,11 @@ metadata:
     "daisyclaw":
       {
         "emoji": "📍",
+        "highlights":
+          [
+            "Search Google Places for businesses and addresses",
+            "Fetch place details, hours, and reviews",
+          ],
         "requires": { "bins": ["goplaces"], "env": ["GOOGLE_PLACES_API_KEY"] },
         "primaryEnv": "GOOGLE_PLACES_API_KEY",
         "install":

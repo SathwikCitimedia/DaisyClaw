@@ -1,7 +1,19 @@
 ---
 name: quick-notes
 description: "Save, search, list, and recall the user's notes as Markdown files in the workspace."
-metadata: { "daisyclaw": { "emoji": "🗒️" } }
+metadata:
+  {
+    "daisyclaw":
+      {
+        "emoji": "🗒️",
+        "highlights":
+          [
+            "Save notes the moment you say 'note this down'",
+            "Find them again — 'what did I note about…?'",
+            "Keep everything as plain files on your computer",
+          ],
+      },
+  }
 ---
 
 # Quick Notes

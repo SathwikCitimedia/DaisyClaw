@@ -7,6 +7,7 @@ metadata:
     "daisyclaw":
       {
         "emoji": "📨",
+        "highlights": ["List your iMessage/SMS chats and history", "Send messages from your Mac"],
         "os": ["darwin"],
         "requires": { "bins": ["imsg"] },
         "install":

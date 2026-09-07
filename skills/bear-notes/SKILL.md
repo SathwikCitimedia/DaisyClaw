@@ -7,6 +7,7 @@ metadata:
     "daisyclaw":
       {
         "emoji": "🐻",
+        "highlights": ["Create and search Bear notes", "Organize notes with tags"],
         "os": ["darwin"],
         "requires": { "bins": ["grizzly"] },
         "install":

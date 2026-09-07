@@ -7,6 +7,8 @@ metadata:
     "daisyclaw":
       {
         "emoji": "🎤",
+        "highlights":
+          ["Transcribe audio to text locally", "No API key — runs fully on this machine"],
         "requires": { "bins": ["whisper"] },
         "install":
           [

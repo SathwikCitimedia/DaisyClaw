@@ -7,6 +7,7 @@ metadata:
     "daisyclaw":
       {
         "emoji": "🔊",
+        "highlights": ["Find Sonos speakers on your network", "Play, pause, group, and set volume"],
         "requires": { "bins": ["sonos"] },
         "install":
           [

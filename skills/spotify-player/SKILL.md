@@ -7,6 +7,12 @@ metadata:
     "daisyclaw":
       {
         "emoji": "🎵",
+        "highlights":
+          [
+            "Search songs, albums, and playlists",
+            "Play, pause, and skip on your devices",
+            "Tell you what's playing right now",
+          ],
         "requires": { "anyBins": ["spogo", "spotify_player"] },
         "install":
           [

@@ -6,6 +6,7 @@ metadata:
     "daisyclaw":
       {
         "emoji": "🐦",
+        "highlights": ["Post and reply on X (Twitter)", "Read timelines, search, and send DMs"],
         "requires": { "bins": ["xurl"] },
         "install":
           [

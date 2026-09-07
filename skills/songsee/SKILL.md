@@ -7,6 +7,8 @@ metadata:
     "daisyclaw":
       {
         "emoji": "🌊",
+        "highlights":
+          ["Turn audio into spectrogram visualizations", "Generate feature panels for tracks"],
         "requires": { "bins": ["songsee"] },
         "install":
           [

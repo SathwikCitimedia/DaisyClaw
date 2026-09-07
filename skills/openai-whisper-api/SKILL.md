@@ -7,6 +7,8 @@ metadata:
     "daisyclaw":
       {
         "emoji": "🌐",
+        "highlights":
+          ["Transcribe audio via OpenAI's API", "Fast results with speaker-friendly formatting"],
         "requires": { "bins": ["curl", "node"], "env": ["OPENAI_API_KEY"] },
         "primaryEnv": "OPENAI_API_KEY",
         "install":

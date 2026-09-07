@@ -7,6 +7,8 @@ metadata:
     "daisyclaw":
       {
         "emoji": "📰",
+        "highlights":
+          ["Watch blogs and RSS feeds for new posts", "Tell you when something new is published"],
         "requires": { "bins": ["blogwatcher"] },
         "install":
           [

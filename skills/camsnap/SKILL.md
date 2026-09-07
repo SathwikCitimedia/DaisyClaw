@@ -7,6 +7,8 @@ metadata:
     "daisyclaw":
       {
         "emoji": "📸",
+        "highlights":
+          ["Grab snapshots from your RTSP/ONVIF cameras", "Capture short clips and motion events"],
         "requires": { "bins": ["camsnap"] },
         "install":
           [

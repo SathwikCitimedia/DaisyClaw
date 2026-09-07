@@ -7,6 +7,11 @@ metadata:
     "daisyclaw":
       {
         "emoji": "📝",
+        "highlights":
+          [
+            "Create, edit, and search your Apple Notes",
+            "Move notes between folders and export them",
+          ],
         "os": ["darwin"],
         "requires": { "bins": ["memo"] },
         "install":

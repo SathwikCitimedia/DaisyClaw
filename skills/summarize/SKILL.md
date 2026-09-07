@@ -7,6 +7,8 @@ metadata:
     "daisyclaw":
       {
         "emoji": "🧾",
+        "highlights":
+          ["Summarize articles, videos, and podcasts", "Transcribe media and condense transcripts"],
         "requires": { "bins": ["summarize"] },
         "install":
           [

@@ -233,6 +233,8 @@ export class DaisyClawApp extends LitElement {
   @state() hello: GatewayHelloOk | null = null;
   @state() lastError: string | null = null;
   @state() lastErrorCode: string | null = null;
+  @state() disconnectedAtMs: number | null = null;
+  @state() loginGateRequested = false;
   @state() chatError: string | null = null;
   @state() eventLog: EventLogEntry[] = [];
   eventLogBuffer: EventLogEntry[] = [];

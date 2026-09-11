@@ -270,6 +270,108 @@ function renderLoginFailure(feedback: LoginFailureFeedback) {
   `;
 }
 
+/**
+ * How long a dropped connection is shown as "reconnecting" before the login
+ * form takes over. Gateway restarts after a config save take seconds; a cold
+ * start on a slow PC can take a couple of minutes.
+ */
+export const RECONNECT_GRACE_MS = 3 * 60_000;
+
+/**
+ * True while the browser client is auto-reconnecting to a gateway it was
+ * connected to (or has a token for) and the failure is a plain transport
+ * failure — not an auth/pairing/origin problem the user must act on.
+ */
+export function shouldShowReconnectingGate(
+  state: Pick<
+    AppViewState,
+    | "connected"
+    | "disconnectedAtMs"
+    | "loginGateRequested"
+    | "lastError"
+    | "lastErrorCode"
+    | "settings"
+    | "password"
+  >,
+  nowMs: number = Date.now(),
+): boolean {
+  if (state.connected || state.loginGateRequested) {
+    return false;
+  }
+  if (state.disconnectedAtMs == null || nowMs - state.disconnectedAtMs >= RECONNECT_GRACE_MS) {
+    return false;
+  }
+  if (!state.settings.token.trim() && !state.password.trim()) {
+    return false;
+  }
+  const failure = resolveLoginFailureFeedback({
+    connected: false,
+    lastError: state.lastError,
+    lastErrorCode: state.lastErrorCode,
+    hasToken: Boolean(state.settings.token.trim()),
+    hasPassword: Boolean(state.password.trim()),
+  });
+  return failure === null || failure.kind === "network";
+}
+
+export function renderReconnectingGate(state: AppViewState, nowMs: number = Date.now()) {
+  const basePath = normalizeBasePath(state.basePath ?? "");
+  const faviconSrc = agentLogoUrl(basePath);
+  const elapsedSeconds =
+    state.disconnectedAtMs == null
+      ? 0
+      : Math.max(0, Math.floor((nowMs - state.disconnectedAtMs) / 1000));
+  const slow = elapsedSeconds >= 45;
+  return html`
+    <div class="login-gate" data-reconnecting="true">
+      <div class="login-gate__card login-gate__card--reconnecting" role="status" aria-live="polite">
+        <div class="login-gate__header">
+          <img class="login-gate__logo" src=${faviconSrc} alt="Daisy" />
+          <div class="login-gate__spinner" aria-hidden="true"></div>
+          <div class="login-gate__title">${t("login.reconnecting.title")}</div>
+          <div class="login-gate__sub">
+            ${slow ? t("login.reconnecting.slow") : t("login.reconnecting.summary")}
+          </div>
+          <div class="login-gate__elapsed mono">
+            ${t("login.reconnecting.waiting")} ${elapsedSeconds}s
+          </div>
+        </div>
+        <button
+          type="button"
+          class="btn login-gate__details-btn"
+          @click=${() => {
+            state.loginGateRequested = true;
+          }}
+        >
+          ${t("login.reconnecting.details")}
+        </button>
+      </div>
+    </div>
+  `;
+}
+
+/**
+ * Shown right after the first connect while the app decides whether this is
+ * a fresh install (one config.get). Keeps the dashboard from flashing for a
+ * few seconds before the wizard replaces it on slow machines.
+ */
+export function renderPreparingGate(state: AppViewState) {
+  const basePath = normalizeBasePath(state.basePath ?? "");
+  const faviconSrc = agentLogoUrl(basePath);
+  return html`
+    <div class="login-gate" data-preparing="true">
+      <div class="login-gate__card login-gate__card--reconnecting" role="status" aria-live="polite">
+        <div class="login-gate__header">
+          <img class="login-gate__logo" src=${faviconSrc} alt="Daisy" />
+          <div class="login-gate__spinner" aria-hidden="true"></div>
+          <div class="login-gate__title">${t("login.preparing.title")}</div>
+          <div class="login-gate__sub">${t("login.preparing.summary")}</div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
 export function renderLoginGate(state: AppViewState) {
   const basePath = normalizeBasePath(state.basePath ?? "");
   const faviconSrc = agentLogoUrl(basePath);
@@ -380,7 +482,9 @@ export function renderLoginGate(state: AppViewState) {
             <li>
               ${t("overview.connection.step1")}${renderConnectCommand("daisyclaw gateway run")}
             </li>
-            <li>${t("overview.connection.step2")} ${renderConnectCommand("daisyclaw dashboard")}</li>
+            <li>
+              ${t("overview.connection.step2")} ${renderConnectCommand("daisyclaw dashboard")}
+            </li>
             <li>${t("overview.connection.step3")}</li>
           </ol>
           <div class="login-gate__docs">

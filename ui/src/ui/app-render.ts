@@ -225,9 +225,14 @@ import {
 import { renderDreamingRestartConfirmation } from "./views/dreaming-restart-confirmation.ts";
 import { renderDreaming } from "./views/dreaming.ts";
 import { renderExecApprovalPrompt } from "./views/exec-approval.ts";
-import { renderFirstRunWizard } from "./views/first-run-wizard.ts";
+import { isFirstRunDismissed, renderFirstRunWizard } from "./views/first-run-wizard.ts";
 import { renderGatewayUrlConfirmation } from "./views/gateway-url-confirmation.ts";
-import { renderLoginGate } from "./views/login-gate.ts";
+import {
+  renderLoginGate,
+  renderPreparingGate,
+  renderReconnectingGate,
+  shouldShowReconnectingGate,
+} from "./views/login-gate.ts";
 import { renderMcp } from "./views/mcp.ts";
 import { renderModelStudio } from "./views/model-studio.ts";
 import { renderOverview } from "./views/overview.ts";
@@ -1522,6 +1527,19 @@ function buildWorkspaceFileSidebarContent(name: string, content: string): string
   return `# ${name}\n\n\`\`\`${language}\n${content}\n\`\`\``;
 }
 
+// Re-render once a second while the reconnecting card is shown so the elapsed
+// counter advances and the grace period expiry is re-evaluated.
+let reconnectGateTick: number | null = null;
+function scheduleReconnectGateTick(requestHostUpdate?: () => void) {
+  if (reconnectGateTick !== null || typeof window === "undefined" || !requestHostUpdate) {
+    return;
+  }
+  reconnectGateTick = window.setTimeout(() => {
+    reconnectGateTick = null;
+    requestHostUpdate();
+  }, 1000);
+}
+
 export function renderApp(state: AppViewState) {
   const updatableState = state as AppViewState & { requestUpdate?: () => void };
   const requestHostUpdate =
@@ -1533,11 +1551,23 @@ export function renderApp(state: AppViewState) {
   // Gate: require successful gateway connection before showing the dashboard.
   // The gateway URL confirmation overlay is always rendered so URL-param flows still work.
   if (!state.connected) {
+    // A dropped connection that the client is already retrying (gateway
+    // restart after a config save, slow cold start) shows a calm reconnecting
+    // card; the login form is for problems that need the user.
+    if (shouldShowReconnectingGate(state)) {
+      scheduleReconnectGateTick(requestHostUpdate);
+      return html` ${renderReconnectingGate(state)} ${renderGatewayUrlConfirmation(state)} `;
+    }
     return html` ${renderLoginGate(state)} ${renderGatewayUrlConfirmation(state)} `;
   }
 
   // First-run gate: a fresh install (no model provider configured) gets the
-  // guided setup wizard instead of the dashboard, once.
+  // guided setup wizard instead of the dashboard, once. While that decision
+  // is still pending (one config.get after connect) hold a neutral card so
+  // the dashboard does not flash and then get replaced by the wizard.
+  if (state.firstRunActive === null && !isFirstRunDismissed()) {
+    return html`${renderPreparingGate(state)}`;
+  }
   if (state.firstRunActive) {
     return html`${renderFirstRunWizard(state)}`;
   }

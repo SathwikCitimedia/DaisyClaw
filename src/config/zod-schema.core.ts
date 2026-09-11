@@ -494,7 +494,11 @@ export function isBuiltInModelProviderOverlayId(providerId: string): boolean {
 
 const ModelProviderSchema = z
   .object({
-    baseUrl: z.string().min(1).optional(),
+    // Bundled provider overlays (openai, anthropic, …) are materialized with
+    // baseUrl "" after validation and that config is validated again on every
+    // config.patch, so "" must pass here. Custom providers are still required
+    // to declare a real baseUrl by the superRefine below ("" is falsy).
+    baseUrl: z.string().optional(),
     apiKey: SecretInputSchema.optional().register(sensitive),
     auth: z
       .union([z.literal("api-key"), z.literal("aws-sdk"), z.literal("oauth"), z.literal("token")])

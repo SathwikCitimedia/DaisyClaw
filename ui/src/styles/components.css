@@ -36,6 +36,47 @@
   margin-bottom: 28px;
 }
 
+.login-gate__card--reconnecting {
+  text-align: center;
+}
+
+.login-gate__card--reconnecting .login-gate__header {
+  margin-bottom: 18px;
+}
+
+.login-gate__spinner {
+  width: 22px;
+  height: 22px;
+  margin: 0 auto 14px;
+  border-radius: 50%;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  animation: login-gate-spin 0.9s linear infinite;
+}
+
+@keyframes login-gate-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .login-gate__spinner {
+    animation: none;
+  }
+}
+
+.login-gate__elapsed {
+  margin-top: 10px;
+  color: var(--muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.login-gate__details-btn {
+  margin-top: 4px;
+}
+
 .login-gate__logo {
   width: 52px;
   height: 52px;

@@ -1173,6 +1173,17 @@ export const en: TranslationMap = {
     },
   },
   login: {
+    preparing: {
+      title: "Getting Daisy ready…",
+      summary: "Just a moment.",
+    },
+    reconnecting: {
+      title: "Reconnecting to Daisy…",
+      summary: "Daisy is restarting or catching up. This usually takes a few seconds.",
+      slow: "Still starting. On a new PC the first start can take a couple of minutes.",
+      waiting: "Waiting for",
+      details: "Connection details",
+    },
     subtitle: "Gateway Dashboard",
     passwordPlaceholder: "optional",
     showToken: "Show token",

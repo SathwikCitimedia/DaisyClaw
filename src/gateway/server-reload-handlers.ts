@@ -42,7 +42,10 @@ import { startGatewayConfigReloader, type GatewayReloadPlan } from "./config-rel
 import { resolveHooksConfig } from "./hooks.js";
 import { buildGatewayCronService, type GatewayCronState } from "./server-cron.js";
 import { applyGatewayLaneConcurrency } from "./server-lanes.js";
-import { markGatewayModelCatalogStaleForReload } from "./server-model-catalog.js";
+import {
+  loadGatewayModelCatalog,
+  markGatewayModelCatalogStaleForReload,
+} from "./server-model-catalog.js";
 import {
   type GatewayChannelManager,
   startGatewayChannelHealthMonitor,
@@ -96,6 +99,14 @@ function resetPreparedModelRuntimeStateForHotReload(): void {
   resetModelCatalogCache();
   clearCurrentProviderAuthState();
   markGatewayModelCatalogStaleForReload();
+  // Rebuild the catalog right away in the background instead of on the next
+  // request: after a provider is added in the wizard the very next thing the
+  // user does is send a chat, and a cold catalog build on a slow PC can take
+  // long enough for that first request to time out.
+  const timer = setTimeout(() => {
+    void loadGatewayModelCatalog().catch(() => undefined);
+  }, 1_000);
+  timer.unref?.();
 }
 
 async function disposeMcpRuntimesWithTimeout(params: {

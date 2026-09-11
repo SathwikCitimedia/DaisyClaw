@@ -8,7 +8,11 @@ import {
 } from "./config-paths.js";
 import { readConfigFileSnapshot } from "./config.js";
 import { findLegacyConfigIssues } from "./legacy.js";
-import { buildWebSearchProviderConfig, withTempHome, writeDaisyClawConfig } from "./test-helpers.js";
+import {
+  buildWebSearchProviderConfig,
+  withTempHome,
+  writeDaisyClawConfig,
+} from "./test-helpers.js";
 import { validateConfigObject, validateConfigObjectRaw } from "./validation.js";
 import { DaisyClawSchema } from "./zod-schema.js";
 
@@ -51,6 +55,33 @@ function issueMessages(issues: Array<{ message: string }>): string[] {
 function expectSomeIssueMessageContains(issues: Array<{ message: string }>, text: string): void {
   expect(issueMessages(issues).join("\n")).toContain(text);
 }
+
+describe("bundled model provider overlays", () => {
+  it("stay valid across repeated validation passes when only an API key is set", () => {
+    // Adding just an API key for a bundled provider (what the first-run wizard
+    // and Model Studio do) must survive validate -> materialize -> validate
+    // again, which is what config.patch effectively performs on the runtime
+    // snapshot. A materialized baseUrl of "" used to fail the min(1) rule.
+    const first = validateConfigObject({
+      models: { providers: { openai: { apiKey: "sk-test" } } },
+    });
+    expect(first.ok).toBe(true);
+    if (!first.ok) {
+      return;
+    }
+    const overlay = first.config.models?.providers?.openai as Record<string, unknown> | undefined;
+    expect(overlay?.apiKey).toBe("sk-test");
+    const second = validateConfigObject(first.config as unknown as Record<string, unknown>);
+    expect(second.ok).toBe(true);
+  });
+
+  it("still rejects custom providers without a baseUrl", () => {
+    const result = validateConfigObject({
+      models: { providers: { myserver: { apiKey: "k", models: [{ id: "m", name: "m" }] } } },
+    });
+    expect(result.ok).toBe(false);
+  });
+});
 
 describe("boolean config validation", () => {
   it.each(nonBooleanConfigCases)("rejects non-boolean values for $name", ({ config }) => {

@@ -5,7 +5,56 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { ConnectErrorDetailCodes } from "../../../../packages/gateway-protocol/src/connect-error-details.js";
 import { i18n } from "../../i18n/index.ts";
 import type { AppViewState } from "../app-view-state.ts";
-import { renderLoginGate, resolveLoginFailureFeedback } from "./login-gate.ts";
+import {
+  RECONNECT_GRACE_MS,
+  renderLoginGate,
+  resolveLoginFailureFeedback,
+  shouldShowReconnectingGate,
+} from "./login-gate.ts";
+
+describe("shouldShowReconnectingGate", () => {
+  const base = {
+    connected: false,
+    disconnectedAtMs: 10_000,
+    loginGateRequested: false,
+    lastError: null as string | null,
+    lastErrorCode: null as string | null,
+    settings: { token: "tok" } as unknown as AppViewState["settings"],
+    password: "",
+  };
+
+  it("shows the reconnecting card for a transport drop with a stored token", () => {
+    expect(shouldShowReconnectingGate(base, 20_000)).toBe(true);
+    expect(
+      shouldShowReconnectingGate({ ...base, lastError: "disconnected (1006): no reason" }, 20_000),
+    ).toBe(true);
+  });
+
+  it("falls back to the login form after the grace period or on request", () => {
+    expect(shouldShowReconnectingGate(base, 10_000 + RECONNECT_GRACE_MS)).toBe(false);
+    expect(shouldShowReconnectingGate({ ...base, loginGateRequested: true }, 20_000)).toBe(false);
+  });
+
+  it("never hides auth problems or a first visit without credentials", () => {
+    expect(
+      shouldShowReconnectingGate(
+        {
+          ...base,
+          lastError: "unauthorized",
+          lastErrorCode: ConnectErrorDetailCodes.AUTH_TOKEN_MISSING,
+        },
+        20_000,
+      ),
+    ).toBe(false);
+    expect(
+      shouldShowReconnectingGate(
+        { ...base, settings: { token: "" } as unknown as AppViewState["settings"] },
+        20_000,
+      ),
+    ).toBe(false);
+    expect(shouldShowReconnectingGate({ ...base, disconnectedAtMs: null }, 20_000)).toBe(false);
+  });
+});
 
 function createState(overrides: Partial<AppViewState> = {}): AppViewState {
   return {

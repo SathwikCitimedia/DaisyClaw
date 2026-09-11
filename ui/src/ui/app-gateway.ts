@@ -114,6 +114,8 @@ type GatewayHost = {
   hello: GatewayHelloOk | null;
   lastError: string | null;
   lastErrorCode: string | null;
+  disconnectedAtMs?: number | null;
+  loginGateRequested?: boolean;
   chatError?: string | null;
   onboarding?: boolean;
   eventLogBuffer: EventLogEntry[];
@@ -814,6 +816,8 @@ export function connectGateway(host: GatewayHost, options?: ConnectGatewayOption
       }
       shutdownHost.pendingShutdownMessage = null;
       host.connected = true;
+      host.disconnectedAtMs = null;
+      host.loginGateRequested = false;
       host.lastError = null;
       host.lastErrorCode = null;
       host.chatError = null;
@@ -916,6 +920,9 @@ export function connectGateway(host: GatewayHost, options?: ConnectGatewayOption
         return;
       }
       host.connected = false;
+      // Remember when we lost the gateway so the UI can show a calm
+      // "reconnecting" state for a while before the login form.
+      host.disconnectedAtMs ??= Date.now();
       markQueuedChatSendsWaitingForReconnect(
         host as unknown as Parameters<typeof markQueuedChatSendsWaitingForReconnect>[0],
       );

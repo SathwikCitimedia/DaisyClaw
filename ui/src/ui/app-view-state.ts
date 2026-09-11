@@ -78,6 +78,10 @@ export type AppViewState = {
   hello: GatewayHelloOk | null;
   lastError: string | null;
   lastErrorCode: string | null;
+  /** When the live gateway connection dropped; null while connected. */
+  disconnectedAtMs: number | null;
+  /** User asked to see the connection form instead of the reconnecting screen. */
+  loginGateRequested: boolean;
   chatError: string | null;
   eventLog: EventLogEntry[];
   assistantName: string;

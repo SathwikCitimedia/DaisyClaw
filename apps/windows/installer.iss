@@ -223,6 +223,16 @@ begin
     Exit;
   end;
 
+  // Exit 3 = the task is registered and the gateway is starting but has not
+  // answered yet. First start on a fresh PC can take minutes (antivirus scans
+  // the freshly written engine); the tray keeps waiting and opens the
+  // dashboard as soon as it answers, so this is not an error for the user.
+  if Started and (ResultCode = 3) then
+  begin
+    Log('Gateway service installed; still starting. The app will connect when it is ready.');
+    Exit;
+  end;
+
   // Non-fatal: the tray app repairs the service on every launch using the same
   // script, so the install still completes. Tell the user only when not silent.
   Log('Gateway service install did not complete cleanly (code ' + IntToStr(ResultCode) + '); the app will retry on launch.');

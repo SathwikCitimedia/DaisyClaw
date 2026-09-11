@@ -90,8 +90,11 @@ function Resolve-GatewayPort {
             $raw = [regex]::Replace($raw, '(?m)^\s*//.*$', '')
             $raw = [regex]::Replace($raw, '/\*[\s\S]*?\*/', '')
             $cfg = $raw | ConvertFrom-Json
-            if ($cfg.gateway -and $cfg.gateway.port) {
-                $p = [int]$cfg.gateway.port
+            # Strict mode throws on a missing property, so probe via PSObject.
+            $gatewayProp = $cfg.PSObject.Properties['gateway']
+            $portProp = if ($gatewayProp -and $gatewayProp.Value) { $gatewayProp.Value.PSObject.Properties['port'] } else { $null }
+            if ($portProp -and $portProp.Value) {
+                $p = [int]$portProp.Value
                 if ($p -gt 0 -and $p -lt 65536) { return $p }
             }
         }

@@ -854,8 +854,18 @@ public partial class App : Application, DaisyClawTray.Services.IAppCommands, IPe
             }
             NativeGatewaySupervisor.StartWatchdog();
 
-            if ((!_isPostSetupRestart && RequiresSetup(_settings)) ||
-                Environment.GetEnvironmentVariable("DAISYCLAW_FORCE_ONBOARDING") == "1")
+            var firstRunRequested =
+                (!_isPostSetupRestart && RequiresSetup(_settings)) ||
+                Environment.GetEnvironmentVariable("DAISYCLAW_FORCE_ONBOARDING") == "1";
+
+            if (!ensure.Ok && NativeGatewaySupervisor.TryLocateBundledEngineScript() is not null)
+            {
+                // The bundled gateway is registered but not answering yet.
+                // Keep checking and connect the moment it does.
+                StartNativeGatewayReadyRetry(openDashboardWhenReady: firstRunRequested);
+            }
+
+            if (firstRunRequested)
             {
                 if (ensure.Ok)
                 {
@@ -1981,6 +1991,68 @@ public partial class App : Application, DaisyClawTray.Services.IAppCommands, IPe
             TryStartLocalMcpOnlyNode();
         return true;
     }
+
+    /// <summary>
+    /// Bundled-engine installs: the gateway can take minutes to answer on its
+    /// very first start (antivirus scans the freshly written engine), longer
+    /// than the launch-time check waits. Keep checking in the background and,
+    /// once it answers, register it, connect, and open the dashboard when this
+    /// is the first run. Stops on its own after 30 minutes.
+    /// </summary>
+    private void StartNativeGatewayReadyRetry(bool openDashboardWhenReady)
+    {
+        _ = Task.Run(async () =>
+        {
+            var deadline = DateTime.UtcNow.AddMinutes(30);
+            while (DateTime.UtcNow < deadline)
+            {
+                await Task.Delay(TimeSpan.FromSeconds(10));
+                if (_connectionManager?.CurrentSnapshot.OperatorState == RoleConnectionState.Connected)
+                    return;
+
+                EnsureResultSnapshot ensure;
+                try
+                {
+                    var result = await NativeGatewaySupervisor.EnsureAsync(
+                        SettingsManager.SettingsDirectoryPath,
+                        logger: null,
+                        allowEngineRepair: false);
+                    ensure = new EnsureResultSnapshot(result.Ok, result.GatewayUrl);
+                }
+                catch (Exception ex)
+                {
+                    Logger.Warn($"[NativeGateway] ready check failed: {ex.Message}");
+                    continue;
+                }
+
+                if (!ensure.Ok)
+                    continue;
+
+                Logger.Info($"[NativeGateway] gateway ready at {ensure.GatewayUrl}; connecting.");
+                OnUiThread(() =>
+                {
+                    try
+                    {
+                        // EnsureAsync wrote the active record through its own
+                        // registry instance; re-read before connecting.
+                        _gatewayRegistry?.Load();
+                        InitializeGatewayClient();
+                        if (openDashboardWhenReady)
+                            OpenDashboard();
+                    }
+                    catch (Exception ex)
+                    {
+                        Logger.Warn($"[NativeGateway] connect after ready failed: {ex.Message}");
+                    }
+                });
+                return;
+            }
+
+            Logger.Warn("[NativeGateway] gateway did not become ready within 30 minutes of launch.");
+        });
+    }
+
+    private readonly record struct EnsureResultSnapshot(bool Ok, string GatewayUrl);
 
     private void ReconnectWithSyncedBrowserProxyForward()
     {

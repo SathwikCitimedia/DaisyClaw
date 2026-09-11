@@ -28,7 +28,10 @@ internal static class NativeGatewaySupervisor
     /// registers it as the active gateway record under <paramref name="dataDir"/>.
     /// Never throws; failures come back as <see cref="EnsureResult.Error"/>.
     /// </summary>
-    public static async Task<EnsureResult> EnsureAsync(string dataDir, IDaisyClawLogger? logger = null)
+    public static async Task<EnsureResult> EnsureAsync(
+        string dataDir,
+        IDaisyClawLogger? logger = null,
+        bool allowEngineRepair = true)
     {
         try
         {
@@ -53,7 +56,13 @@ internal static class NativeGatewaySupervisor
                 // step failed), or the scheduled task is missing/broken: let
                 // the bundled engine register itself. Same script the
                 // installer runs, so this is a repair, not a second path.
-                if (TryLocateBundledEngineScript() is { } engineScript)
+                // When the task exists the gateway is merely slow (first start
+                // on a fresh PC can take minutes); repairing would only stack a
+                // second start, so leave it to the caller's retry loop.
+                var taskRegistered = found && WindowsStartupTaskRegistration.Exists(GatewayTaskName);
+                if (allowEngineRepair
+                    && !taskRegistered
+                    && TryLocateBundledEngineScript() is { } engineScript)
                 {
                     logger?.Info($"[NativeGateway] repairing gateway service with bundled engine ({engineScript})");
                     var repaired = await RunEngineActionAsync(engineScript, "install", TimeSpan.FromSeconds(150), logger);

@@ -121,6 +121,9 @@ type GatewayHost = {
   lastErrorCode: string | null;
   disconnectedAtMs?: number | null;
   loginGateRequested?: boolean;
+  connectionEpoch?: number;
+  lastSentChatText?: string | null;
+  chatInterrupted?: { sessionKey: string; text: string } | null;
   chatError?: string | null;
   onboarding?: boolean;
   eventLogBuffer: EventLogEntry[];
@@ -823,6 +826,9 @@ export function connectGateway(host: GatewayHost, options?: ConnectGatewayOption
       const reconnectedAfterDrop = host.disconnectedAtMs !== null;
       host.connected = true;
       host.disconnectedAtMs = null;
+      // Views that gave up after a socket error (workspace files, panels that
+      // cache a failure) retry when this changes.
+      host.connectionEpoch = (host.connectionEpoch ?? 0) + 1;
       if (reconnectedAfterDrop && isFactoryResetPending()) {
         // The gateway restarted after "Erase everything": once its config is
         // genuinely fresh, reload into the first-run wizard.
@@ -934,6 +940,10 @@ export function connectGateway(host: GatewayHost, options?: ConnectGatewayOption
       // Remember when we lost the gateway so the UI can show a calm
       // "reconnecting" state for a while before the login form.
       host.disconnectedAtMs ??= Date.now();
+      // A reply in flight will never finish on this socket: stop the spinner
+      // now and offer to send the message again, instead of leaving the chat
+      // looking busy until (or unless) the gateway comes back.
+      markChatRunInterruptedByDisconnect(host);
       markQueuedChatSendsWaitingForReconnect(
         host as unknown as Parameters<typeof markQueuedChatSendsWaitingForReconnect>[0],
       );
@@ -1441,6 +1451,32 @@ function handleGatewayEventUnsafe(host: GatewayHost, evt: GatewayEventFrame) {
     const payload = evt.payload as GatewayUpdateAvailableEventPayload | undefined;
     host.updateAvailable = payload?.updateAvailable ?? null;
   }
+}
+
+/**
+ * Ends a chat run that was cut off by a dropped connection. The gateway will
+ * never emit the run's terminal event on a socket that is gone, so the UI has
+ * to close the run itself; the remembered prompt powers the "Send again"
+ * action shown in the chat.
+ */
+function markChatRunInterruptedByDisconnect(host: GatewayHost): void {
+  const streamHost = host as unknown as { chatStream?: string | null };
+  const hadRun = Boolean(host.chatRunId) || streamHost.chatStream != null;
+  if (!hadRun) {
+    return;
+  }
+  const text = host.lastSentChatText?.trim();
+  if (text) {
+    host.chatInterrupted = { sessionKey: host.sessionKey, text };
+  }
+  reconcileChatRunLifecycle(host as unknown as Parameters<typeof reconcileChatRunLifecycle>[0], {
+    outcome: "interrupted",
+    runId: host.chatRunId,
+    sessionKey: host.sessionKey,
+    clearLocalRun: true,
+    clearChatStream: true,
+    clearToolStream: true,
+  });
 }
 
 /**

@@ -423,6 +423,14 @@ export class DaisyClawApp extends LitElement {
   @state() firstRunError: string | null = null;
   @state() firstRunProvider: string | null = null;
   @state() firstRunChannel: string | null = null;
+  @state() firstRunTestFailure: string | null = null;
+  @state() supportBundleBusy = false;
+  @state() supportBundleResult: { ok: boolean; message: string } | null = null;
+  @state() modelStudioTestBusy = false;
+  @state() modelStudioTestResult: { ok: boolean; message: string } | null = null;
+  @state() connectionEpoch = 0;
+  @state() lastSentChatText: string | null = null;
+  @state() chatInterrupted: { sessionKey: string; text: string } | null = null;
   @state() modelSetupMissing: boolean | null = null;
   @state() settingsResetOpen = false;
   @state() settingsResetAcknowledged = false;

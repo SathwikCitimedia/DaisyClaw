@@ -46,6 +46,7 @@ type GatewayPluginBootstrapParams = {
   pluginIds?: string[];
   pluginLookUpTable?: PluginLookUpTable;
   preferSetupRuntimeForChannelPlugins?: boolean;
+  forceFullRuntimeForChannelPlugins?: boolean;
   suppressPluginInfoLogs?: boolean;
   logDiagnostics?: boolean;
   startupTrace?: GatewayStartupTrace;
@@ -122,6 +123,9 @@ export function prepareGatewayPluginLoad(params: GatewayPluginBootstrapParams) {
     pluginIds: params.pluginIds,
     pluginLookUpTable: params.pluginLookUpTable,
     preferSetupRuntimeForChannelPlugins: params.preferSetupRuntimeForChannelPlugins,
+    ...(params.forceFullRuntimeForChannelPlugins !== undefined && {
+      forceFullRuntimeForChannelPlugins: params.forceFullRuntimeForChannelPlugins,
+    }),
     suppressPluginInfoLogs: params.suppressPluginInfoLogs,
     startupTrace: params.startupTrace,
   });

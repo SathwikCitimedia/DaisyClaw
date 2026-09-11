@@ -59,6 +59,9 @@ internal sealed class WindowManager : IWindowManager
     public bool IsChatVisible =>
         !_isShuttingDown && _chatWindow is { IsClosed: false, Visible: true };
 
+    public bool IsDashboardVisible =>
+        !_isShuttingDown && _dashboardWindow is { IsClosed: false, Visible: true };
+
     public XamlRoot? DialogXamlRoot =>
         _isShuttingDown
             ? null

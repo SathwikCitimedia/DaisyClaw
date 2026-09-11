@@ -9213,3 +9213,9 @@ details[open] > .ov-expandable-toggle::after {
   color: var(--muted);
   max-width: 64ch;
 }
+
+.chat-setup-notice__actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}

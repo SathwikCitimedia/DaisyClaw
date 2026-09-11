@@ -2334,6 +2334,66 @@ describe("resolveGatewayStartupPluginIds", () => {
     expect(plan.configuredDeferredChannelPluginIds).toStrictEqual([]);
   });
 
+  it("preloads unconfigured bundled channel plugins when preloading is on", () => {
+    const registry = createManifestRegistryFixture();
+    const index = createInstalledPluginIndexFixture(registry);
+
+    const plan = resolveGatewayStartupPluginPlanFromRegistry({
+      config: {
+        channels: {
+          "demo-channel": {
+            token: "configured",
+          },
+        },
+      } as DaisyClawConfig,
+      env: createPluginPlanningTestEnv({ DAISYCLAW_PRELOAD_CHANNEL_PLUGINS: "1" }),
+      index,
+      manifestRegistry: registry,
+    });
+
+    // The configured channel still starts normally; the unconfigured sibling is
+    // preloaded so its setup surface answers without a restart.
+    expect(plan.pluginIds).toContain("demo-channel");
+    expect(plan.preloadChannelPluginIds).toStrictEqual(["demo-other-channel"]);
+    // Non-channel plugins are never preloaded.
+    expect(plan.preloadChannelPluginIds).not.toContain("demo-provider-plugin");
+  });
+
+  it("leaves the preload list empty when preloading is off", () => {
+    const registry = createManifestRegistryFixture();
+    const index = createInstalledPluginIndexFixture(registry);
+
+    const plan = resolveGatewayStartupPluginPlanFromRegistry({
+      config: {} as DaisyClawConfig,
+      env: createPluginPlanningTestEnv({ DAISYCLAW_PRELOAD_CHANNEL_PLUGINS: "0" }),
+      index,
+      manifestRegistry: registry,
+    });
+
+    expect(plan.preloadChannelPluginIds).toStrictEqual([]);
+  });
+
+  it("never preloads a channel the user turned off or a denied plugin", () => {
+    const registry = createManifestRegistryFixture();
+    const index = createInstalledPluginIndexFixture(registry);
+
+    const plan = resolveGatewayStartupPluginPlanFromRegistry({
+      config: {
+        channels: {
+          "demo-channel": { enabled: false },
+        },
+        plugins: {
+          deny: ["demo-other-channel"],
+        },
+      } as DaisyClawConfig,
+      env: createPluginPlanningTestEnv({ DAISYCLAW_PRELOAD_CHANNEL_PLUGINS: "1" }),
+      index,
+      manifestRegistry: registry,
+    });
+
+    expect(plan.preloadChannelPluginIds).toStrictEqual([]);
+  });
+
   it("carries deferred configured channel ids through the startup plan", () => {
     const registry = createManifestRegistryFixtureWithWorkspaceDemoChannel();
     const index = createInstalledPluginIndexFixture(registry);

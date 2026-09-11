@@ -3577,3 +3577,54 @@ describe("chat session controls", () => {
     expect(thinkingSelect.title).toContain("Adaptive");
   });
 });
+
+describe("interrupted reply notice", () => {
+  it("is absent by default", () => {
+    const container = renderChatView();
+    expect(container.querySelector("[data-chat-interrupted-notice]")).toBeNull();
+  });
+
+  it("offers to send the message again and to dismiss", () => {
+    const onSendAgain = vi.fn();
+    const onDismiss = vi.fn();
+    const container = renderChatView({ interruptedNotice: { onSendAgain, onDismiss } });
+    const notice = container.querySelector("[data-chat-interrupted-notice]");
+    expect(notice).toBeTruthy();
+    expect(notice?.textContent).toContain("interrupted");
+    const buttons = Array.from(notice?.querySelectorAll("button") ?? []);
+    expect(buttons).toHaveLength(2);
+    buttons[0]?.click();
+    expect(onSendAgain).toHaveBeenCalledTimes(1);
+    buttons[1]?.click();
+    expect(onDismiss).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("composer lock without an AI model", () => {
+  it("keeps the composer usable by default", () => {
+    const container = renderChatView({ connected: true });
+    const textarea = container.querySelector("textarea");
+    expect(textarea?.disabled).toBe(false);
+  });
+
+  it("locks the composer and explains why when no model is configured", () => {
+    const onAction = vi.fn();
+    const container = renderChatView({
+      connected: true,
+      composeLocked: true,
+      setupNotice: {
+        title: "Daisy needs an AI brain before she can chat",
+        body: "Pick a provider and paste your key.",
+        actionLabel: "Add AI brain",
+        onAction,
+      },
+    });
+    const textarea = container.querySelector("textarea");
+    expect(textarea?.disabled).toBe(true);
+    expect(textarea?.getAttribute("placeholder")).toContain("Settings");
+    const notice = container.querySelector("[data-chat-setup-notice]");
+    expect(notice?.textContent).toContain("AI brain");
+    notice?.querySelector("button")?.click();
+    expect(onAction).toHaveBeenCalledTimes(1);
+  });
+});

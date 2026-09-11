@@ -483,6 +483,37 @@ describe("model & thinking capability gating", () => {
   });
 });
 
+describe("quick settings diagnostics card", () => {
+  it("stays hidden when the host offers no support bundle action", () => {
+    const container = document.createElement("div");
+    render(renderQuickSettings(createProps()), container);
+    expect(container.querySelector("[data-qs-diagnostics]")).toBeNull();
+  });
+
+  it("collects a support report and shows where it landed", () => {
+    const onCreateSupportBundle = vi.fn();
+    const container = document.createElement("div");
+    render(renderQuickSettings(createProps({ onCreateSupportBundle })), container);
+    const button = container.querySelector<HTMLButtonElement>("[data-qs-support-bundle]");
+    expect(button).toBeTruthy();
+    button?.click();
+    expect(onCreateSupportBundle).toHaveBeenCalledTimes(1);
+
+    render(
+      renderQuickSettings(
+        createProps({
+          onCreateSupportBundle,
+          supportBundleResult: { ok: true, message: "Saved to C:/reports/daisy.zip" },
+        }),
+      ),
+      container,
+    );
+    expect(container.querySelector("[data-qs-support-bundle-result]")?.textContent).toContain(
+      "C:/reports/daisy.zip",
+    );
+  });
+});
+
 describe("quick settings reset card", () => {
   it("starts collapsed with 'Run setup again' and 'Reset Daisy…' actions", () => {
     const onRunSetupAgain = vi.fn();

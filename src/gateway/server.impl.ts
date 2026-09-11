@@ -693,11 +693,19 @@ export async function startGatewayServer(
     gatewayPluginConfigAtStart,
     defaultWorkspaceDir,
     deferredConfiguredChannelPluginIds,
+    preloadChannelPluginIds,
     startupPluginIds,
     pluginLookUpTable,
     baseMethods,
     runtimePluginsLoaded,
   } = pluginBootstrap;
+  // Unconfigured bundled channel plugins join the post-listen plugin load so
+  // their setup surfaces (WhatsApp QR login, Telegram token) answer without a
+  // gateway restart. Empty outside consumer builds.
+  const startupPluginIdsWithPreloadedChannels =
+    preloadChannelPluginIds.length > 0
+      ? [...new Set([...startupPluginIds, ...preloadChannelPluginIds])]
+      : startupPluginIds;
   const coreGatewayMethodNames = listCoreGatewayMethodNames();
   setCurrentPluginMetadataSnapshot(pluginLookUpTable, {
     config: startupActivationSourceConfig,
@@ -1328,6 +1336,10 @@ export async function startGatewayServer(
         hostServices: pluginHostServices,
         baseMethods,
         pluginLookUpTable: nextPluginLookUpTable,
+        // Keep preloaded channel plugins on their full surface across reloads;
+        // without this a config change would silently demote them to their
+        // setup surface and channel setup methods would disappear again.
+        ...(preloadChannelPluginIds.length > 0 ? { forceFullRuntimeForChannelPlugins: true } : {}),
       });
       const previousPluginServices = runtimeState.pluginServices;
       runtimeState.pluginServices = null;
@@ -1601,9 +1613,15 @@ export async function startGatewayServer(
                     baseMethods,
                     coreGatewayMethodNames,
                     hostServices: pluginHostServices,
-                    startupPluginIds,
+                    startupPluginIds: startupPluginIdsWithPreloadedChannels,
                     pluginLookUpTable,
                     startupTrace,
+                    // Preloaded channels are unconfigured, so without this they
+                    // would register only their setup surface and their gateway
+                    // methods (QR login) would stay missing.
+                    ...(preloadChannelPluginIds.length > 0
+                      ? { forceFullRuntimeForChannelPlugins: true }
+                      : {}),
                   });
                 },
             onStartupPluginsLoading: () => {

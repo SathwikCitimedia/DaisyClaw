@@ -27,6 +27,12 @@ export type ModelStudioProps = {
   onMakeDefault: (ref: string) => void;
   onToggleFallback: (ref: string) => void;
   onOpenAdvanced: () => void;
+  /** Sends a real test message through the default model's provider. */
+  onTestDefaultModel?: () => void;
+  /** True while that test is running. */
+  testBusy?: boolean;
+  /** Verdict from the last test, shown under the default model. */
+  testResult?: { ok: boolean; message: string } | null;
 };
 
 export type ProviderPreset = {
@@ -393,7 +399,26 @@ export function renderModelStudio(props: ModelStudioProps) {
                         : ""}
                     </span>
                   </span>
+                  ${props.onTestDefaultModel
+                    ? html`<button
+                        class="btn btn--sm"
+                        data-model-studio-test
+                        ?disabled=${props.testBusy === true}
+                        @click=${() => props.onTestDefaultModel?.()}
+                      >
+                        ${props.testBusy ? "Testing…" : "Test connection"}
+                      </button>`
+                    : nothing}
                 </div>
+                ${props.testResult
+                  ? html`<div
+                      class="callout ${props.testResult.ok ? "" : "danger"}"
+                      style="margin-top: 8px;"
+                      data-model-studio-test-result
+                    >
+                      ${props.testResult.message}
+                    </div>`
+                  : nothing}
               `
             : html`
                 <div class="muted" style="font-size: 12.5px;">

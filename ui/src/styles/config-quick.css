@@ -1421,3 +1421,7 @@
   opacity: 0.55;
   cursor: not-allowed;
 }
+
+.qs-card--diagnostics {
+  grid-column: 1 / -1;
+}

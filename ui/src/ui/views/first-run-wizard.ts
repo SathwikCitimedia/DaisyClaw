@@ -15,6 +15,7 @@ import {
   saveCustomProvider,
   saveProviderApiKey,
   setDefaultModel,
+  testProviderConnection,
 } from "../controllers/models.ts";
 import { loadSkills, updateSkillEnabled } from "../controllers/skills.ts";
 import { showToast } from "../toast.ts";
@@ -225,6 +226,7 @@ function finishToDashboard(state: AppViewState): void {
 async function connectProvider(state: AppViewState, preset: ProviderPreset): Promise<void> {
   state.firstRunBusy = true;
   state.firstRunError = null;
+  state.firstRunTestFailure = null;
   try {
     if (preset.custom) {
       if (!draft.baseUrl.trim() || !draft.modelId.trim()) {
@@ -271,7 +273,11 @@ async function connectProvider(state: AppViewState, preset: ProviderPreset): Pro
         showToast(`Connected to ${label}.`, { tone: "success" });
       }
     } else {
+      if (!draft.apiKey.trim()) {
+        throw new Error("Paste your API key first.");
+      }
       await saveProviderApiKey(state, preset.id, draft.apiKey);
+      let chosenModel: string | undefined;
       if (state.client) {
         invalidateModelCatalog(state.client);
         try {
@@ -281,12 +287,28 @@ async function connectProvider(state: AppViewState, preset: ProviderPreset): Pro
           );
           if (match) {
             const ref = match.id.includes("/") ? match.id : `${match.provider}/${match.id}`;
+            chosenModel = match.id.includes("/")
+              ? match.id.split("/").slice(1).join("/")
+              : match.id;
             await setDefaultModel(state, ref);
           }
         } catch {
           // Catalog hiccups are fine — the gateway resolves a provider default.
         }
       }
+      // Prove the key actually works now, while the user is still on this
+      // screen and the fix is one edit away. Chat hides provider errors, so a
+      // bad key would otherwise only surface as "LLM request failed." later.
+      const verdict = await testProviderConnection(state.client, {
+        providerId: preset.id,
+        ...(chosenModel ? { modelId: chosenModel } : {}),
+      });
+      if (verdict && !verdict.ok) {
+        state.firstRunTestFailure = verdict.message;
+        state.firstRunError = verdict.message;
+        return;
+      }
+      state.firstRunTestFailure = null;
     }
     resetDraft();
     brainSkipped = false;
@@ -438,12 +460,29 @@ function renderBrain(state: AppViewState): TemplateResult {
             ${state.firstRunError
               ? html`<div class="first-run__error">${state.firstRunError}</div>`
               : nothing}
+            ${state.firstRunTestFailure
+              ? html`<button
+                  class="first-run__link"
+                  data-first-run-continue-anyway
+                  @click=${() => {
+                    // The key is saved either way; a failing test can also mean a
+                    // flaky network, so never trap the user on this screen.
+                    state.firstRunTestFailure = null;
+                    state.firstRunError = null;
+                    resetDraft();
+                    state.firstRunProvider = null;
+                    state.firstRunStep = 2;
+                  }}
+                >
+                  Continue anyway — I'll fix this later
+                </button>`
+              : nothing}
             <button
               class="btn primary first-run__cta"
               ?disabled=${state.firstRunBusy}
               @click=${() => void connectProvider(state, selected)}
             >
-              ${state.firstRunBusy ? "Connecting…" : "Connect"}
+              ${state.firstRunBusy ? "Checking your key…" : "Connect"}
             </button>
           </div>
         `

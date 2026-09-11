@@ -3144,14 +3144,17 @@ public partial class App : Application, DaisyClawTray.Services.IAppCommands, IPe
 
             if (notification.IsChat)
             {
-                builder.AddArgument("action", "open_chat");
+                // Clicking a reply notification opens the dashboard — the surface
+                // the user actually chats in. Routing to the tray hub dropped them
+                // into a different-looking app.
+                builder.AddArgument("action", "open_dashboard");
                 if (!string.IsNullOrEmpty(notification.SessionKey))
                 {
                     builder.AddArgument("sessionKey", notification.SessionKey);
                 }
                 builder.AddButton(new ToastButton()
-                    .SetContent("Open Chat")
-                    .AddArgument("action", "open_chat")
+                    .SetContent("Open Daisy")
+                    .AddArgument("action", "open_dashboard")
                     .AddArgument("sessionKey", notification.SessionKey ?? ""));
             }
 
@@ -3419,12 +3422,16 @@ public partial class App : Application, DaisyClawTray.Services.IAppCommands, IPe
         if (notification.IsChat && !_settings.NotifyChatResponses)
             return false;
 
-        // Suppress chat notifications when a chat window is already showing them
+        // Suppress chat notifications when a chat window is already showing them.
+        // The dashboard counts: it is the product's main chat surface, and a toast
+        // for every reply while the user is reading that reply is pure noise.
         if (notification.IsChat)
         {
             if (_windowManager?.IsHubOpen == true)
                 return false;
             if (_windowManager?.IsChatVisible == true)
+                return false;
+            if (_windowManager?.IsDashboardVisible == true)
                 return false;
         }
 

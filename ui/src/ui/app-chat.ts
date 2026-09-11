@@ -94,6 +94,10 @@ import { isRenderableControlUiAvatarUrl } from "./views/agents-utils.ts";
 
 export type ChatHost = ChatInputHistoryState & {
   client: GatewayBrowserClient | null;
+  /** Last text handed to the gateway; replayed by the "Send again" action. */
+  lastSentChatText?: string | null;
+  /** Set when a reply was cut short by a dropped connection. */
+  chatInterrupted?: { sessionKey: string; text: string } | null;
   chatStream: string | null;
   connected: boolean;
   chatAttachments: ChatAttachment[];
@@ -1698,6 +1702,11 @@ export async function handleSendChat(
 ) {
   const previousDraft = host.chatMessage;
   const message = (messageOverride ?? host.chatMessage).trim();
+  if (message) {
+    // Remembered so a connection drop mid-reply can offer to send it again.
+    host.lastSentChatText = message;
+    host.chatInterrupted = null;
+  }
   const submittedAtMs = controlUiNowMs();
   const submittedSessionKey = host.sessionKey;
   const attachments = host.chatAttachments ?? [];

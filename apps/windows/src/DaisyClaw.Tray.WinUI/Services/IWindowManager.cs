@@ -11,6 +11,8 @@ internal interface IWindowManager
     Window? ActiveHubWindow { get; }
     bool IsHubOpen { get; }
     bool IsChatVisible { get; }
+    /// <summary>True while the web dashboard window is open and visible.</summary>
+    bool IsDashboardVisible { get; }
     XamlRoot? DialogXamlRoot { get; }
     XamlRoot? RuntimeAnchorXamlRoot { get; }
     XamlRoot? SetupXamlRoot { get; }

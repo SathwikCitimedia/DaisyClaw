@@ -135,6 +135,12 @@ export type QuickSettingsProps = {
   onFactoryReset?: () => void;
   factoryResetBusy?: boolean;
 
+  // Diagnostics
+  /** Writes a redacted support bundle and reports where it landed. */
+  onCreateSupportBundle?: () => void;
+  supportBundleBusy?: boolean;
+  supportBundleResult?: { ok: boolean; message: string } | null;
+
   // Connection
   connected: boolean;
   gatewayUrl: string;
@@ -1190,6 +1196,44 @@ function renderResetCard(props: QuickSettingsProps) {
   `;
 }
 
+function renderDiagnosticsCard(props: QuickSettingsProps) {
+  if (!props.onCreateSupportBundle) {
+    return nothing;
+  }
+  return html`
+    <div class="qs-card qs-card--diagnostics" data-qs-diagnostics>
+      ${renderCardHeader(icons.helpCircle, "Something wrong?")}
+      <div class="qs-card__body">
+        <div class="qs-reset__intro">
+          <p>
+            Daisy can gather its own logs into one file you can send on. Keys and message contents
+            are removed first, and nothing leaves this computer until you share it.
+          </p>
+          <div class="qs-reset__actions">
+            <button
+              class="btn btn--sm"
+              data-qs-support-bundle
+              ?disabled=${props.supportBundleBusy === true}
+              @click=${() => props.onCreateSupportBundle?.()}
+            >
+              ${props.supportBundleBusy ? "Collecting…" : "Create support report"}
+            </button>
+          </div>
+        </div>
+        ${props.supportBundleResult
+          ? html`<div
+              class="callout ${props.supportBundleResult.ok ? "" : "danger"}"
+              style="margin: 0 16px 16px;"
+              data-qs-support-bundle-result
+            >
+              ${props.supportBundleResult.message}
+            </div>`
+          : nothing}
+      </div>
+    </div>
+  `;
+}
+
 function renderConnectionFooter(props: QuickSettingsProps) {
   return html`
     <div class="qs-footer">
@@ -1221,7 +1265,7 @@ export function renderQuickSettings(props: QuickSettingsProps) {
         <div class="qs-side-stack">
           ${renderAppearanceCard(props)} ${renderAutomationsCard(props)}
         </div>
-        ${renderPresetsCard(props)} ${renderResetCard(props)}
+        ${renderPresetsCard(props)} ${renderDiagnosticsCard(props)} ${renderResetCard(props)}
       </div>
 
       ${renderConnectionFooter(props)}

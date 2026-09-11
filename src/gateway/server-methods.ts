@@ -137,6 +137,10 @@ const loadModelsProbeHandlers = lazyHandlerModule(
   () => import("./server-methods/models-probe.js"),
   (module) => module.modelsProbeHandlers,
 );
+const loadModelsTestHandlers = lazyHandlerModule(
+  () => import("./server-methods/models-test.js"),
+  (module) => module.modelsTestHandlers,
+);
 const loadFactoryResetHandlers = lazyHandlerModule(
   () => import("./server-methods/factory-reset.js"),
   (module) => module.factoryResetHandlers,
@@ -337,7 +341,7 @@ export const coreGatewayHandlers: GatewayRequestHandlers = {
     loadHandlers: loadDeviceHandlers,
   }),
   ...createLazyCoreHandlers({
-    methods: ["diagnostics.stability"],
+    methods: ["diagnostics.stability", "diagnostics.supportBundle"],
     loadHandlers: loadDiagnosticsHandlers,
   }),
   ...createLazyCoreHandlers({
@@ -377,6 +381,10 @@ export const coreGatewayHandlers: GatewayRequestHandlers = {
   ...createLazyCoreHandlers({
     methods: ["models.probeProvider"],
     loadHandlers: loadModelsProbeHandlers,
+  }),
+  ...createLazyCoreHandlers({
+    methods: ["models.testProvider"],
+    loadHandlers: loadModelsTestHandlers,
   }),
   ...createLazyCoreHandlers({
     methods: ["system.factoryReset"],

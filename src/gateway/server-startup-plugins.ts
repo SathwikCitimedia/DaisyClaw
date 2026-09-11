@@ -118,6 +118,10 @@ export async function prepareGatewayPluginBootstrap(params: {
     ...(pluginLookUpTable?.startup.configuredDeferredChannelPluginIds ?? []),
   ];
   const startupPluginIds = [...(pluginLookUpTable?.startup.pluginIds ?? [])];
+  // Bundled channel plugins whose channel is not configured yet. They are never
+  // loaded before listen; the post-listen sidecar load brings them up so the
+  // dashboard can run channel setup (QR login, token entry) without a restart.
+  const preloadChannelPluginIds = [...(pluginLookUpTable?.startup.preloadChannelPluginIds ?? [])];
 
   const baseMethods = listGatewayMethods();
   const coreGatewayMethodNames = listCoreGatewayMethodNames();
@@ -127,6 +131,11 @@ export async function prepareGatewayPluginBootstrap(params: {
   const shouldLoadRuntimePlugins = params.loadRuntimePlugins !== false;
   const shouldLoadSetupRuntimePlugins =
     params.loadSetupRuntimePlugins === true && deferredConfiguredChannelPluginIds.length > 0;
+  // Preloaded channel plugins must not delay listen, so any start that has them
+  // hands the whole plugin load to the post-listen sidecar step.
+  const deferFullPluginLoadUntilAfterListen =
+    shouldLoadSetupRuntimePlugins ||
+    (params.loadSetupRuntimePlugins === true && preloadChannelPluginIds.length > 0);
 
   if (!params.minimalTestGateway && shouldLoadSetupRuntimePlugins) {
     // Pre-bind bootstrap only loads deferred channel plugins that expose setup runtime hooks.
@@ -145,7 +154,11 @@ export async function prepareGatewayPluginBootstrap(params: {
         suppressPluginInfoLogs: true,
       },
     ));
-  } else if (!params.minimalTestGateway && shouldLoadRuntimePlugins) {
+  } else if (
+    !params.minimalTestGateway &&
+    shouldLoadRuntimePlugins &&
+    !deferFullPluginLoadUntilAfterListen
+  ) {
     // Normal bootstrap loads every startup plugin and records that runtime handlers are ready
     // before the gateway exposes the method list.
     ({ pluginRegistry, gatewayMethods: baseGatewayMethods } = await loadGatewayStartupPluginRuntime(
@@ -172,12 +185,13 @@ export async function prepareGatewayPluginBootstrap(params: {
   }
 
   const runtimePluginsLoaded =
-    !params.minimalTestGateway && shouldLoadRuntimePlugins && !shouldLoadSetupRuntimePlugins;
+    !params.minimalTestGateway && shouldLoadRuntimePlugins && !deferFullPluginLoadUntilAfterListen;
 
   return {
     gatewayPluginConfigAtStart: gatewayPluginConfig,
     defaultWorkspaceDir,
     deferredConfiguredChannelPluginIds,
+    preloadChannelPluginIds,
     startupPluginIds,
     pluginLookUpTable,
     baseMethods,
@@ -228,6 +242,7 @@ export async function loadGatewayStartupPluginRuntime(params: {
   startupPluginIds: string[];
   pluginLookUpTable?: ReturnType<typeof loadPluginLookUpTable>;
   preferSetupRuntimeForChannelPlugins?: boolean;
+  forceFullRuntimeForChannelPlugins?: boolean;
   suppressPluginInfoLogs?: boolean;
   startupTrace?: GatewayStartupTrace;
 }) {
@@ -247,6 +262,9 @@ export async function loadGatewayStartupPluginRuntime(params: {
     pluginIds: params.startupPluginIds,
     pluginLookUpTable: params.pluginLookUpTable,
     preferSetupRuntimeForChannelPlugins: params.preferSetupRuntimeForChannelPlugins,
+    ...(params.forceFullRuntimeForChannelPlugins !== undefined && {
+      forceFullRuntimeForChannelPlugins: params.forceFullRuntimeForChannelPlugins,
+    }),
     suppressPluginInfoLogs: params.suppressPluginInfoLogs,
     startupTrace: params.startupTrace,
   });

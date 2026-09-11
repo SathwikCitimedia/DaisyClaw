@@ -1337,6 +1337,12 @@ export const en: TranslationMap = {
       retrySend: "Retry send",
       retryQueuedMessage: "Retry queued message",
     },
+    interrupted: {
+      title: "That reply was interrupted",
+      body: "The connection to Daisy dropped before the answer finished. Nothing was lost — you can send the same message again.",
+      retry: "Send again",
+      dismiss: "Dismiss",
+    },
     noModel: {
       title: "Daisy needs an AI brain before she can chat",
       body: "Pick a provider and paste your key, or point Daisy at your own server. Everything else already works.",

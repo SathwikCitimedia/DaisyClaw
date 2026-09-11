@@ -136,6 +136,14 @@ const BASE_RELOAD_RULES_TAIL: ReloadRule[] = [
   { prefix: "plugins", kind: "hot", actions: ["reload-plugins", "dispose-mcp-runtimes"] },
   { prefix: "tui", kind: "none" },
   { prefix: "ui", kind: "none" },
+  // Fallbacks for channel config owned by a plugin that is not loaded right now
+  // (a bundled channel the user has not set up yet). Loaded channel plugins
+  // contribute their own, more specific prefixes above, so these only catch the
+  // otherwise unmatched paths that would force a full gateway restart — which,
+  // mid-setup, drops the user's connection and any running reply. Re-running the
+  // plugin load applies the change in place and restarts just that channel.
+  { prefix: "web", kind: "hot", actions: ["reload-plugins"] },
+  { prefix: "channels", kind: "hot", actions: ["reload-plugins"] },
   { prefix: "gateway", kind: "restart" },
   { prefix: "discovery", kind: "restart" },
 ];

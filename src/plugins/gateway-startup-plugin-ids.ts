@@ -21,6 +21,7 @@ import {
   resolveMemoryDreamingPluginId,
 } from "../memory-host-sdk/dreaming.js";
 import { planManifestModelCatalogRows } from "../model-catalog/manifest-planner.js";
+import { shouldPreloadBundledChannelPlugins } from "./channel-plugin-preload.js";
 import { hasExplicitChannelConfig } from "./channel-presence-policy.js";
 import { collectPluginConfigContractMatches } from "./config-contracts.js";
 import { normalizePluginsConfigWithResolver } from "./config-normalization-shared.js";
@@ -55,6 +56,13 @@ export type GatewayStartupPluginPlan = {
   channelPluginIds: readonly string[];
   configuredDeferredChannelPluginIds: readonly string[];
   pluginIds: readonly string[];
+  /**
+   * Bundled channel plugins whose channel is not configured yet, loaded after
+   * the gateway starts listening so the dashboard can run their setup (QR
+   * login, token entry) without a restart. Never loaded before listen, so
+   * startup latency is unchanged.
+   */
+  preloadChannelPluginIds: readonly string[];
 };
 
 type NormalizedPluginsConfig = ReturnType<typeof normalizePluginsConfigWithRegistry>;
@@ -1783,6 +1791,46 @@ export function resolveChannelPluginIds(params: {
   return [...loadGatewayStartupPluginPlan(params).channelPluginIds];
 }
 
+/**
+ * Bundled channel plugins that may be preloaded for setup. Mirrors the
+ * enable-state checks of {@link canStartConfiguredChannelPlugin}; the only
+ * difference is that a configured channel is not required. Plugins the user
+ * denied, disabled, or left out of an allowlist stay unloaded, as do plugins
+ * whose channels are all explicitly disabled in config.
+ */
+function canPreloadBundledChannelPlugin(params: {
+  plugin: InstalledPluginIndexRecord;
+  pluginsConfig: ReturnType<typeof normalizePluginsConfigWithRegistry>;
+  manifestLookup: ManifestRegistryLookup;
+  disabledChannelIds: ReadonlySet<string>;
+}): boolean {
+  if (params.plugin.origin !== "bundled") {
+    return false;
+  }
+  if (!params.pluginsConfig.enabled) {
+    return false;
+  }
+  if (params.pluginsConfig.deny.includes(params.plugin.pluginId)) {
+    return false;
+  }
+  if (params.pluginsConfig.entries[params.plugin.pluginId]?.enabled === false) {
+    return false;
+  }
+  if (
+    params.pluginsConfig.allow.length > 0 &&
+    !params.pluginsConfig.allow.includes(params.plugin.pluginId)
+  ) {
+    return false;
+  }
+  const channelIds = listManifestChannelIds(params.manifestLookup, params.plugin.pluginId);
+  if (channelIds.length === 0) {
+    return false;
+  }
+  return !channelIds.every((channelId) =>
+    params.disabledChannelIds.has(normalizeOptionalLowercaseString(channelId) ?? channelId),
+  );
+}
+
 export function resolveChannelPluginIdsFromRegistry(params: {
   manifestRegistry: PluginManifestRegistry;
 }): string[] {
@@ -2115,11 +2163,60 @@ export function resolveGatewayStartupPluginPlanFromRegistry(params: {
       pluginIds.push(plugin.pluginId);
     }
   }
+  const preloadChannelPluginIds = resolvePreloadChannelPluginIds({
+    index: params.index,
+    env: params.env,
+    config: params.config,
+    pluginsConfig,
+    manifestLookup,
+    startingPluginIds: pluginIds,
+  });
   return {
     channelPluginIds,
     configuredDeferredChannelPluginIds,
     pluginIds,
+    preloadChannelPluginIds,
   };
+}
+
+/**
+ * Bundled channel plugins to load after listen so the dashboard can configure
+ * them. Empty unless preloading is enabled (consumer builds by default).
+ */
+function resolvePreloadChannelPluginIds(params: {
+  index: PluginRegistrySnapshot;
+  env: NodeJS.ProcessEnv;
+  config: DaisyClawConfig;
+  pluginsConfig: ReturnType<typeof normalizePluginsConfigWithRegistry>;
+  manifestLookup: ManifestRegistryLookup;
+  startingPluginIds: readonly string[];
+}): string[] {
+  if (!shouldPreloadBundledChannelPlugins(params.env)) {
+    return [];
+  }
+  const alreadyStarting = new Set(params.startingPluginIds);
+  const disabledChannelIds = new Set(
+    listExplicitlyDisabledChannelIdsForConfig(params.config).map(
+      (channelId) => normalizeOptionalLowercaseString(channelId) ?? channelId,
+    ),
+  );
+  const preload: string[] = [];
+  for (const plugin of params.index.plugins) {
+    if (alreadyStarting.has(plugin.pluginId)) {
+      continue;
+    }
+    if (
+      canPreloadBundledChannelPlugin({
+        plugin,
+        pluginsConfig: params.pluginsConfig,
+        manifestLookup: params.manifestLookup,
+        disabledChannelIds,
+      })
+    ) {
+      preload.push(plugin.pluginId);
+    }
+  }
+  return sortUniquePluginIds(preload);
 }
 
 export function resolveGatewayStartupPluginIdsFromRegistry(params: {

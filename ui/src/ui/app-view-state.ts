@@ -214,6 +214,20 @@ export type AppViewState = {
   firstRunError: string | null;
   firstRunProvider: string | null;
   firstRunChannel: string | null;
+  /** Message from a failed provider connection test on the wizard's brain step. */
+  firstRunTestFailure: string | null;
+  /** Support bundle creation state (Settings → Something wrong?). */
+  supportBundleBusy: boolean;
+  supportBundleResult: { ok: boolean; message: string } | null;
+  /** Model Studio connection test state. */
+  modelStudioTestBusy: boolean;
+  modelStudioTestResult: { ok: boolean; message: string } | null;
+  /** Bumped on every successful gateway hello; lets views retry after a reconnect. */
+  connectionEpoch: number;
+  /** Text of the last message sent, replayed by the interrupted-reply action. */
+  lastSentChatText: string | null;
+  /** Set when a dropped connection cut a reply short. */
+  chatInterrupted: { sessionKey: string; text: string } | null;
   /** Null until the first config read; true when no AI model/provider is configured. */
   modelSetupMissing: boolean | null;
   /** Settings → Reset card state. */

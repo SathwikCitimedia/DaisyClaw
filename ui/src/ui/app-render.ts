@@ -135,6 +135,7 @@ import {
   saveProviderApiKey,
   setDefaultModel,
   setModelFallbacks,
+  testProviderConnection,
 } from "./controllers/models.ts";
 import { loadNodes } from "./controllers/nodes.ts";
 import { loadPresence } from "./controllers/presence.ts";
@@ -949,6 +950,8 @@ type ChatWorkspaceFilesState = {
   activeName: string | null;
   agentId: string;
   error: string | null;
+  /** Connection this load failed on; a reconnect retries instead of staying failed. */
+  errorEpoch: number | null;
   list: AgentsFilesListResult | null;
   loading: boolean;
   requestId: number;
@@ -969,6 +972,7 @@ function getChatWorkspaceFilesState(state: AppViewState, agentId: string): ChatW
     activeName: null,
     agentId,
     error: null,
+    errorEpoch: null,
     list: null,
     loading: false,
     requestId: 0,
@@ -2232,10 +2236,53 @@ export function renderApp(state: AppViewState) {
                     showToast(`${connectedLabel} connected — its models are now available.`, {
                       tone: "success",
                     });
+                    // Say straight away if the provider will not actually answer,
+                    // rather than letting the first chat message find out.
+                    const verdict = await testProviderConnection(state.client, {
+                      providerId: providerId || "custom",
+                    });
+                    state.modelStudioTestResult = verdict
+                      ? { ok: verdict.ok, message: verdict.message }
+                      : null;
+                    if (verdict && !verdict.ok) {
+                      showToast(verdict.message, { tone: "error" });
+                    }
                   } catch (err) {
                     state.modelStudioError = err instanceof Error ? err.message : String(err);
                   } finally {
                     state.modelStudioBusy = null;
+                  }
+                })();
+              },
+              testBusy: state.modelStudioTestBusy,
+              testResult: state.modelStudioTestResult,
+              onTestDefaultModel: () => {
+                const primary = resolveDefaultModelSelection(
+                  state.configForm ?? state.configSnapshot?.config,
+                ).primary;
+                if (!primary) {
+                  return;
+                }
+                const [providerId, ...rest] = primary.split("/");
+                if (!providerId || rest.length === 0) {
+                  return;
+                }
+                state.modelStudioTestBusy = true;
+                state.modelStudioTestResult = null;
+                void (async () => {
+                  try {
+                    const verdict = await testProviderConnection(state.client, {
+                      providerId,
+                      modelId: rest.join("/"),
+                    });
+                    state.modelStudioTestResult = verdict
+                      ? { ok: verdict.ok, message: verdict.message }
+                      : {
+                          ok: false,
+                          message: "This version of Daisy's engine cannot run a connection test.",
+                        };
+                  } finally {
+                    state.modelStudioTestBusy = false;
                   }
                 })();
               },
@@ -2467,6 +2514,34 @@ export function renderApp(state: AppViewState) {
             onResetConfig: () => resetConfigPendingChanges(state),
             onSaveConfig: () => void saveConfig(state),
             onApplyConfig: () => void applyConfig(state),
+            supportBundleBusy: state.supportBundleBusy,
+            supportBundleResult: state.supportBundleResult,
+            onCreateSupportBundle: () => {
+              if (state.supportBundleBusy || !state.client) {
+                return;
+              }
+              state.supportBundleBusy = true;
+              state.supportBundleResult = null;
+              void (async () => {
+                try {
+                  const result = await state.client?.request<{ path?: string }>(
+                    "diagnostics.supportBundle",
+                    {},
+                    { timeoutMs: 60_000 },
+                  );
+                  state.supportBundleResult = result?.path
+                    ? { ok: true, message: `Saved to ${result.path}` }
+                    : { ok: false, message: "Daisy could not write the report." };
+                } catch (err) {
+                  state.supportBundleResult = {
+                    ok: false,
+                    message: err instanceof Error ? err.message : String(err),
+                  };
+                } finally {
+                  state.supportBundleBusy = false;
+                }
+              })();
+            },
             onRunSetupAgain: () => {
               state.settingsResetOpen = false;
               state.settingsResetAcknowledged = false;
@@ -2815,15 +2890,19 @@ export function renderApp(state: AppViewState) {
     state.toolsCatalogLoading = false;
     resetToolsEffectiveState(state);
   };
+  // A failed load is retried once the gateway connection is replaced; otherwise
+  // a socket drop leaves the panel showing "gateway closed" until a manual refresh.
+  const workspaceFilesFailedOnThisConnection =
+    Boolean(chatWorkspaceFiles.error) && chatWorkspaceFiles.errorEpoch === state.connectionEpoch;
   if (
     isChat &&
     state.connected &&
     state.agentsList &&
     !chatWorkspaceFiles.loading &&
-    !chatWorkspaceFiles.error &&
-    chatWorkspaceFiles.list?.agentId !== chatAgentId
+    !workspaceFilesFailedOnThisConnection &&
+    (chatWorkspaceFiles.list?.agentId !== chatAgentId || Boolean(chatWorkspaceFiles.error))
   ) {
-    loadChatWorkspaceFiles();
+    loadChatWorkspaceFiles({ force: Boolean(chatWorkspaceFiles.error) });
   }
   const refreshChatWorkspaceFiles = () => {
     loadChatWorkspaceFiles({ force: true });
@@ -2836,6 +2915,7 @@ export function renderApp(state: AppViewState) {
     chatWorkspaceFiles.requestId = requestId;
     chatWorkspaceFiles.loading = true;
     chatWorkspaceFiles.error = null;
+    chatWorkspaceFiles.errorEpoch = null;
     if (opts?.force) {
       chatWorkspaceFiles.list = null;
     }
@@ -2857,6 +2937,7 @@ export function renderApp(state: AppViewState) {
         const current = currentChatWorkspaceFilesState();
         if (current === requestState && current.requestId === requestId) {
           current.error = String(err);
+          current.errorEpoch = state.connectionEpoch;
         }
       } finally {
         const current = currentChatWorkspaceFilesState();
@@ -4340,6 +4421,24 @@ export function renderApp(state: AppViewState) {
                   canSend: state.connected && state.modelSetupMissing !== true,
                   disabledReason: chatDisabledReason,
                   composeLocked: state.modelSetupMissing === true,
+                  interruptedNotice:
+                    state.chatInterrupted &&
+                    state.chatInterrupted.sessionKey === state.sessionKey &&
+                    !state.chatSending &&
+                    state.chatStream === null
+                      ? {
+                          onSendAgain: () => {
+                            const pending = state.chatInterrupted;
+                            state.chatInterrupted = null;
+                            if (pending) {
+                              void state.handleSendChat(pending.text, { restoreDraft: true });
+                            }
+                          },
+                          onDismiss: () => {
+                            state.chatInterrupted = null;
+                          },
+                        }
+                      : null,
                   setupNotice:
                     state.connected && state.modelSetupMissing === true
                       ? {

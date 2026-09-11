@@ -1,3 +1,4 @@
+import { noteConfigWriteRestart, type ConfigWriteResponse } from "../config-restart-notice.ts";
 // Control UI controller manages channels gateway state.
 import type { ChannelsStatusSnapshot } from "../types.ts";
 import type {
@@ -103,10 +104,11 @@ async function ensureChannelEnabled(state: ChannelsState, channelId: string) {
   if (Object.keys(patch).length === 0) {
     return;
   }
-  await state.client.request("config.patch", {
+  const response = await state.client.request<ConfigWriteResponse>("config.patch", {
     raw: JSON.stringify(patch),
     baseHash: snapshot?.hash,
   });
+  noteConfigWriteRestart(response);
 }
 
 export async function enableAndStartChannel(state: ChannelsState, channelId: string) {
@@ -199,13 +201,14 @@ async function patchChannelContacts(
       return true;
     }
     const replaceKeys = result.replaceKeys ?? [];
-    await state.client.request("config.patch", {
+    const patchResponse = await state.client.request<ConfigWriteResponse>("config.patch", {
       raw: JSON.stringify({ channels: { [channelId]: result.section } }),
       baseHash: snapshot?.hash,
       ...(replaceKeys.length > 0
         ? { replacePaths: replaceKeys.map((key) => `channels.${channelId}.${key}`) }
         : {}),
     });
+    noteConfigWriteRestart(patchResponse);
     return true;
   } catch (err) {
     state.channelContactsError = String(err);
@@ -492,10 +495,11 @@ export async function disconnectChannel(state: ChannelsState, channelId: string)
     // Persist the disable so the channel stays disconnected across restarts.
     // config.patch deep-merges the raw object and requires the current hash.
     const snapshot = await state.client.request<{ hash?: string }>("config.get", {});
-    await state.client.request("config.patch", {
+    const disableResponse = await state.client.request<ConfigWriteResponse>("config.patch", {
       raw: JSON.stringify({ channels: { [channelId]: { enabled: false } } }),
       baseHash: snapshot?.hash,
     });
+    noteConfigWriteRestart(disableResponse);
   } catch (err) {
     state.channelsError = String(err);
   } finally {

@@ -240,6 +240,15 @@ export class WorkspaceVanishedError extends Error {
   }
 }
 
+/** Placeholder contents for a workspace's long-term memory file. */
+export const WORKSPACE_MEMORY_SEED = [
+  "# Memory",
+  "",
+  "Things worth remembering between conversations land here.",
+  "It stays empty until something is worth keeping.",
+  "",
+].join("\n");
+
 async function writeFileIfMissing(filePath: string, content: string): Promise<boolean> {
   try {
     await fs.writeFile(filePath, content, {
@@ -868,6 +877,7 @@ export async function ensureAgentWorkspace(params?: {
   const userPath = path.join(dir, DEFAULT_USER_FILENAME);
   const heartbeatPath = path.join(dir, DEFAULT_HEARTBEAT_FILENAME);
   const bootstrapPath = path.join(dir, DEFAULT_BOOTSTRAP_FILENAME);
+  const memoryPath = path.join(dir, DEFAULT_MEMORY_FILENAME);
   const statePath = resolveWorkspaceStatePath(dir);
 
   const isBrandNewWorkspace = await (async () => {
@@ -944,6 +954,10 @@ export async function ensureAgentWorkspace(params?: {
   if (shouldWriteBootstrapFile(DEFAULT_HEARTBEAT_FILENAME)) {
     await writeFileIfMissing(heartbeatPath, heartbeatTemplate);
   }
+  // Long-term memory only writes this file the first time something is worth
+  // remembering. Seeding it keeps the workspace panel from showing a fresh
+  // install a red "Missing" badge for a file that is working as intended.
+  await writeFileIfMissing(memoryPath, WORKSPACE_MEMORY_SEED);
 
   let state = await readWorkspaceSetupState(statePath, {
     persistLegacyMigration: true,

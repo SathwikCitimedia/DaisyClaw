@@ -714,6 +714,8 @@ export function loadGatewayPlugins(params: {
   pluginIds?: string[];
   pluginLookUpTable?: PluginLookUpTable;
   preferSetupRuntimeForChannelPlugins?: boolean;
+  /** Load channel plugins with their full runtime surface even when unconfigured. */
+  forceFullRuntimeForChannelPlugins?: boolean;
   suppressPluginInfoLogs?: boolean;
   startupTrace?: {
     detail: (name: string, metrics: ReadonlyArray<readonly [string, number | string]>) => void;
@@ -810,6 +812,9 @@ export function loadGatewayPlugins(params: {
       allowGatewaySubagentBinding: true,
     },
     preferSetupRuntimeForChannelPlugins: params.preferSetupRuntimeForChannelPlugins,
+    ...(params.forceFullRuntimeForChannelPlugins !== undefined && {
+      forceFullRuntimeForChannelPlugins: params.forceFullRuntimeForChannelPlugins,
+    }),
     preferBuiltPluginArtifacts: true,
     ...(params.startupTrace !== undefined && {
       startupTrace: params.startupTrace,

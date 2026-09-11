@@ -164,6 +164,8 @@ export type ChatProps = {
   composeLocked?: boolean;
   /** Friendly notice with a call to action, shown above the transcript. */
   setupNotice?: { title: string; body: string; actionLabel: string; onAction: () => void } | null;
+  /** Shown when a dropped connection cut a reply short, with a resend action. */
+  interruptedNotice?: { onSendAgain: () => void; onDismiss: () => void } | null;
   error: string | null;
   sessions: SessionsListResult | null;
   focusMode?: boolean;
@@ -2350,6 +2352,27 @@ export function renderChat(props: ChatProps) {
       @dragover=${(e: DragEvent) => e.preventDefault()}
     >
       ${props.disabledReason ? html`<div class="callout">${props.disabledReason}</div>` : nothing}
+      ${props.interruptedNotice
+        ? html`
+            <div class="chat-setup-notice" role="status" data-chat-interrupted-notice>
+              <div class="chat-setup-notice__text">
+                <span class="chat-setup-notice__title">${t("chat.interrupted.title")}</span>
+                <span class="chat-setup-notice__body">${t("chat.interrupted.body")}</span>
+              </div>
+              <div class="chat-setup-notice__actions">
+                <button
+                  class="btn primary btn--sm"
+                  @click=${() => props.interruptedNotice?.onSendAgain()}
+                >
+                  ${t("chat.interrupted.retry")}
+                </button>
+                <button class="btn btn--sm" @click=${() => props.interruptedNotice?.onDismiss()}>
+                  ${t("chat.interrupted.dismiss")}
+                </button>
+              </div>
+            </div>
+          `
+        : nothing}
       ${props.setupNotice
         ? html`
             <div class="chat-setup-notice" role="status" data-chat-setup-notice>

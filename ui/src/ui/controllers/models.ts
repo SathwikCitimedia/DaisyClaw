@@ -1,3 +1,4 @@
+import { noteConfigWriteRestart, type ConfigWriteResponse } from "../config-restart-notice.ts";
 // Control UI controller manages models gateway state.
 import type { GatewayBrowserClient } from "../gateway.ts";
 import type { ModelCatalogEntry } from "../types.ts";
@@ -104,11 +105,12 @@ async function patchConfig(
   if (!result) {
     return;
   }
-  await state.client.request("config.patch", {
+  const response = await state.client.request<ConfigWriteResponse>("config.patch", {
     raw: JSON.stringify(result.patch),
     baseHash: snapshot?.hash,
     ...(result.replacePaths?.length ? { replacePaths: result.replacePaths } : {}),
   });
+  noteConfigWriteRestart(response);
 }
 
 /** Store an API key for a bundled provider (anthropic, openai, google, groq, …). */
@@ -218,6 +220,60 @@ export async function probeCustomProvider(
   } catch {
     // Older gateways without the probe method: keep the generic answer.
     return fallback;
+  }
+}
+
+/** Verdict from a real test message sent through a provider. */
+export type ProviderTestResult = {
+  ok: boolean;
+  reason:
+    | "ok"
+    | "no_key"
+    | "invalid_key"
+    | "no_credit"
+    | "rate_limited"
+    | "model_not_found"
+    | "network"
+    | "timeout"
+    | "unknown_model"
+    | "unknown";
+  message: string;
+  provider: string;
+  model?: string;
+  status?: number;
+};
+
+/**
+ * Asks the gateway to send one tiny message through a provider so the user is
+ * told what is actually wrong (key rejected, no credit, no internet, model not
+ * available) instead of meeting "LLM request failed." in chat later.
+ *
+ * Returns null when the gateway is too old to know the method, so callers can
+ * carry on rather than block a working setup.
+ */
+export async function testProviderConnection(
+  client: GatewayBrowserClient | null,
+  input: { providerId: string; modelId?: string; apiKey?: string },
+): Promise<ProviderTestResult | null> {
+  if (!client) {
+    return null;
+  }
+  try {
+    const result = await client.request<ProviderTestResult>(
+      "models.testProvider",
+      {
+        providerId: input.providerId,
+        ...(input.modelId?.trim() ? { modelId: input.modelId.trim() } : {}),
+        ...(input.apiKey?.trim() ? { apiKey: input.apiKey.trim() } : {}),
+      },
+      { timeoutMs: 40_000 },
+    );
+    if (!result || typeof result !== "object" || typeof result.ok !== "boolean") {
+      return null;
+    }
+    return result;
+  } catch {
+    return null;
   }
 }
 

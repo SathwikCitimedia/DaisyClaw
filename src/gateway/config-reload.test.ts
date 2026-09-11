@@ -251,7 +251,11 @@ describe("buildGatewayReloadPlan", () => {
 
     setActivePluginRegistry(activeOnlyRegistry);
     const beforePinPlan = buildGatewayReloadPlan(["channels.telegram.botToken"]);
-    expect(beforePinPlan.restartGateway).toBe(true);
+    // With no channel plugin loaded the change is applied by reloading plugins.
+    // It must not restart the gateway: that drops the user's connection (and any
+    // running reply) in the middle of channel setup.
+    expect(beforePinPlan.restartGateway).toBe(false);
+    expect(beforePinPlan.reloadPlugins).toBe(true);
     expect(beforePinPlan.restartChannels).toEqual(new Set());
 
     pinActivePluginChannelRegistry(channelOnlyRegistry);
@@ -560,6 +564,40 @@ describe("buildGatewayReloadPlan", () => {
     if (testCase.expectDisposeMcpRuntimes) {
       expect(plan.disposeMcpRuntimes).toBe(true);
     }
+  });
+});
+
+describe("buildGatewayReloadPlan channel fallbacks", () => {
+  const emptyRegistry = createTestRegistry([]);
+
+  beforeEach(() => {
+    resetPluginRuntimeStateForTest();
+    setActivePluginRegistry(emptyRegistry);
+  });
+
+  afterEach(() => {
+    resetPluginRuntimeStateForTest();
+    setActivePluginRegistry(emptyRegistry);
+  });
+
+  it("applies channel config in place instead of restarting when no plugin owns it", () => {
+    // A bundled channel the user has not set up yet has no loaded plugin, so no
+    // plugin-contributed prefix matches. Restarting the gateway here is what
+    // dropped the user's connection mid-setup.
+    const plan = buildGatewayReloadPlan(["channels.whatsapp.enabled"]);
+    expect(plan.restartGateway).toBe(false);
+    expect(plan.reloadPlugins).toBe(true);
+  });
+
+  it("treats the whatsapp web section the same way", () => {
+    const plan = buildGatewayReloadPlan(["web.enabled"]);
+    expect(plan.restartGateway).toBe(false);
+    expect(plan.reloadPlugins).toBe(true);
+  });
+
+  it("still restarts for gateway-level config", () => {
+    const plan = buildGatewayReloadPlan(["gateway.port"]);
+    expect(plan.restartGateway).toBe(true);
   });
 });
 

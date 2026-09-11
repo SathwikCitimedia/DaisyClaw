@@ -34,17 +34,9 @@ internal static class NativeGatewaySupervisor
         {
             var (port, token, found) = ReadNativeGatewayConfig();
             var gatewayUrl = $"ws://127.0.0.1:{port}";
-            if (!found)
-            {
-                return new EnsureResult(
-                    false,
-                    gatewayUrl,
-                    null,
-                    "DaisyClaw is not set up on this PC (no %USERPROFILE%\\.daisyclaw\\daisyclaw.json).");
-            }
+            var healthy = found && await ProbeHealthAsync(port);
 
-            var healthy = await ProbeHealthAsync(port);
-            if (!healthy)
+            if (!healthy && found)
             {
                 logger?.Info($"[NativeGateway] gateway not responding on {port}; starting task '{GatewayTaskName}'");
                 TryRunScheduledTask(GatewayTaskName);
@@ -53,6 +45,39 @@ internal static class NativeGatewaySupervisor
                     await Task.Delay(TimeSpan.FromSeconds(2));
                     healthy = await ProbeHealthAsync(port);
                 }
+            }
+
+            if (!healthy)
+            {
+                // No config yet (fresh install where the installer's service
+                // step failed), or the scheduled task is missing/broken: let
+                // the bundled engine register itself. Same script the
+                // installer runs, so this is a repair, not a second path.
+                if (TryLocateBundledEngineScript() is { } engineScript)
+                {
+                    logger?.Info($"[NativeGateway] repairing gateway service with bundled engine ({engineScript})");
+                    var repaired = await RunEngineActionAsync(engineScript, "install", TimeSpan.FromSeconds(150), logger);
+                    (port, token, found) = ReadNativeGatewayConfig();
+                    gatewayUrl = $"ws://127.0.0.1:{port}";
+                    healthy = found && await ProbeHealthAsync(port);
+                    for (var attempt = 0; attempt < 10 && !healthy; attempt++)
+                    {
+                        await Task.Delay(TimeSpan.FromSeconds(2));
+                        (port, token, found) = ReadNativeGatewayConfig();
+                        gatewayUrl = $"ws://127.0.0.1:{port}";
+                        healthy = found && await ProbeHealthAsync(port);
+                    }
+                    logger?.Info($"[NativeGateway] repair exit={repaired} healthy={healthy}");
+                }
+            }
+
+            if (!found)
+            {
+                return new EnsureResult(
+                    false,
+                    gatewayUrl,
+                    null,
+                    "DaisyClaw is not set up on this PC (no %USERPROFILE%\\.daisyclaw\\daisyclaw.json).");
             }
 
             if (!healthy)
@@ -158,6 +183,8 @@ internal static class NativeGatewaySupervisor
         _ = Task.Run(async () =>
         {
             var consecutiveFailures = 0;
+            var restartsWithoutRecovery = 0;
+            var lastEngineRepair = DateTime.MinValue;
             while (true)
             {
                 try
@@ -169,6 +196,7 @@ internal static class NativeGatewaySupervisor
                     if (await ProbeHealthAsync(port))
                     {
                         consecutiveFailures = 0;
+                        restartsWithoutRecovery = 0;
                         continue;
                     }
 
@@ -180,7 +208,22 @@ internal static class NativeGatewaySupervisor
 
                     logger?.Warn($"[NativeGateway] watchdog: gateway down on {port}; restarting '{GatewayTaskName}'");
                     TryRunScheduledTask(GatewayTaskName);
+                    restartsWithoutRecovery++;
                     consecutiveFailures = 0;
+
+                    // Three restarts in a row without recovery means the task
+                    // itself is gone or broken (e.g. deleted by the user):
+                    // re-register it from the bundled engine, at most once
+                    // per 10 minutes so a truly broken engine cannot spin.
+                    if (restartsWithoutRecovery >= 3
+                        && DateTime.UtcNow - lastEngineRepair > TimeSpan.FromMinutes(10)
+                        && TryLocateBundledEngineScript() is { } engineScript)
+                    {
+                        lastEngineRepair = DateTime.UtcNow;
+                        restartsWithoutRecovery = 0;
+                        logger?.Warn("[NativeGateway] watchdog: repairing gateway service with bundled engine");
+                        await RunEngineActionAsync(engineScript, "install", TimeSpan.FromSeconds(150), logger);
+                    }
                 }
                 catch
                 {
@@ -202,6 +245,89 @@ internal static class NativeGatewaySupervisor
         catch
         {
             return false;
+        }
+    }
+
+    /// <summary>
+    /// Path of the bundled engine's service script (<c>engine\\Manage-DaisyGateway.ps1</c>
+    /// next to the tray executable), or null on installs without a bundled engine
+    /// (developer machines running the gateway from source or npm).
+    /// </summary>
+    internal static string? TryLocateBundledEngineScript()
+    {
+        try
+        {
+            var candidate = Path.Combine(AppContext.BaseDirectory, "engine", "Manage-DaisyGateway.ps1");
+            return File.Exists(candidate) && File.Exists(Path.Combine(AppContext.BaseDirectory, "engine", "node.exe"))
+                ? candidate
+                : null;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Runs the bundled engine's service script hidden (install/start/stop/uninstall)
+    /// and returns its exit code, or -1 when it could not run or timed out. Never throws.
+    /// </summary>
+    internal static async Task<int> RunEngineActionAsync(
+        string engineScript,
+        string action,
+        TimeSpan timeout,
+        IDaisyClawLogger? logger = null)
+    {
+        try
+        {
+            var engineRoot = Path.GetDirectoryName(engineScript) ?? AppContext.BaseDirectory;
+            var logPath = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                AppIdentity.DataDirectoryName,
+                "logs",
+                "gateway-setup.log");
+            var powershell = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.Windows),
+                "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
+            var startInfo = new ProcessStartInfo
+            {
+                FileName = File.Exists(powershell) ? powershell : "powershell.exe",
+                WorkingDirectory = engineRoot,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+            };
+            foreach (var arg in new[]
+            {
+                "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
+                "-File", engineScript,
+                "-Action", action,
+                "-EngineRoot", engineRoot,
+                "-LogPath", logPath,
+            })
+            {
+                startInfo.ArgumentList.Add(arg);
+            }
+
+            using var process = Process.Start(startInfo);
+            if (process is null)
+                return -1;
+            using var cts = new CancellationTokenSource(timeout);
+            try
+            {
+                await process.WaitForExitAsync(cts.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                logger?.Warn($"[NativeGateway] engine {action} timed out after {timeout.TotalSeconds:N0}s");
+                try { process.Kill(entireProcessTree: true); } catch { }
+                return -1;
+            }
+            return process.ExitCode;
+        }
+        catch (Exception ex)
+        {
+            logger?.Warn($"[NativeGateway] engine {action} failed to run: {ex.Message}");
+            return -1;
         }
     }
 

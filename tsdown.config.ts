@@ -37,6 +37,10 @@ type ExternalOptionFunction = (
 
 const env = {
   NODE_ENV: "production",
+  // Consumer (.exe) packaging sets this to "1" so the built dist bakes the
+  // SOUL lockdown on; see src/infra/consumer-lockdown.ts.
+  DAISYCLAW_CONSUMER_LOCKDOWN_BAKED:
+    process.env.DAISYCLAW_CONSUMER_LOCKDOWN_BAKED === "1" ? "1" : "0",
 };
 const OUTPUT_SOURCE_MAPS = process.env.OUTPUT_SOURCE_MAPS === "1";
 const RUN_NODE_SKIP_DTS_BUILD = process.env.DAISYCLAW_RUN_NODE_SKIP_DTS_BUILD === "1";

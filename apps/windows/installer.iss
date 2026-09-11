@@ -88,6 +88,22 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
   #error SetupEngine.UI.exe should not be shipped. Setup UI is hosted by DaisyClaw.Tray.WinUI.exe.
 #endif
 
+; engine folder (private node.exe + built gateway + production node_modules),
+; produced by scripts\Build-EngineBundle.ps1. Pass via /Dengine=<path>.
+#ifndef engine
+  #define engine "engine-" + MyAppArch
+#endif
+
+#if !FileExists(engine + "\node.exe")
+  #error Engine payload missing (node.exe). Run scripts\Build-EngineBundle.ps1 before compiling the installer.
+#endif
+#if !FileExists(engine + "\dist\index.js")
+  #error Engine payload missing (dist\index.js). Run scripts\Build-EngineBundle.ps1 before compiling the installer.
+#endif
+#if !FileExists(engine + "\Manage-DaisyGateway.ps1")
+  #error Engine payload missing (Manage-DaisyGateway.ps1). Run scripts\Build-EngineBundle.ps1 before compiling the installer.
+#endif
+
 ; vcRedist should point at the architecture-matching Visual C++ Runtime
 ; redistributable in CI release builds.
 #ifndef vcRedist
@@ -101,6 +117,9 @@ Name: "startupicon"; Description: "Start {#MyAppName} when Windows starts"; Grou
 [Files]
 ; WinUI Tray app - include all files (WinUI needs DLLs, not single-file)
 Source: "{#publish}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs
+; Self-contained gateway engine. Runs as the per-user scheduled task
+; "DaisyClaw Gateway", registered by [Code] right after the files land.
+Source: "{#engine}\*"; DestDir: "{app}\engine"; Flags: ignoreversion recursesubdirs createallsubdirs
 ; WSL gateway uninstall helper copied to {tmp} by [Code] during uninstall.
 Source: "scripts\Uninstall-LocalGateway.ps1"; DestDir: "{app}"; Flags: ignoreversion
 #if vcRedist != ""
@@ -129,6 +148,100 @@ var
   LocalGatewayCleanupChoiceInitialized: Boolean;
   LocalGatewayCleanupRequested: Boolean;
   LocalGatewayCleanupSucceeded: Boolean;
+  UserDataRemovalRequested: Boolean;
+
+// ---------------------------------------------------------------------------
+// Bundled gateway engine ({app}\engine): the per-user "DaisyClaw Gateway"
+// scheduled task is created/repaired by the engine's own CLI through
+// Manage-DaisyGateway.ps1, so the task carries the same tested settings as a
+// CLI install (ONLOGON, keep running on battery, hidden launcher, single
+// instance). Every call is hidden and logged to {app}\gateway-setup.log.
+// ---------------------------------------------------------------------------
+function EngineScriptPath: string;
+begin
+  Result := ExpandConstant('{app}\engine\Manage-DaisyGateway.ps1');
+end;
+
+function RunEngineAction(const Action: string; var ResultCode: Integer): Boolean;
+var
+  Params: string;
+begin
+  if not FileExists(EngineScriptPath) then
+  begin
+    ResultCode := 4;
+    Log('Engine script missing, skipping gateway ' + Action + ': ' + EngineScriptPath);
+    Result := False;
+    Exit;
+  end;
+
+  Params :=
+    '-NoProfile -NonInteractive -ExecutionPolicy Bypass -File ' + AddQuotes(EngineScriptPath) +
+    ' -Action ' + Action +
+    ' -EngineRoot ' + AddQuotes(ExpandConstant('{app}\engine')) +
+    ' -LogPath ' + AddQuotes(ExpandConstant('{app}\gateway-setup.log'));
+
+  Log('Gateway ' + Action + ': powershell ' + Params);
+  Result :=
+    Exec(
+      ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'),
+      Params,
+      ExpandConstant('{app}\engine'),
+      SW_HIDE,
+      ewWaitUntilTerminated,
+      ResultCode);
+
+  if Result then
+    Log('Gateway ' + Action + ' exited with code ' + IntToStr(ResultCode) + '.')
+  else
+    Log('Failed to start gateway ' + Action + '. System error: ' + IntToStr(ResultCode) + '.');
+end;
+
+procedure StopGatewayBeforeUpgrade;
+var
+  ResultCode: Integer;
+begin
+  // Upgrade over an existing install: the running gateway holds engine files
+  // open, so stop it before Inno replaces them. First installs have no engine
+  // yet and skip silently.
+  if FileExists(EngineScriptPath) then
+  begin
+    WizardForm.StatusLabel.Caption := 'Stopping the Daisy service...';
+    RunEngineAction('stop', ResultCode);
+  end;
+end;
+
+procedure InstallAndStartGateway;
+var
+  ResultCode: Integer;
+  Started: Boolean;
+begin
+  WizardForm.StatusLabel.Caption := 'Starting Daisy...';
+  Started := RunEngineAction('install', ResultCode);
+  if Started and (ResultCode = 0) then
+  begin
+    Log('Gateway service installed and healthy.');
+    Exit;
+  end;
+
+  // Non-fatal: the tray app repairs the service on every launch using the same
+  // script, so the install still completes. Tell the user only when not silent.
+  Log('Gateway service install did not complete cleanly (code ' + IntToStr(ResultCode) + '); the app will retry on launch.');
+  if not WizardSilent() then
+    MsgBox(
+      'Daisy Assistant was installed, but its background service could not be started yet.' + #13#10#13#10 +
+      'It will try again automatically when you open Daisy Assistant.' + #13#10 +
+      'Details: ' + ExpandConstant('{app}\gateway-setup.log'),
+      mbInformation,
+      MB_OK);
+end;
+
+procedure CurStepChanged(CurStep: TSetupStep);
+begin
+  if CurStep = ssInstall then
+    StopGatewayBeforeUpgrade
+  else if CurStep = ssPostInstall then
+    InstallAndStartGateway;
+end;
 
 #if vcRedist != ""
 procedure InstallVCRuntime;
@@ -181,24 +294,70 @@ begin
 
   if UninstallSilent() then
   begin
-    LocalGatewayCleanupRequested := True;
-    Log('Silent uninstall: local gateway cleanup will run automatically.');
+    // Silent uninstall never deletes the user's conversations and settings.
+    UserDataRemovalRequested := False;
+    LocalGatewayCleanupRequested := False;
+    Log('Silent uninstall: keeping user data.');
   end
   else
   begin
-    LocalGatewayCleanupRequested :=
+    UserDataRemovalRequested :=
       MsgBox(
-        'Do you also want to remove the Daisy local WSL gateway?' + #13#10#13#10 +
-        'Choose Yes to unregister the {#MyDistroName} WSL distro and remove generated local gateway state.' + #13#10 +
-        'Choose No to leave the local gateway and generated local state on this computer.',
+        'Do you also want to delete your Daisy data?' + #13#10#13#10 +
+        'This removes your conversations, memory, settings and API keys stored on this computer' + #13#10 +
+        '(' + ExpandConstant('{%USERPROFILE}\.daisyclaw') + ' and ' + ExpandConstant('{userappdata}\{#MyInstallDir}') + ').' + #13#10#13#10 +
+        'Choose No to keep them for a future reinstall.',
         mbConfirmation,
-        MB_YESNO) = IDYES;
+        MB_YESNO or MB_DEFBUTTON2) = IDYES;
 
-    if LocalGatewayCleanupRequested then
-      Log('User chose to remove the local WSL gateway.')
+    // The legacy WSL gateway only exists on developer machines that used the
+    // fork's WSL flow; clean it up only together with the user's data.
+    LocalGatewayCleanupRequested :=
+      UserDataRemovalRequested and DirExists(ExpandConstant('{app}\wsl'));
+
+    if UserDataRemovalRequested then
+      Log('User chose to delete Daisy data.')
     else
-      Log('User chose to preserve the local WSL gateway and generated state.');
+      Log('User chose to keep Daisy data.');
   end;
+end;
+
+procedure RemoveGatewayService;
+var
+  ResultCode: Integer;
+begin
+  UninstallProgressForm.StatusLabel.Caption := 'Stopping the Daisy service...';
+  RunEngineAction('uninstall', ResultCode);
+end;
+
+procedure DeleteUserData;
+var
+  Target: string;
+begin
+  if not UserDataRemovalRequested then
+    Exit;
+
+  Target := ExpandConstant('{%USERPROFILE}\.daisyclaw');
+  if DirExists(Target) then
+  begin
+    if DelTree(Target, True, True, True) then
+      Log('Deleted Daisy data at ' + Target)
+    else
+      Log('Could not fully delete ' + Target);
+  end;
+
+  Target := ExpandConstant('{userappdata}\{#MyInstallDir}');
+  if DirExists(Target) then
+  begin
+    if DelTree(Target, True, True, True) then
+      Log('Deleted app settings at ' + Target)
+    else
+      Log('Could not fully delete ' + Target);
+  end;
+
+  Target := ExpandConstant('{localappdata}\{#MyInstallDir}\logs');
+  if DirExists(Target) then
+    DelTree(Target, True, True, True);
 end;
 
 function RunLocalGatewayCleanupOnce(var ResultCode: Integer): Boolean;
@@ -296,7 +455,7 @@ end;
 
 procedure DeleteGeneratedAppState;
 begin
-  if not LocalGatewayCleanupSucceeded then
+  if not (LocalGatewayCleanupSucceeded or UserDataRemovalRequested) then
     Exit;
 
   if DelTree(ExpandConstant('{app}'), True, True, True) then
@@ -337,11 +496,15 @@ begin
   if CurUninstallStep = usUninstall then
   begin
     RemoveAppAutoStart;
+    // Engine files are still on disk here, so the gateway's own CLI can stop
+    // and unregister its scheduled task before Inno deletes {app}.
+    RemoveGatewayService;
     EnsureLocalGatewayCleanupChoice;
     RunLocalGatewayCleanup;
   end
   else if CurUninstallStep = usPostUninstall then
   begin
+    DeleteUserData;
     DeleteGeneratedAppState;
   end;
 end;

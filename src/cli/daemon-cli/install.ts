@@ -13,7 +13,10 @@ import { readConfigFileSnapshotForWrite } from "../../config/io.js";
 import { replaceConfigFile } from "../../config/mutate.js";
 import { resolveGatewayPort } from "../../config/paths.js";
 import type { DaisyClawConfig } from "../../config/types.js";
-import { DAISYCLAW_WRAPPER_ENV_KEY, resolveDaisyClawWrapperPath } from "../../daemon/program-args.js";
+import {
+  DAISYCLAW_WRAPPER_ENV_KEY,
+  resolveDaisyClawWrapperPath,
+} from "../../daemon/program-args.js";
 import { readEmbeddedGatewayToken } from "../../daemon/service-audit.js";
 import { resolveGatewayService } from "../../daemon/service.js";
 import type { GatewayServiceCommandConfig } from "../../daemon/service.js";
@@ -129,14 +132,23 @@ export async function runDaemonInstall(opts: DaemonInstallOptions) {
   }
   if (configSnapshot.valid && cfg.gateway?.mode === undefined) {
     const baseConfig = configSnapshot.sourceConfig ?? configSnapshot.config;
+    // Fresh machine (no config file yet — the packaged installer runs
+    // `gateway install` before the gateway ever starts): seed the same
+    // first-run defaults the gateway would have created itself, so the
+    // consumer skill pack is applied and a token exists. Otherwise only
+    // add the missing gateway.mode and leave the user's config alone.
+    const { buildFirstRunConfig } = await import("../../commands/first-run-init.js");
+    const nextConfig = configSnapshot.exists
+      ? {
+          ...baseConfig,
+          gateway: {
+            ...baseConfig.gateway,
+            mode: "local" as const,
+          },
+        }
+      : buildFirstRunConfig(baseConfig).config;
     await replaceConfigFile({
-      nextConfig: {
-        ...baseConfig,
-        gateway: {
-          ...baseConfig.gateway,
-          mode: "local",
-        },
-      },
+      nextConfig,
       snapshot: configSnapshot,
       writeOptions: {
         baseSnapshot: configSnapshot,

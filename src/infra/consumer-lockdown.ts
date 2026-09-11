@@ -8,8 +8,11 @@
  * template. Dev installs keep full workspace editing.
  */
 
-// Flipped to `true` by the consumer packaging step. Do not edit by hand.
-const CONSUMER_LOCKDOWN_BAKED = false;
+// Baked at build time: the consumer packaging step builds the host with
+// DAISYCLAW_CONSUMER_LOCKDOWN_BAKED=1, which tsdown inlines (see the `env`
+// block in tsdown.config.ts) so the packaged dist carries a literal `true`.
+// Dev builds and source runs leave it unset and stay unlocked.
+const CONSUMER_LOCKDOWN_BAKED = process.env.DAISYCLAW_CONSUMER_LOCKDOWN_BAKED === "1";
 
 /**
  * True when the consumer lockdown applies.

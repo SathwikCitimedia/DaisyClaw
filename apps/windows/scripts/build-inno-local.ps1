@@ -32,7 +32,13 @@ param(
 
     [switch]$Dev,
 
-    [switch]$InstallInno
+    [switch]$InstallInno,
+
+    # Engine folder produced by .\scripts\Build-EngineBundle.ps1 (node.exe + dist +
+    # node_modules). Defaults to .\engine-<arch>. Pass -BuildEngine to build it first.
+    [string]$EngineDir,
+
+    [switch]$BuildEngine
 )
 
 Set-StrictMode -Version Latest
@@ -151,7 +157,8 @@ function Invoke-InnoCompiler {
         [string]$InnoCompiler,
         [string]$Architecture,
         [string]$PublishDir,
-        [string]$InstallerVersion
+        [string]$InstallerVersion,
+        [string]$EngineDir
     )
 
     Write-Step "Compiling $Architecture installer"
@@ -159,7 +166,8 @@ function Invoke-InnoCompiler {
     $args = @(
         "/DMyAppVersion=$InstallerVersion",
         "/DMyAppArch=$Architecture",
-        "/Dpublish=$PublishDir"
+        "/Dpublish=$PublishDir",
+        "/Dengine=$EngineDir"
     )
 
     if ($Fast) {
@@ -208,11 +216,18 @@ foreach ($architecture in $architectures) {
     }
 
     $payload = Assert-PayloadReady $architecture
-    Invoke-InnoCompiler -InnoCompiler $iscc -Architecture $architecture -PublishDir $payload -InstallerVersion $Version
+    $engine = if ($EngineDir) { $EngineDir } else { Join-Path $repoRoot "engine-$architecture" }
+    if ($BuildEngine) {
+        & (Join-Path $PSScriptRoot "Build-EngineBundle.ps1") -OutputDir $engine
+    }
+    if (-not (Test-Path -LiteralPath (Join-Path $engine "node.exe"))) {
+        throw "Engine bundle missing at $engine. Run .\scripts\Build-EngineBundle.ps1 (or pass -BuildEngine)."
+    }
+    Invoke-InnoCompiler -InnoCompiler $iscc -Architecture $architecture -PublishDir $payload -InstallerVersion $Version -EngineDir (Resolve-Path -LiteralPath $engine).Path
 }
 
 Write-Step "Built installers"
-Get-ChildItem -Path (Join-Path $repoRoot "Output\DaisyClawCompanion*-Setup-*.exe") |
+Get-ChildItem -Path (Join-Path $repoRoot "Output\DaisyAssistant*-Setup-*.exe") |
     Sort-Object Name |
     ForEach-Object {
         "{0}`t{1:N2} MB`t{2}" -f $_.FullName, ($_.Length / 1MB), $_.LastWriteTime

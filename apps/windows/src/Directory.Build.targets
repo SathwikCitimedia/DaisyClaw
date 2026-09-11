@@ -41,6 +41,19 @@
       <Output TaskParameter="ConsoleOutput" PropertyName="_DaisyClawVsInstallRoot" />
     </Exec>
 
+    <!--
+      Fallback: some VS installs carry the redist folder (via the C++ build
+      tools) without registering the VC.Redist.14.Latest component id, so the
+      -requires query above comes back empty. Take the latest VS install and
+      let the "No VC++ Runtime DLLs were found" check below decide.
+    -->
+    <Exec Condition="'$(_DaisyClawVsInstallRoot)' == ''"
+          Command="&quot;$(_DaisyClawVsWherePath)&quot; -latest -products * -property installationPath"
+          ConsoleToMSBuild="true"
+          IgnoreExitCode="true">
+      <Output TaskParameter="ConsoleOutput" PropertyName="_DaisyClawVsInstallRoot" />
+    </Exec>
+
     <Error Condition="'$(_DaisyClawVsInstallRoot)' == '' or !Exists('$(_DaisyClawVsInstallRoot)')"
            Text="vswhere did not find a Visual Studio install with the C++ Redistributable (Microsoft.VisualStudio.Component.VC.Redist.14.Latest) component (got '$(_DaisyClawVsInstallRoot)'). Install that component via the Visual Studio Installer (Individual Components tab)." />
 

@@ -99,6 +99,9 @@ vi.mock("../../config/mutate.js", () => ({
 vi.mock("../../config/paths.js", () => ({
   resolveGatewayPort: resolveGatewayPortMock,
   resolveIsNixMode: resolveIsNixModeMock,
+  // Reached via the token install policy when the seeded config already
+  // carries a token; point it at a throwaway state dir with no .env files.
+  resolveStateDir: vi.fn(() => "/tmp/daisyclaw-install-test-state"),
 }));
 
 vi.mock("../../commands/gateway-install-token.persist.runtime.js", () => ({
@@ -441,6 +444,43 @@ describe("runDaemonInstall", () => {
         auth: { mode: "token", token: "durable-token" },
       },
     });
+  });
+
+  it("seeds the full first-run config when no config file exists yet", async () => {
+    // Packaged installer path: `gateway install` runs before the gateway ever
+    // starts, so it must create the same first-run defaults the gateway would
+    // (local mode, generated token, consumer skill pack), not just gateway.mode.
+    const seeded = {
+      gateway: { mode: "local", auth: { token: "generated-token" } },
+    };
+    readConfigFileSnapshotMock
+      .mockResolvedValueOnce({
+        exists: false,
+        valid: true,
+        config: {},
+        sourceConfig: {},
+      })
+      .mockResolvedValue({
+        exists: true,
+        valid: true,
+        config: seeded,
+        sourceConfig: seeded,
+      });
+
+    await runDaemonInstall({ json: true });
+
+    expect(actionState.failed).toStrictEqual([]);
+    // First write is the seed; a later token write may follow via the normal
+    // auto-mint path, which is not what this test is about.
+    expect(replaceConfigFileMock).toHaveBeenCalled();
+    const next = readFirstConfigWriteParams().nextConfig as {
+      gateway?: { mode?: string; auth?: { token?: string } };
+      skills?: { entries?: Record<string, unknown> };
+    };
+    expect(next.gateway?.mode).toBe("local");
+    expect(next.gateway?.auth?.token).toBe("generated-token");
+    // The default skill pack hides the dev/ops catalog via skills.entries.
+    expect(Object.keys(next.skills?.entries ?? {}).length).toBeGreaterThan(0);
   });
 
   it("does not persist gateway mode when runtime validation fails", async () => {

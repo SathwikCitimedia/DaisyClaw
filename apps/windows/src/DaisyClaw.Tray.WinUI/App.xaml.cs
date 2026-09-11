@@ -862,6 +862,16 @@ public partial class App : Application, DaisyClawTray.Services.IAppCommands, IPe
                     Logger.Info("First run: opening dashboard for onboarding.");
                     OpenDashboard();
                 }
+                else if (NativeGatewaySupervisor.TryLocateBundledEngineScript() is not null)
+                {
+                    // Consumer install: the bundled engine is the only gateway
+                    // this app knows. Never show the fork's WSL/pairing setup
+                    // window; report the failure and let the watchdog keep
+                    // trying (it re-registers the service from the engine).
+                    Logger.Warn($"First run: bundled gateway not ready ({ensure.Error}); watchdog will keep repairing.");
+                    ShowTransientConnectionError(
+                        "Daisy is still starting. It will open automatically once ready; if this keeps happening, restart your PC.");
+                }
                 else
                 {
                     Logger.Warn("First run: no native gateway; falling back to setup window.");

@@ -59,7 +59,7 @@ import {
 } from "./controllers/agents.ts";
 import { setAssistantAvatarOverride } from "./controllers/assistant-identity.ts";
 import { loadChannels } from "./controllers/channels.ts";
-import { loadChatHistory } from "./controllers/chat.ts";
+import { hasOlderChatHistory, loadChatHistory, loadOlderChatHistory } from "./controllers/chat.ts";
 import {
   applyConfig,
   ensureAgentConfigEntry,
@@ -4421,6 +4421,11 @@ export function renderApp(state: AppViewState) {
                   canSend: state.connected && state.modelSetupMissing !== true,
                   disabledReason: chatDisabledReason,
                   composeLocked: state.modelSetupMissing === true,
+                  onLoadOlderHistory: () => {
+                    void loadOlderChatHistory(state);
+                  },
+                  loadingOlderHistory: state.chatLoadingOlder === true,
+                  hasOlderHistory: hasOlderChatHistory(state),
                   interruptedNotice:
                     state.chatInterrupted &&
                     state.chatInterrupted.sessionKey === state.sessionKey &&

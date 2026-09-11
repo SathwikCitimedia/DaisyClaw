@@ -32,7 +32,7 @@ import {
   renderReadingIndicatorGroup,
   renderStreamingGroup,
 } from "../chat/grouped-render.ts";
-import { CHAT_HISTORY_RENDER_LIMIT } from "../chat/history-limits.ts";
+import { CHAT_HISTORY_RENDER_LIMIT_MAX } from "../chat/history-limits.ts";
 import type { ChatInputHistoryKeyInput, ChatInputHistoryKeyResult } from "../chat/input-history.ts";
 import { PinnedMessages } from "../chat/pinned-messages.ts";
 import { getPinnedMessageSummary } from "../chat/pinned-summary.ts";
@@ -166,6 +166,12 @@ export type ChatProps = {
   setupNotice?: { title: string; body: string; actionLabel: string; onAction: () => void } | null;
   /** Shown when a dropped connection cut a reply short, with a resend action. */
   interruptedNotice?: { onSendAgain: () => void; onDismiss: () => void } | null;
+  /** Reaches further back in the conversation; absent when everything is loaded. */
+  onLoadOlderHistory?: () => void;
+  /** True while older messages are being fetched. */
+  loadingOlderHistory?: boolean;
+  /** False once the whole conversation is on screen. */
+  hasOlderHistory?: boolean;
   error: string | null;
   sessions: SessionsListResult | null;
   focusMode?: boolean;
@@ -568,6 +574,8 @@ interface ChatEphemeralState {
   historyRenderLimit: number;
   historyRenderLastScrollTop: number | null;
   historyRenderExpansionFrame: number | null;
+  /** True between asking for older messages and them landing on screen. */
+  historyOlderAnchorPending: boolean;
   historyRenderAnchorAdjustment: {
     scrollHeight: number;
     scrollTop: number;
@@ -596,6 +604,7 @@ function createChatEphemeralState(): ChatEphemeralState {
     historyRenderLimit: 0,
     historyRenderLastScrollTop: null,
     historyRenderExpansionFrame: null,
+    historyOlderAnchorPending: false,
     historyRenderAnchorAdjustment: null,
     historyRenderAnchorFrame: null,
   };
@@ -717,7 +726,7 @@ export function resetChatViewState() {
 export const cleanupChatModuleState = resetChatViewState;
 
 function resolveChatHistoryRenderCap(messageCount: number): number {
-  return Math.min(Math.max(0, messageCount), CHAT_HISTORY_RENDER_LIMIT);
+  return Math.min(Math.max(0, messageCount), CHAT_HISTORY_RENDER_LIMIT_MAX);
 }
 
 function shouldRenderFullChatHistoryWindow(messageCount: number): boolean {
@@ -777,7 +786,11 @@ function resolveChatHistoryRenderWindow(props: ChatProps): number {
   return vs.historyRenderLimit;
 }
 
-function maybeExpandChatHistoryRenderWindow(event: Event, requestUpdate: () => void) {
+function maybeExpandChatHistoryRenderWindow(
+  event: Event,
+  requestUpdate: () => void,
+  loadOlder?: () => void,
+) {
   const target = event.currentTarget;
   if (!(target instanceof HTMLElement)) {
     return;
@@ -798,6 +811,9 @@ function maybeExpandChatHistoryRenderWindow(event: Event, requestUpdate: () => v
   }
   const cap = resolveChatHistoryRenderCap(vs.historyRenderMessageCount);
   if (vs.historyRenderLimit >= cap) {
+    // Everything fetched is already on screen: reach further back instead of
+    // silently doing nothing, which is what made the transcript feel truncated.
+    loadOlder?.();
     return;
   }
   vs.historyRenderAnchorAdjustment = {
@@ -807,6 +823,45 @@ function maybeExpandChatHistoryRenderWindow(event: Event, requestUpdate: () => v
   scheduleChatHistoryRenderAnchorPreservation(target);
   vs.historyRenderLimit = Math.min(cap, vs.historyRenderLimit + CHAT_HISTORY_RENDER_WINDOW_BATCH);
   requestUpdate();
+}
+
+/**
+ * Top-of-transcript control. Without it a long conversation just stopped, with
+ * no sign that anything older existed or any way to ask for it.
+ */
+function renderChatHistoryTop(
+  props: ChatProps,
+  requestOlder: (thread?: HTMLElement | null) => void,
+) {
+  if (!props.onLoadOlderHistory) {
+    return nothing;
+  }
+  const messageCount = Array.isArray(props.messages) ? props.messages.length : 0;
+  if (messageCount === 0) {
+    return nothing;
+  }
+  if (props.loadingOlderHistory) {
+    return html`<div class="chat-history-top" data-chat-history-top>
+      <span class="chat-history-top__status">${t("chat.history.loadingOlder")}</span>
+    </div>`;
+  }
+  if (props.hasOlderHistory === false) {
+    return html`<div class="chat-history-top" data-chat-history-top>
+      <span class="chat-history-top__status muted">${t("chat.history.beginning")}</span>
+    </div>`;
+  }
+  return html`<div class="chat-history-top" data-chat-history-top>
+    <button
+      class="btn btn--sm"
+      data-chat-load-older
+      @click=${(event: MouseEvent) => {
+        const thread = (event.currentTarget as HTMLElement | null)?.closest(".chat-thread");
+        requestOlder(thread instanceof HTMLElement ? thread : null);
+      }}
+    >
+      ${t("chat.history.loadOlder")}
+    </button>
+  </div>`;
 }
 
 function scheduleChatHistoryRenderAnchorPreservation(thread: HTMLElement) {
@@ -1829,8 +1884,23 @@ export function renderChat(props: ChatProps) {
       () => {},
     );
   };
+  const requestOlderHistory = (thread?: HTMLElement | null) => {
+    if (!props.onLoadOlderHistory || props.loadingOlderHistory || props.hasOlderHistory === false) {
+      return;
+    }
+    if (thread) {
+      // Keep the reading position when the older page lands on top.
+      vs.historyRenderAnchorAdjustment = {
+        scrollHeight: thread.scrollHeight,
+        scrollTop: thread.scrollTop,
+      };
+      vs.historyOlderAnchorPending = true;
+    }
+    props.onLoadOlderHistory();
+  };
   const handleChatThreadScroll = (event: Event) => {
-    maybeExpandChatHistoryRenderWindow(event, requestUpdate);
+    const thread = event.currentTarget instanceof HTMLElement ? event.currentTarget : null;
+    maybeExpandChatHistoryRenderWindow(event, requestUpdate, () => requestOlderHistory(thread));
     props.onChatScroll?.(event);
   };
 
@@ -1922,6 +1992,10 @@ export function renderChat(props: ChatProps) {
       aria-live="polite"
       ${ref((element) => {
         const threadElement = element instanceof HTMLElement ? element : null;
+        if (threadElement && vs.historyOlderAnchorPending && !props.loadingOlderHistory) {
+          vs.historyOlderAnchorPending = false;
+          scheduleChatHistoryRenderAnchorPreservation(threadElement);
+        }
         scheduleChatHistoryRenderWindowFill(
           threadElement,
           requestUpdate,
@@ -1932,6 +2006,7 @@ export function renderChat(props: ChatProps) {
       @click=${handleCodeBlockCopy}
     >
       <div class="chat-thread-inner">
+        ${renderChatHistoryTop(props, requestOlderHistory)}
         ${showLoadingSkeleton && props.loadingSlow ? renderChatLoadingSlow(props) : nothing}
         ${showLoadingSkeleton && !props.loadingSlow
           ? html`

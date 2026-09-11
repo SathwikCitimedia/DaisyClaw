@@ -9,6 +9,7 @@ export const unitUiIncludePatterns = [
   "ui/src/ui/views/usage-render-details.test.ts",
   "ui/src/ui/controllers/agents.test.ts",
   "ui/src/ui/controllers/chat.test.ts",
+  "ui/src/ui/controllers/chat.older-history.test.ts",
 ];
 
 export function isUnitUiTestTarget(relative) {
@@ -24,7 +25,8 @@ export function isUnitUiTestTarget(relative) {
     relative === "ui/src/ui/views/dreaming.test.ts" ||
     relative === "ui/src/ui/views/usage-render-details.test.ts" ||
     relative === "ui/src/ui/controllers/agents.test.ts" ||
-    relative === "ui/src/ui/controllers/chat.test.ts"
+    relative === "ui/src/ui/controllers/chat.test.ts" ||
+    relative === "ui/src/ui/controllers/chat.older-history.test.ts"
   );
 }
 

@@ -1337,6 +1337,11 @@ export const en: TranslationMap = {
       retrySend: "Retry send",
       retryQueuedMessage: "Retry queued message",
     },
+    history: {
+      loadOlder: "Load earlier messages",
+      loadingOlder: "Loading earlier messages…",
+      beginning: "That's the start of this conversation",
+    },
     interrupted: {
       title: "That reply was interrupted",
       body: "The connection to Daisy dropped before the answer finished. Nothing was lost — you can send the same message again.",

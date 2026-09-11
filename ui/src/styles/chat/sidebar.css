@@ -6,6 +6,15 @@
   flex: 1;
   min-height: 0;
   overflow: hidden;
+  /* The files panel slides rather than snapping; the column width carries the
+     motion so chat reflows with it instead of after it. */
+  transition: grid-template-columns 220ms cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-workbench {
+    transition: none;
+  }
 }
 
 .chat-split-container {
@@ -49,11 +58,69 @@
   min-height: 0;
   border-left: 1px solid var(--border);
   background: color-mix(in srgb, var(--panel) 84%, transparent);
+  animation: workspace-rail-in 220ms cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+/* The contents fade in just behind the panel edge so the open reads as one
+   movement instead of a list appearing on top of a sliding box. */
+.chat-workspace-rail__header,
+.chat-workspace-rail__path,
+.chat-workspace-rail__state,
+.chat-workspace-rail__list {
+  animation: workspace-rail-contents-in 260ms ease-out;
+}
+
+@keyframes workspace-rail-in {
+  from {
+    opacity: 0;
+    transform: translateX(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes workspace-rail-contents-in {
+  from {
+    opacity: 0;
+    transform: translateX(6px);
+  }
+  40% {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-workspace-rail,
+  .chat-workspace-rail__header,
+  .chat-workspace-rail__path,
+  .chat-workspace-rail__state,
+  .chat-workspace-rail__list {
+    animation: none;
+  }
 }
 
 .chat-workspace-rail--collapsed {
   align-items: center;
   padding: 12px 8px;
+  /* Collapsing is the panel getting out of the way, not a new panel arriving. */
+  animation: none;
+}
+
+.chat-workspace-rail__toggle svg,
+.chat-workspace-rail--collapsed .chat-workspace-rail__toggle svg {
+  transition: transform 220ms cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-workspace-rail__toggle svg {
+    transition: none;
+  }
 }
 
 .chat-workspace-rail__actions {
@@ -675,4 +742,16 @@
     min-width: 0;
     border-left: none;
   }
+}
+
+/* Top-of-transcript control for reaching further back in a conversation. */
+.chat-history-top {
+  display: flex;
+  justify-content: center;
+  padding: 8px 0 4px;
+}
+
+.chat-history-top__status {
+  font-size: 0.78rem;
+  color: var(--muted);
 }

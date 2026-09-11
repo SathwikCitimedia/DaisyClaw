@@ -393,6 +393,14 @@ export type ChatState = {
   client: GatewayBrowserClient | null;
   connected: boolean;
   sessionKey: string;
+  /** Messages requested from the gateway for the active session. */
+  chatHistoryRequestLimit?: number;
+  /** Session the request limit belongs to; switching sessions starts fresh. */
+  chatHistoryRequestLimitSessionKey?: string | null;
+  /** True once the gateway returned the whole conversation. */
+  chatHistoryComplete?: boolean;
+  /** True while fetching further back in the conversation. */
+  chatLoadingOlder?: boolean;
   currentSessionId?: string | null;
   chatLoading: boolean;
   chatLoadingStartedAt?: number | null;
@@ -563,7 +571,69 @@ type InFlightChatHistoryRequest = {
 
 type LoadChatHistoryOptions = {
   startup?: boolean;
+  /** Set when refetching to reach older messages, so the view keeps its place. */
+  preserveScroll?: boolean;
 };
+
+/**
+ * How much further back each "load older" step reaches. The gateway returns the
+ * most recent N messages, so asking for a bigger N is how the dashboard walks
+ * backwards through a conversation.
+ */
+const CHAT_HISTORY_OLDER_STEP = 200;
+/** Protocol ceiling for chat.history limit. */
+const CHAT_HISTORY_REQUEST_LIMIT_MAX = 1000;
+
+/**
+ * Messages currently requested for this session. A limit raised by scrolling
+ * back belongs to the session it was raised in; switching sessions starts from
+ * the small default again so session changes stay fast.
+ */
+function resolveChatHistoryRequestLimit(state: ChatState): number {
+  if (state.chatHistoryRequestLimitSessionKey !== state.sessionKey) {
+    return CHAT_HISTORY_REQUEST_LIMIT;
+  }
+  const limit = state.chatHistoryRequestLimit;
+  return typeof limit === "number" && Number.isFinite(limit) && limit > 0
+    ? Math.min(CHAT_HISTORY_REQUEST_LIMIT_MAX, Math.floor(limit))
+    : CHAT_HISTORY_REQUEST_LIMIT;
+}
+
+/** True when older messages may still exist on the gateway for this session. */
+export function hasOlderChatHistory(state: ChatState): boolean {
+  if (
+    state.chatHistoryComplete === true &&
+    state.chatHistoryRequestLimitSessionKey === state.sessionKey
+  ) {
+    return false;
+  }
+  return resolveChatHistoryRequestLimit(state) < CHAT_HISTORY_REQUEST_LIMIT_MAX;
+}
+
+/**
+ * Reaches further back in the conversation. Without this the transcript stopped
+ * dead at the first fetched page and scrolling up simply did nothing.
+ */
+export async function loadOlderChatHistory(state: ChatState): Promise<void> {
+  if (!state.client || !state.connected || state.chatLoadingOlder === true) {
+    return;
+  }
+  if (!hasOlderChatHistory(state)) {
+    return;
+  }
+  const nextLimit = Math.min(
+    CHAT_HISTORY_REQUEST_LIMIT_MAX,
+    resolveChatHistoryRequestLimit(state) + CHAT_HISTORY_OLDER_STEP,
+  );
+  state.chatHistoryRequestLimit = nextLimit;
+  state.chatHistoryRequestLimitSessionKey = state.sessionKey;
+  state.chatLoadingOlder = true;
+  try {
+    await loadChatHistory(state, { preserveScroll: true });
+  } finally {
+    state.chatLoadingOlder = false;
+  }
+}
 
 const inFlightChatHistoryRequests = new WeakMap<ChatState, InFlightChatHistoryRequest>();
 
@@ -657,6 +727,7 @@ async function loadChatHistoryUncached(
   method: "chat.history" | "chat.startup",
 ): Promise<ChatHistoryResult | undefined> {
   const requestVersion = beginChatHistoryRequest(state);
+  const requestLimit = resolveChatHistoryRequestLimit(state);
   const startedAt = Date.now();
   const startedAtMs = controlUiNowMs();
   const previousMessages = state.chatMessages;
@@ -679,7 +750,7 @@ async function loadChatHistoryUncached(
         res = await client.request<ChatHistoryResult>(method, {
           sessionKey,
           ...(requestAgentId ? { agentId: requestAgentId } : {}),
-          limit: CHAT_HISTORY_REQUEST_LIMIT,
+          limit: requestLimit,
         });
         break;
       } catch (err) {
@@ -698,7 +769,7 @@ async function loadChatHistoryUncached(
           res = await client.request<ChatHistoryResult>("chat.history", {
             sessionKey,
             ...(requestAgentId ? { agentId: requestAgentId } : {}),
-            limit: CHAT_HISTORY_REQUEST_LIMIT,
+            limit: requestLimit,
           });
           break;
         }
@@ -722,6 +793,10 @@ async function loadChatHistoryUncached(
       return undefined;
     }
     const messages = Array.isArray(res.messages) ? res.messages : [];
+    // The gateway returns the most recent `limit` messages, so a short page is
+    // the only signal that the conversation has no more history behind it.
+    state.chatHistoryComplete = messages.length < requestLimit;
+    state.chatHistoryRequestLimitSessionKey = sessionKey;
     applyChatStartupAgentsList(state, res.agentsList);
     const visibleMessages = messages.filter((message) => !shouldHideHistoryMessage(message));
     const lateOptimisticTail = collectLateOptimisticTailMessages(

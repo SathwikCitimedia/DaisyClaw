@@ -5,7 +5,11 @@ import {
   isAssistantHeartbeatAckForDisplay,
   stripHeartbeatTokenForDisplay,
 } from "./heartbeat-display.ts";
-import { CHAT_HISTORY_RENDER_CHAR_BUDGET, CHAT_HISTORY_RENDER_LIMIT } from "./history-limits.ts";
+import {
+  CHAT_HISTORY_RENDER_CHAR_BUDGET,
+  CHAT_HISTORY_RENDER_LIMIT,
+  CHAT_HISTORY_RENDER_LIMIT_MAX,
+} from "./history-limits.ts";
 import { extractTextCached } from "./message-extract.ts";
 import { normalizeMessage, stripMessageDisplayMetadataText } from "./message-normalizer.ts";
 import { normalizeRoleForGrouping } from "./role-normalizer.ts";
@@ -518,7 +522,7 @@ function resolveHistoryRenderLimit(limit: number | undefined): number {
   if (typeof limit !== "number" || !Number.isFinite(limit)) {
     return CHAT_HISTORY_RENDER_LIMIT;
   }
-  return Math.max(1, Math.min(CHAT_HISTORY_RENDER_LIMIT, Math.floor(limit)));
+  return Math.max(1, Math.min(CHAT_HISTORY_RENDER_LIMIT_MAX, Math.floor(limit)));
 }
 
 function resolveHistoryStartIndex(

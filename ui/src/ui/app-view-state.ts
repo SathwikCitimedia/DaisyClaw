@@ -104,6 +104,14 @@ export type AppViewState = {
   chatLoading: boolean;
   /** When the current chat history load began; null when not loading. */
   chatLoadingStartedAt: number | null;
+  /** True while reaching further back in the conversation. */
+  chatLoadingOlder: boolean;
+  /** Messages requested from the gateway for the active session. */
+  chatHistoryRequestLimit: number;
+  /** Session the request limit belongs to. */
+  chatHistoryRequestLimitSessionKey: string | null;
+  /** True once the gateway returned the whole conversation. */
+  chatHistoryComplete: boolean;
   chatSending: boolean;
   chatMessage: string;
   chatAttachments: ChatAttachment[];

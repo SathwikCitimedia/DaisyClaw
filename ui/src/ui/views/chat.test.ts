@@ -3628,3 +3628,39 @@ describe("composer lock without an AI model", () => {
     expect(onAction).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("reaching older messages", () => {
+  it("shows nothing extra when the host cannot load older history", () => {
+    const container = renderChatView({ messages: [{ role: "user", content: "hi" }] });
+    expect(container.querySelector("[data-chat-history-top]")).toBeNull();
+  });
+
+  it("offers to load earlier messages and reports progress", () => {
+    const onLoadOlderHistory = vi.fn();
+    const messages = [{ role: "user", content: "hi" }];
+    const container = renderChatView({ messages, onLoadOlderHistory, hasOlderHistory: true });
+    const button = container.querySelector<HTMLButtonElement>("[data-chat-load-older]");
+    expect(button?.textContent?.trim()).toBe("Load earlier messages");
+    button?.click();
+    expect(onLoadOlderHistory).toHaveBeenCalledTimes(1);
+
+    const loading = renderChatView({
+      messages,
+      onLoadOlderHistory,
+      hasOlderHistory: true,
+      loadingOlderHistory: true,
+    });
+    expect(loading.querySelector("[data-chat-history-top]")?.textContent).toContain("Loading");
+    expect(loading.querySelector("[data-chat-load-older]")).toBeNull();
+  });
+
+  it("says when the beginning of the conversation is on screen", () => {
+    const container = renderChatView({
+      messages: [{ role: "user", content: "hi" }],
+      onLoadOlderHistory: vi.fn(),
+      hasOlderHistory: false,
+    });
+    expect(container.querySelector("[data-chat-history-top]")?.textContent).toContain("start");
+    expect(container.querySelector("[data-chat-load-older]")).toBeNull();
+  });
+});

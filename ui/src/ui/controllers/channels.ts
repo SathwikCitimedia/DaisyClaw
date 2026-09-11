@@ -1,4 +1,5 @@
 import { noteConfigWriteRestart, type ConfigWriteResponse } from "../config-restart-notice.ts";
+import { formatConnectError } from "../connect-error.ts";
 // Control UI controller manages channels gateway state.
 import type { ChannelsStatusSnapshot } from "../types.ts";
 import type {
@@ -111,9 +112,18 @@ async function ensureChannelEnabled(state: ChannelsState, channelId: string) {
   noteConfigWriteRestart(response);
 }
 
-export async function enableAndStartChannel(state: ChannelsState, channelId: string) {
+/**
+ * Enables a channel and starts it. Returns false when the channel could not be
+ * enabled, so callers do not congratulate the user on a connection that never
+ * happened — a wrong token used to produce a green "saved — connecting…" toast
+ * and then silence.
+ */
+export async function enableAndStartChannel(
+  state: ChannelsState,
+  channelId: string,
+): Promise<boolean> {
   if (!state.client || !state.connected || state.channelConnectBusy) {
-    return;
+    return false;
   }
   state.channelConnectBusy = channelId;
   state.channelsError = null;
@@ -122,10 +132,13 @@ export async function enableAndStartChannel(state: ChannelsState, channelId: str
     try {
       await state.client.request("channels.start", { channel: channelId });
     } catch {
-      // Some channels start automatically once the config enables them.
+      // Some channels start automatically once the config enables them; the
+      // Channels page reports the real state from channels.status.
     }
+    return true;
   } catch (err) {
-    state.channelsError = String(err);
+    state.channelsError = formatConnectError(err);
+    return false;
   } finally {
     state.channelConnectBusy = null;
   }
@@ -392,6 +405,10 @@ export async function rejectPairingRequest(state: ChannelsState, entry: PairingR
 const WHATSAPP_QR_HINT =
   "Scan with your phone: WhatsApp → Settings → Linked devices → Link a device.";
 const WHATSAPP_SCAN_WINDOW_MS = 180_000;
+/** Breathing room between login polls that return immediately. */
+const WHATSAPP_LOGIN_POLL_IDLE_MS = 1000;
+/** Longer pause after a failed poll, before the single retry. */
+const WHATSAPP_LOGIN_POLL_ERROR_MS = 2000;
 
 export async function connectWhatsApp(state: ChannelsState, force: boolean) {
   if (!state.client || !state.connected || state.whatsappBusy) {
@@ -457,11 +474,17 @@ export async function connectWhatsApp(state: ChannelsState, force: boolean) {
           state.whatsappLoginQrDataUrl = wait.qrDataUrl;
           state.whatsappLoginMessage = WHATSAPP_QR_HINT;
         }
+        // The wait normally blocks server-side, but it can return at once while
+        // the channel runtime is still coming up. Without a pause the dashboard
+        // hammers the engine for the whole three-minute scan window and the
+        // whole app turns sluggish just as the user is scanning the code.
+        await delay(WHATSAPP_LOGIN_POLL_IDLE_MS);
       } catch (err) {
         consecutiveErrors += 1;
         if (consecutiveErrors >= 2) {
           throw err;
         }
+        await delay(WHATSAPP_LOGIN_POLL_ERROR_MS);
       }
     }
     state.whatsappLoginQrDataUrl = null;
@@ -501,7 +524,10 @@ export async function disconnectChannel(state: ChannelsState, channelId: string)
     });
     noteConfigWriteRestart(disableResponse);
   } catch (err) {
-    state.channelsError = String(err);
+    // Surfaced to the caller too: a failed disconnect must not end in a
+    // "disconnected" toast while the channel keeps replying.
+    state.channelsError = formatConnectError(err);
+    throw err;
   } finally {
     state.channelDisconnectBusy = null;
   }

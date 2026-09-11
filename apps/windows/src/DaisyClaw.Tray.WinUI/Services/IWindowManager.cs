@@ -13,6 +13,9 @@ internal interface IWindowManager
     bool IsChatVisible { get; }
     /// <summary>True while the web dashboard window is open and visible.</summary>
     bool IsDashboardVisible { get; }
+
+    /// <summary>Reloads an already-open dashboard window, if there is one.</summary>
+    void ReloadDashboard();
     XamlRoot? DialogXamlRoot { get; }
     XamlRoot? RuntimeAnchorXamlRoot { get; }
     XamlRoot? SetupXamlRoot { get; }

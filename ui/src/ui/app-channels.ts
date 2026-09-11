@@ -36,10 +36,14 @@ export async function handleWhatsAppConnect(host: ChannelsActionHost, force: boo
   await loadChannels(host as ChannelsState, true);
 }
 
-export async function handleChannelEnable(host: ChannelsActionHost, channelId: string) {
-  await enableAndStartChannel(host as ChannelsState, channelId);
+export async function handleChannelEnable(
+  host: ChannelsActionHost,
+  channelId: string,
+): Promise<boolean> {
+  const enabled = await enableAndStartChannel(host as ChannelsState, channelId);
   await loadConfig(host as ConfigState);
   await loadChannels(host as ChannelsState, true);
+  return enabled;
 }
 
 export async function handleWhatsAppLogout(host: ChannelsActionHost) {

@@ -879,8 +879,14 @@ public partial class App : Application, DaisyClawTray.Services.IAppCommands, IPe
                     // window; report the failure and let the watchdog keep
                     // trying (it re-registers the service from the engine).
                     Logger.Warn($"First run: bundled gateway not ready ({ensure.Error}); watchdog will keep repairing.");
+                    // ShowTransientConnectionError posts to the Hub's in-app
+                    // banner queue, and the consumer flow never opens the Hub —
+                    // so on a fresh install this was a message nobody could see.
+                    // Open the dashboard instead: it shows its own "starting"
+                    // screen and reloads itself once the engine answers.
                     ShowTransientConnectionError(
                         "Daisy is still starting. It will open automatically once ready; if this keeps happening, restart your PC.");
+                    OpenDashboard();
                 }
                 else
                 {
@@ -2039,6 +2045,10 @@ public partial class App : Application, DaisyClawTray.Services.IAppCommands, IPe
                         InitializeGatewayClient();
                         if (openDashboardWhenReady)
                             OpenDashboard();
+                        else
+                            // A dashboard opened before the engine was ready is
+                            // sitting on an error page; bring it back by itself.
+                            _windowManager?.ReloadDashboard();
                     }
                     catch (Exception ex)
                     {

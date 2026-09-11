@@ -69,6 +69,10 @@ const WIZARD_SKILLS: readonly WizardSkillMeta[] = [
   { key: "trello", title: "Trello", desc: "Manage your boards and cards", account: true },
 ];
 
+// Skills whose enable/disable call failed; their switch falls back to the state
+// the gateway reports rather than the state the user asked for.
+const wizardSkillErrors = new Set<string>();
+
 // Starter skills default ON. This set holds only the ones the user explicitly
 // turned OFF inside the wizard, so re-renders keep those choices.
 const wizardSkillsOff = new Set<string>();
@@ -357,7 +361,7 @@ function renderStepBar(step: number): TemplateResult {
 
 function renderWelcome(state: AppViewState): TemplateResult {
   return html`
-    <h1 class="first-run__title" style="color: blue;">Hi — I'm Daisy</h1>
+    <h1 class="first-run__title">Hi — I'm Daisy</h1>
 
     <p class="first-run__lead">
       Your personal assistant that lives on this computer. Everything stays local — no accounts, no
@@ -466,9 +470,12 @@ function renderBrain(state: AppViewState): TemplateResult {
                   data-first-run-continue-anyway
                   @click=${() => {
                     // The key is saved either way; a failing test can also mean a
-                    // flaky network, so never trap the user on this screen.
+                    // flaky network, so never trap the user on this screen. The
+                    // provider exists now, so chat must not stay locked behind
+                    // "Daisy needs an AI brain".
                     state.firstRunTestFailure = null;
                     state.firstRunError = null;
+                    state.modelSetupMissing = false;
                     resetDraft();
                     state.firstRunProvider = null;
                     state.firstRunStep = 2;
@@ -548,9 +555,12 @@ function renderSkills(state: AppViewState): TemplateResult {
         </div>`
       : html`
           <div class="first-run__skills-grid">
-            ${rows.map(({ meta }) => {
-              // Default ON; only flipped off inside the wizard turns it off.
-              const enabled = !wizardSkillsOff.has(meta.key);
+            ${rows.map(({ meta, skill }) => {
+              // Default ON, but the switch must follow what the gateway really
+              // reports: a skill that failed to turn on used to keep showing as
+              // on, and the user only found out when Daisy could not do it.
+              const failed = wizardSkillErrors.has(meta.key);
+              const enabled = failed ? skill.disabled !== true : !wizardSkillsOff.has(meta.key);
               const logo = WIZARD_SKILL_LOGOS[meta.key];
               return html`
                 <div class="first-run__skill-card">
@@ -576,7 +586,20 @@ function renderSkills(state: AppViewState): TemplateResult {
                         } else {
                           wizardSkillsOff.add(meta.key);
                         }
-                        void updateSkillEnabled(state, meta.key, on).catch(() => undefined);
+                        wizardSkillErrors.delete(meta.key);
+                        void updateSkillEnabled(state, meta.key, on)
+                          .then(() => {
+                            wizardSkillErrors.delete(meta.key);
+                          })
+                          .catch(() => {
+                            wizardSkillErrors.add(meta.key);
+                            showToast(`${meta.title} could not be turned ${on ? "on" : "off"}.`, {
+                              tone: "error",
+                            });
+                          })
+                          .finally(() => {
+                            void loadSkills(state).catch(() => undefined);
+                          });
                       }}
                     />
                     <span class="first-run__switch-track"></span>

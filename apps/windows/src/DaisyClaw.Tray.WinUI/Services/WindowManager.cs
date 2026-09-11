@@ -187,6 +187,20 @@ internal sealed class WindowManager : IWindowManager
         _dashboardWindow.NavigateAndShow(url);
     }
 
+    /// <summary>
+    /// Reloads an already-open dashboard. Used once the engine reports ready so
+    /// a window that opened while the engine was still starting recovers on its
+    /// own instead of sitting on an error page.
+    /// </summary>
+    public void ReloadDashboard()
+    {
+        if (_isShuttingDown || _dashboardWindow is null || _dashboardWindow.IsClosed)
+        {
+            return;
+        }
+        _dashboardWindow.Reload();
+    }
+
     public void ShowCanvas(CanvasWindowRequest request)
     {
         ArgumentNullException.ThrowIfNull(request);

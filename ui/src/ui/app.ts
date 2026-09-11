@@ -1412,7 +1412,7 @@ export class DaisyClawApp extends LitElement {
   }
 
   async handleChannelEnable(channelId: string) {
-    await handleChannelEnableInternal(this, channelId);
+    return await handleChannelEnableInternal(this, channelId);
   }
 
   async handleContactAdd(channelId: string, value: string) {

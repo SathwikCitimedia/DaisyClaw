@@ -1425,3 +1425,18 @@
 .qs-card--diagnostics {
   grid-column: 1 / -1;
 }
+
+/* Label plus a small clarifier, e.g. a setting that only affects one chat. */
+.qs-row__labelwrap {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.qs-row__hint {
+  display: block;
+  font-size: 0.7rem;
+  font-weight: 400;
+  color: var(--muted);
+  margin-top: 1px;
+}

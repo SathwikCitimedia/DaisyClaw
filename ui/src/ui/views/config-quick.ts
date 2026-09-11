@@ -438,7 +438,10 @@ function renderThinkingRow(props: QuickSettingsProps) {
   const supported = props.thinkingSupported !== false;
   return html`
     <div class="qs-row">
-      <span class="qs-row__label">Thinking</span>
+      <span class="qs-row__labelwrap">
+        <span class="qs-row__label">Thinking</span>
+        <span class="qs-row__hint">for the chat you have open</span>
+      </span>
       ${supported
         ? html`
             <div class="qs-segmented">
@@ -469,7 +472,10 @@ function renderFastModeRow(props: QuickSettingsProps) {
   }
   return html`
     <div class="qs-row">
-      <span class="qs-row__label">Fast mode</span>
+      <span class="qs-row__labelwrap">
+        <span class="qs-row__label">Fast mode</span>
+        <span class="qs-row__hint">for the chat you have open</span>
+      </span>
       <label class="qs-toggle">
         <input type="checkbox" .checked=${props.fastMode} @change=${props.onFastModeToggle} />
         <span class="qs-toggle__track"></span>

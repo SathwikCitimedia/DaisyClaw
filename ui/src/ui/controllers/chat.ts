@@ -393,6 +393,8 @@ export type ChatState = {
   client: GatewayBrowserClient | null;
   connected: boolean;
   sessionKey: string;
+  /** Set when a dropped connection cut a reply short; cleared once answered. */
+  chatInterrupted?: { sessionKey: string; text: string } | null;
   /** Messages requested from the gateway for the active session. */
   chatHistoryRequestLimit?: number;
   /** Session the request limit belongs to; switching sessions starts fresh. */
@@ -583,6 +585,23 @@ type LoadChatHistoryOptions = {
 const CHAT_HISTORY_OLDER_STEP = 200;
 /** Protocol ceiling for chat.history limit. */
 const CHAT_HISTORY_REQUEST_LIMIT_MAX = 1000;
+
+/**
+ * Drops the "that reply was interrupted" offer once the transcript shows the
+ * assistant answered anyway. A brief drop often still ends with the gateway
+ * finishing the run, and leaving the banner up invites the user to ask the same
+ * question twice.
+ */
+function clearInterruptedNoticeWhenAnswered(state: ChatState, sessionKey: string): void {
+  const interrupted = state.chatInterrupted;
+  if (!interrupted || interrupted.sessionKey !== sessionKey) {
+    return;
+  }
+  const last = state.chatMessages.at(-1) as { role?: unknown } | undefined;
+  if (last && typeof last.role === "string" && last.role.toLowerCase() === "assistant") {
+    state.chatInterrupted = null;
+  }
+}
 
 /**
  * Messages currently requested for this session. A limit raised by scrolling
@@ -808,6 +827,7 @@ async function loadChatHistoryUncached(
     if (lateOptimisticTail.length > 0) {
       state.chatMessages = [...state.chatMessages, ...lateOptimisticTail];
     }
+    clearInterruptedNoticeWhenAnswered(state, sessionKey);
     state.currentSessionId =
       typeof res.sessionInfo?.sessionId === "string" && res.sessionInfo.sessionId.trim()
         ? res.sessionInfo.sessionId
@@ -913,7 +933,7 @@ async function loadChatHistoryUncached(
       state.chatThinkingLevel = null;
       setChatError(state, formatMissingOperatorReadScopeMessage("existing chat history"));
     } else {
-      setChatError(state, String(err));
+      setChatError(state, formatConnectError(err));
     }
   } finally {
     if (isLatestChatHistoryRequest(state, requestVersion)) {

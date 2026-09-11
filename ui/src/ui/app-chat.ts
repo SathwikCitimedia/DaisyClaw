@@ -1990,7 +1990,7 @@ async function clearChatHistory(host: ChatHost) {
     });
     await loadChatHistory(host as unknown as ChatState);
   } catch (err) {
-    setChatError(host, String(err));
+    setChatError(host, formatConnectError(err));
   }
   scheduleChatScroll(host as unknown as Parameters<typeof scheduleChatScroll>[0]);
 }

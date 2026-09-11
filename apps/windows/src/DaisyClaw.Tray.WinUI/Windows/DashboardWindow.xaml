@@ -12,5 +12,34 @@
 
     <Grid x:Name="RootGrid">
         <WebView2 x:Name="WebView" />
+
+        <!-- Shown when the page cannot load, usually because the engine is
+             still starting on a cold or heavily scanned machine. Without this
+             the user met a raw browser error page with no way forward. -->
+        <Border x:Name="StatusPanel"
+                Visibility="Collapsed"
+                Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
+            <StackPanel HorizontalAlignment="Center"
+                        VerticalAlignment="Center"
+                        Spacing="14"
+                        MaxWidth="420">
+                <ProgressRing x:Name="StatusRing" IsActive="True" Width="36" Height="36"
+                              HorizontalAlignment="Center" />
+                <TextBlock x:Name="StatusTitle"
+                           Text="Starting Daisy…"
+                           HorizontalAlignment="Center"
+                           Style="{ThemeResource SubtitleTextBlockStyle}" />
+                <TextBlock x:Name="StatusText"
+                           Text="This can take a minute the first time."
+                           HorizontalAlignment="Center"
+                           TextAlignment="Center"
+                           TextWrapping="Wrap"
+                           Opacity="0.8" />
+                <Button x:Name="StatusRetryButton"
+                        Content="Try again"
+                        HorizontalAlignment="Center"
+                        Click="OnStatusRetryClick" />
+            </StackPanel>
+        </Border>
     </Grid>
 </winex:WindowEx>

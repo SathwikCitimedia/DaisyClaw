@@ -201,6 +201,7 @@ import {
 import { isPluginEnabledInConfigSnapshot } from "./plugin-activation.ts";
 import { isCronSessionKey, resolveSessionDisplayName } from "./session-display.ts";
 import {
+  areUiSessionKeysEquivalent,
   buildAgentMainSessionKey,
   isSessionKeyTiedToAgent,
   isSubagentSessionKey,
@@ -539,6 +540,63 @@ function renderSettingsWorkspace(state: AppViewState, body: unknown) {
   `;
 }
 
+/**
+ * Writes a Quick Settings change straight through. The card it lives in has no
+ * Save button, so without this the switch flipped, looked applied, and was gone
+ * after a restart.
+ */
+async function persistQuickSettingsChange(state: AppViewState, label: string): Promise<void> {
+  try {
+    const saved = await saveConfig(state);
+    if (!saved) {
+      showToast(state.lastError ?? `${label} could not be saved.`, { tone: "error" });
+      return;
+    }
+    showToast(`${label} saved.`, { tone: "success" });
+  } catch (err) {
+    showToast(err instanceof Error ? err.message : String(err), { tone: "error" });
+  }
+}
+
+/**
+ * Chat names come from the user and from auto-titling, so they can contain
+ * markup characters. These two confirmations are built as raw HTML, where an
+ * unescaped name renders mangled at best and executes at worst.
+ */
+function escapeSidebarConfirmLabel(label: string): string {
+  return label
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+/**
+ * Moves off a chat the user just deleted. Without this the transcript stayed on
+ * screen after its session was gone, and typing into it quietly recreated the
+ * session the user meant to remove.
+ */
+function leaveDeletedChatSession(state: AppViewState, deletedKeys: readonly string[]): void {
+  if (deletedKeys.length === 0) {
+    return;
+  }
+  const current = state.sessionKey;
+  if (!deletedKeys.some((key) => areUiSessionKeysEquivalent(key, current))) {
+    return;
+  }
+  const agentId = normalizeAgentId(
+    state.assistantAgentId ??
+      state.agentsList?.defaultId ??
+      state.agentsList?.agents?.[0]?.id ??
+      "main",
+  );
+  const fallback =
+    state.sessionsResult?.sessions?.find(
+      (row) => !deletedKeys.some((key) => areUiSessionKeysEquivalent(key, row.key)),
+    )?.key ?? buildAgentMainSessionKey({ agentId });
+  switchChatSession(state, fallback);
+}
+
 function isSidebarSessionBusy(state: AppViewState) {
   return (
     state.chatLoading ||
@@ -761,7 +819,7 @@ function renderSidebarRecentSession(state: AppViewState, row: GatewaySessionRow)
       const confirm = document.createElement("div");
       confirm.className = "sidebar-session-delete-confirm";
       confirm.innerHTML = `
-        <p class="sidebar-session-delete-confirm__text">Clear all messages in "<strong>${label}</strong>"? The chat stays, its history is removed.</p>
+        <p class="sidebar-session-delete-confirm__text">Clear all messages in "<strong>${escapeSidebarConfirmLabel(label)}</strong>"? The chat stays, its history is removed.</p>
         <div class="sidebar-session-delete-confirm__actions">
           <button class="sidebar-session-delete-confirm__cancel" type="button">Cancel</button>
           <button class="sidebar-session-delete-confirm__yes" type="button">Clear</button>
@@ -819,7 +877,7 @@ function renderSidebarRecentSession(state: AppViewState, row: GatewaySessionRow)
       const confirm = document.createElement("div");
       confirm.className = "sidebar-session-delete-confirm";
       confirm.innerHTML = `
-        <p class="sidebar-session-delete-confirm__text">Delete "<strong>${label}</strong>"?</p>
+        <p class="sidebar-session-delete-confirm__text">Delete "<strong>${escapeSidebarConfirmLabel(label)}</strong>"?</p>
         <div class="sidebar-session-delete-confirm__actions">
           <button class="sidebar-session-delete-confirm__cancel" type="button">Cancel</button>
           <button class="sidebar-session-delete-confirm__yes" type="button">Delete</button>
@@ -849,6 +907,7 @@ function renderSidebarRecentSession(state: AppViewState, row: GatewaySessionRow)
             if (deleted.length === 0 && state.sessionsError) {
               showToast(state.sessionsError, { tone: "error" });
             }
+            leaveDeletedChatSession(state, deleted);
             pendingUpdate?.();
           });
         });
@@ -2406,7 +2465,16 @@ export function renderApp(state: AppViewState) {
                 Object.keys(channelCfg).length > 0;
               if (hasConfig && channelCfg?.enabled === false) {
                 // Credentials already saved — just re-enable and start.
-                void state.handleChannelEnable(channelId).then(() => requestHostUpdate?.());
+                void state.handleChannelEnable(channelId).then((enabled) => {
+                  if (!enabled) {
+                    showToast(
+                      state.channelsError ??
+                        `${formatQuickSettingsLabel(channelId)} could not be connected.`,
+                      { tone: "error" },
+                    );
+                  }
+                  requestHostUpdate?.();
+                });
                 return;
               }
               // Needs credentials — open the channel's settings form.
@@ -2420,7 +2488,15 @@ export function renderApp(state: AppViewState) {
                 confirmLabel: "Disconnect",
                 loadingLabel: "Disconnecting…",
                 onConfirm: async () => {
-                  await state.handleChannelDisconnect(channelId);
+                  try {
+                    await state.handleChannelDisconnect(channelId);
+                  } catch (err) {
+                    showToast(
+                      state.channelsError ?? (err instanceof Error ? err.message : String(err)),
+                      { tone: "error" },
+                    );
+                    throw err;
+                  }
                 },
               }).then((confirmed) => {
                 if (confirmed) {
@@ -2455,10 +2531,14 @@ export function renderApp(state: AppViewState) {
             onBrowserEnabledToggle: (enabled) => {
               updateConfigFormValue(state, ["browser", "enabled"], enabled);
               requestHostUpdate?.();
+              // These two live in a card with no Save button of its own, so a
+              // staged-only change looked applied and then reverted on restart.
+              void persistQuickSettingsChange(state, "Browser access");
             },
             onToolProfileChange: (profile) => {
               updateConfigFormValue(state, ["tools", "profile"], profile);
               requestHostUpdate?.();
+              void persistQuickSettingsChange(state, "Tool profile");
             },
             themeMode: state.themeMode,
             borderRadius: state.settings.borderRadius,
@@ -2656,16 +2736,25 @@ export function renderApp(state: AppViewState) {
                 try {
                   if (state.configFormDirty) {
                     await state.handleChannelConfigSave();
+                    if (state.lastError) {
+                      throw new Error(state.lastError);
+                    }
                   }
-                  await state.handleChannelEnable(channelId);
+                  const enabled = await state.handleChannelEnable(channelId);
+                  if (!enabled) {
+                    // Wrong token, refused config write: say so instead of
+                    // promising a connection that never happens.
+                    throw new Error(state.channelsError ?? "The channel could not be connected.");
+                  }
                   state.channelSetupForced = null;
                   showToast("Channel setup saved — connecting…", {
                     tone: "success",
                   });
                 } catch (err) {
-                  showToast(`Channel setup failed: ${String(err)}`, {
-                    tone: "error",
-                  });
+                  showToast(
+                    `Channel setup failed: ${err instanceof Error ? err.message : String(err)}`,
+                    { tone: "error" },
+                  );
                 } finally {
                   state.channelSetupBusy = null;
                 }
@@ -2684,7 +2773,15 @@ export function renderApp(state: AppViewState) {
                 confirmLabel: "Disconnect",
                 loadingLabel: "Disconnecting…",
                 onConfirm: async () => {
-                  await state.handleChannelDisconnect(channelId);
+                  try {
+                    await state.handleChannelDisconnect(channelId);
+                  } catch (err) {
+                    showToast(
+                      state.channelsError ?? (err instanceof Error ? err.message : String(err)),
+                      { tone: "error" },
+                    );
+                    throw err;
+                  }
                 },
               }).then((confirmed) => {
                 if (confirmed) {

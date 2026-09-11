@@ -4,6 +4,7 @@ import {
   reconcileChatRunFromSessionRow,
   type ChatRunUiStatus,
 } from "../chat/run-lifecycle.ts";
+import { formatConnectError } from "../connect-error.ts";
 import type { GatewayBrowserClient, GatewayHelloOk } from "../gateway.ts";
 import {
   areUiSessionKeysEquivalent,
@@ -640,6 +641,28 @@ async function fetchSessionCompactionCheckpoints(state: SessionsState, key: stri
   }
 }
 
+/** Milliseconds to wait for an in-flight session refresh before giving up. */
+const SESSIONS_IDLE_WAIT_MS = 5000;
+const SESSIONS_IDLE_POLL_MS = 100;
+
+/** Resolves true once no session refresh is in flight, false if one is stuck. */
+async function waitForSessionsIdle(
+  state: SessionsState,
+  timeoutMs = SESSIONS_IDLE_WAIT_MS,
+): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs;
+  while (state.sessionsLoading) {
+    if (Date.now() >= deadline) {
+      return false;
+    }
+    await new Promise((resolve) => setTimeout(resolve, SESSIONS_IDLE_POLL_MS));
+    if (!state.client || !state.connected) {
+      return false;
+    }
+  }
+  return true;
+}
+
 async function withSessionsLoading(
   state: SessionsState,
   run: () => Promise<void>,
@@ -1185,7 +1208,7 @@ async function loadSessionsOnce(
     }
   })().catch((err: unknown) => {
     if (!isMissingOperatorReadScopeError(err)) {
-      state.sessionsError = String(err);
+      state.sessionsError = formatConnectError(err);
       return;
     }
     state.sessionsResult = null;
@@ -1269,7 +1292,11 @@ export async function deleteSessionsAndRefresh(
     return [];
   }
   const client = state.client;
-  if (state.sessionsLoading) {
+  // A session list refresh runs after every send and on every sessions.changed
+  // event, so bailing out here made Delete look broken: the dialog closed and
+  // nothing happened, with no message. Wait for the refresh instead.
+  if (state.sessionsLoading && !(await waitForSessionsIdle(state))) {
+    state.sessionsError = "Daisy is still refreshing your chats. Try deleting again in a moment.";
     return [];
   }
   if (!options.skipConfirm) {

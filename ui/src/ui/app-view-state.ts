@@ -560,7 +560,8 @@ export type AppViewState = {
     handleWhatsAppConnect: (force: boolean) => Promise<void>;
     handleWhatsAppLogout: () => Promise<void>;
     handleChannelDisconnect: (channelId: string) => Promise<void>;
-    handleChannelEnable: (channelId: string) => Promise<void>;
+    /** Resolves false when the channel could not be enabled or started. */
+    handleChannelEnable: (channelId: string) => Promise<boolean>;
     handleContactAdd: (channelId: string, value: string) => Promise<void>;
     handleContactsAdd: (
       channelId: string,

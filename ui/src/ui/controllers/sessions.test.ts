@@ -371,6 +371,45 @@ describe("createSessionAndRefresh", () => {
   });
 });
 
+describe("deleteSessionsAndRefresh while a refresh is running", () => {
+  it("waits for the refresh instead of silently doing nothing", async () => {
+    const request = vi.fn(async (method: string) => {
+      if (method === "sessions.delete") {
+        return { ok: true };
+      }
+      if (method === "sessions.list") {
+        return undefined;
+      }
+      throw new Error(`unexpected method: ${method}`);
+    });
+    const state = createState(request, { sessionsLoading: true });
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+
+    const pending = deleteSessionsAndRefresh(state, ["key-a"], { skipConfirm: true });
+    // The list refresh that was in flight finishes a moment later.
+    setTimeout(() => {
+      state.sessionsLoading = false;
+    }, 150);
+
+    await expect(pending).resolves.toEqual(["key-a"]);
+    expect(request).toHaveBeenCalledWith("sessions.delete", {
+      key: "key-a",
+      deleteTranscript: true,
+    });
+  });
+
+  it("says so when the refresh never finishes, rather than failing silently", async () => {
+    const request = vi.fn(async () => ({ ok: true }));
+    const state = createState(request, { sessionsLoading: true });
+
+    const deleted = await deleteSessionsAndRefresh(state, ["key-a"], { skipConfirm: true });
+
+    expect(deleted).toEqual([]);
+    expect(state.sessionsError).toMatch(/refreshing/i);
+    expect(request).not.toHaveBeenCalled();
+  });
+});
+
 describe("deleteSessionsAndRefresh", () => {
   it("deletes multiple sessions and refreshes", async () => {
     const request = vi.fn(async (method: string) => {

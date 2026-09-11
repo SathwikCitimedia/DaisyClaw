@@ -90,8 +90,12 @@ export const whatsappPlugin: ChannelPlugin<ResolvedWhatsAppAccount> =
         setupWizard: whatsappSetupWizardProxy,
         setup: whatsappSetupAdapter,
         isConfigured: async (account) => {
-          const channelRuntime = await loadWhatsAppChannelRuntime();
-          return (await channelRuntime.readWebAuthState(account.authDir)) === "linked";
+          // Deliberately the light auth-store import, not the channel runtime:
+          // this runs for every account at every gateway start, including when
+          // WhatsApp is not set up at all, and pulling the connection runtime in
+          // just to read a file on disk made startup noticeably slower.
+          const { readWebAuthState } = await import("./auth-store.js");
+          return (await readWebAuthState(account.authDir)) === "linked";
         },
       }),
       agentTools: () => [createWhatsAppLoginTool()],
@@ -274,8 +278,10 @@ export const whatsappPlugin: ChannelPlugin<ResolvedWhatsAppAccount> =
           };
         },
         resolveAccountSnapshot: async ({ account, runtime }) => {
-          const channelRuntime = await loadWhatsAppChannelRuntime();
-          const authState = await channelRuntime.readWebAuthState(account.authDir);
+          // Status reads only need the auth file, so keep the connection runtime
+          // out of the Channels page's refresh path.
+          const { readWebAuthState } = await import("./auth-store.js");
+          const authState = await readWebAuthState(account.authDir);
           return {
             accountId: account.accountId,
             name: account.name,

@@ -414,6 +414,12 @@ export class DaisyClawApp extends LitElement {
   @state() wikiMemoryPalace: WikiMemoryPalace | null = null;
   @state() configFormDirty = false;
   @state() settingsHelpOpen = false;
+  @state() firstRunActive: boolean | null = null;
+  @state() firstRunStep = 0;
+  @state() firstRunBusy = false;
+  @state() firstRunError: string | null = null;
+  @state() firstRunProvider: string | null = null;
+  @state() firstRunChannel: string | null = null;
   @state() configSettingsMode: "quick" | "advanced" = "quick";
   @state() configFormMode: "form" | "raw" = "form";
   @state() configSearchQuery = "";

@@ -439,3 +439,45 @@ describe("renderQuickSettings", () => {
     }
   });
 });
+
+describe("model & thinking capability gating", () => {
+  it("shows thinking levels and fast mode when the model supports them", () => {
+    const container = document.createElement("div");
+    render(
+      renderQuickSettings(createProps({ thinkingSupported: true, fastModeSupported: true })),
+      container,
+    );
+
+    const thinking = expectRowByLabel(container, "Thinking");
+    expect(thinking.querySelectorAll(".qs-segmented__btn")).toHaveLength(4);
+    expect(expectRowByLabel(container, "Fast mode")).toBeTruthy();
+  });
+
+  it("marks thinking unavailable instead of offering levels that do nothing", () => {
+    const container = document.createElement("div");
+    render(renderQuickSettings(createProps({ thinkingSupported: false })), container);
+
+    const thinking = expectRowByLabel(container, "Thinking");
+    expect(thinking.querySelectorAll(".qs-segmented__btn")).toHaveLength(0);
+    expect(thinking.textContent).toContain("Not available for this model");
+  });
+
+  it("hides fast mode for providers that ignore it", () => {
+    const container = document.createElement("div");
+    render(renderQuickSettings(createProps({ fastModeSupported: false })), container);
+
+    expect(() => expectRowByLabel(container, "Fast mode")).toThrow();
+  });
+
+  it("describes fast mode as capacity, not a cheaper model", () => {
+    const container = document.createElement("div");
+    render(
+      renderQuickSettings(createProps({ fastMode: true, fastModeSupported: true })),
+      container,
+    );
+
+    const hint = expectRowByLabel(container, "Fast mode").textContent ?? "";
+    expect(hint).toContain("faster capacity");
+    expect(hint).not.toContain("less capable");
+  });
+});

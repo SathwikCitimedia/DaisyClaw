@@ -28,7 +28,7 @@ export type ModelStudioProps = {
   onOpenAdvanced: () => void;
 };
 
-type ProviderPreset = {
+export type ProviderPreset = {
   id: string;
   label: string;
   desc: string;
@@ -41,7 +41,7 @@ type ProviderPreset = {
   custom?: boolean;
 };
 
-const PROVIDER_PRESETS: ProviderPreset[] = [
+export const PROVIDER_PRESETS: ProviderPreset[] = [
   {
     id: "anthropic",
     label: "Anthropic",

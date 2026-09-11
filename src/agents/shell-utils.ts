@@ -11,6 +11,7 @@ import {
   type KillProcessTreeOptions,
 } from "../process/kill-tree.js";
 import { getBinDir } from "./config.js";
+import { commandNeedsPosixShell } from "./posix-command-detect.js";
 
 export interface ShellConfig {
   shell: string;
@@ -80,11 +81,35 @@ export function getPosixShellArgs(shellPath: string): string[] {
   }
 }
 
+/**
+ * Bash locations on Windows, most-specific first.
+ *
+ * The portable Git that our own Windows installer bootstraps
+ * (%LOCALAPPDATA%\DaisyClaw\deps\portable-git, see scripts/install.ps1) is
+ * checked before a system Git for Windows so a machine without Git still gets
+ * the bash we ship, even when the installer's PATH edit has not been picked up
+ * by this process.
+ */
+function buildWindowsBashCandidates(env: NodeJS.ProcessEnv): string[] {
+  const candidates: string[] = [];
+  const localAppData = env.LOCALAPPDATA?.trim();
+  if (localAppData) {
+    const portableGitRoot = path.join(localAppData, "DaisyClaw", "deps", "portable-git");
+    candidates.push(
+      path.join(portableGitRoot, "bin", "bash.exe"),
+      path.join(portableGitRoot, "usr", "bin", "bash.exe"),
+    );
+  }
+  for (const dir of [env.ProgramFiles, env["ProgramFiles(x86)"], env.ProgramW6432]) {
+    if (dir?.trim()) {
+      candidates.push(path.join(dir, "Git", "bin", "bash.exe"));
+    }
+  }
+  return candidates;
+}
+
 export function resolveWindowsBashPath(env: NodeJS.ProcessEnv = process.env): string | undefined {
-  const candidates = [env.ProgramFiles, env["ProgramFiles(x86)"]]
-    .filter((dir): dir is string => Boolean(dir?.trim()))
-    .map((dir) => path.join(dir, "Git", "bin", "bash.exe"));
-  for (const candidate of candidates) {
+  for (const candidate of buildWindowsBashCandidates(env)) {
     if (fs.existsSync(candidate)) {
       return candidate;
     }
@@ -133,6 +158,24 @@ export function getShellConfig(customShellPath?: string): ShellConfig {
   // re-invoke the placeholder and get a spurious exitCode=1.
   const shell = resolveShellFromPath("sh") ?? resolveShellFromPath("bash") ?? "sh";
   return { shell, args: getPosixShellArgs(shell) };
+}
+
+/**
+ * Picks the shell for one agent exec command.
+ *
+ * Identical to {@link getShellConfig} except on Windows, where a command written
+ * in unambiguously POSIX syntax (most commonly copied out of a skill body) is
+ * routed to bash when one is available. PowerShell stays the default for
+ * everything else, and remains the fallback when no bash is installed.
+ */
+export function resolveExecShellConfig(command: string, customShellPath?: string): ShellConfig {
+  if (!customShellPath && process.platform === "win32" && commandNeedsPosixShell(command)) {
+    const bash = resolveWindowsBashPath();
+    if (bash) {
+      return { shell: bash, args: ["-c"] };
+    }
+  }
+  return getShellConfig(customShellPath);
 }
 
 export function getBashShellConfig(customShellPath?: string): ShellConfig {

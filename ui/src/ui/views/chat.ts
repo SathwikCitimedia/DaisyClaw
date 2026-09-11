@@ -58,6 +58,15 @@ import {
 } from "../chat/status-indicators.ts";
 import { getExpandedToolCards, syncToolCardExpansionState } from "../chat/tool-expansion-state.ts";
 import { describeVoiceError, type VoiceErrorFix } from "../chat/voice-error.ts";
+import {
+  cancelWaitCaptionTick,
+  resolveActiveToolLabel,
+  resolveRunningToolName,
+  resolveWaitCaption,
+  resolveWaitProviderName,
+  scheduleWaitCaptionTick,
+  trackWaitElapsedMs,
+} from "../chat/wait-caption.ts";
 import type { EmbedSandboxMode } from "../embed-sandbox.ts";
 import { icons } from "../icons.ts";
 import { formatGoalDetail, formatGoalSummary } from "../session-goal.ts";
@@ -1821,6 +1830,23 @@ export function renderChat(props: ChatProps) {
     showSubmittedProgressUi ||
     finalizeReloadInFlight ||
     replyRenderPending;
+  // Explain long waits: silent dots are indistinguishable from a frozen app,
+  // and the provider name tells the user whether their model or Daisy is slow.
+  const waitElapsedMs = trackWaitElapsedMs(props.sessionKey, awaitingReply);
+  const waitCaption =
+    waitElapsedMs === null
+      ? null
+      : resolveWaitCaption({
+          elapsedMs: waitElapsedMs,
+          provider: resolveWaitProviderName(props.sessions, props.sessionKey),
+          activeToolLabel: resolveActiveToolLabel(resolveRunningToolName(props.toolMessages)),
+        });
+  if (waitCaption) {
+    // Keeps the elapsed counter moving; stops on its own once the wait ends.
+    scheduleWaitCaptionTick(requestUpdate);
+  } else {
+    cancelWaitCaptionTick();
+  }
   const chatItems = buildCachedChatItems({
     sessionKey: props.sessionKey,
     messages: props.messages,
@@ -2010,6 +2036,7 @@ export function renderChat(props: ChatProps) {
                     assistantIdentity,
                     props.basePath,
                     props.assistantAttachmentAuthToken ?? null,
+                    waitCaption,
                   );
                 }
                 if (item.kind === "stream") {

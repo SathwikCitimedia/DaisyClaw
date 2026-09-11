@@ -77,21 +77,16 @@ describe("setupWizardCommand", () => {
     expect(mocks.runNonInteractiveSetup).not.toHaveBeenCalled();
   });
 
-  it("logs ASCII-safe Windows guidance before setup", async () => {
+  it("does not nag Windows users about WSL before setup", async () => {
     const runtime = makeRuntime();
     const platformSpy = vi.spyOn(process, "platform", "get").mockReturnValue("win32");
 
     try {
       await setupWizardCommand({}, runtime);
 
-      expect(runtime.log).toHaveBeenCalledWith(
-        [
-          "Windows detected - DaisyClaw runs great on WSL2!",
-          "Native Windows might be trickier.",
-          "Quick setup: wsl --install (one command, one reboot)",
-          "Guide: https://docs.daisyclaw.ai/windows",
-        ].join("\n"),
-      );
+      const logMock = runtime.log as unknown as ReturnType<typeof vi.fn>;
+      const logged = logMock.mock.calls.map((call: unknown[]) => String(call[0])).join("\n");
+      expect(logged).not.toContain("WSL");
     } finally {
       platformSpy.mockRestore();
     }

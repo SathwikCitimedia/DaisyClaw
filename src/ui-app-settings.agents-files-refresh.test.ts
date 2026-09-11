@@ -75,6 +75,7 @@ function createHost(agentsPanel: AgentsPanel): Parameters<typeof refreshActiveTa
       navWidth: 220,
       navGroupsCollapsed: {},
       borderRadius: 50,
+      workspaceRailCollapsed: false,
     },
     theme: "claw",
     themeMode: "system",

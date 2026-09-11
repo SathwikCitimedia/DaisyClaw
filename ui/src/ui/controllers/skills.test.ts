@@ -50,6 +50,7 @@ function createState(): { state: SkillsState; request: ReturnType<typeof vi.fn<T
     clawhubDetailError: null,
     clawhubInstallSlug: null,
     clawhubInstallMessage: null,
+    clawhubAmbiguousMatches: null,
     clawhubVerdicts: {},
     clawhubVerdictsLoading: false,
     clawhubVerdictsError: null,

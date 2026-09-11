@@ -464,6 +464,7 @@ describe("loadSettings default gateway URL derivation", () => {
       chatShowToolCalls: true,
       splitRatio: 0.6,
       navCollapsed: false,
+      workspaceRailCollapsed: false,
       navWidth: 320,
       navGroupsCollapsed: {},
       borderRadius: 50,

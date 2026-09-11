@@ -1,0 +1,226 @@
+using DaisyClaw.Shared;
+using System.Diagnostics;
+using System.Globalization;
+using System.Text;
+
+namespace DaisyClaw.Connection;
+
+public sealed record WslCommandResult(
+    int ExitCode,
+    string StandardOutput,
+    string StandardError,
+    bool TimedOut = false,
+    bool OutcomeIndeterminate = false)
+{
+    public bool Success => ExitCode == 0;
+    public bool IsIndeterminate => TimedOut || OutcomeIndeterminate;
+}
+
+public sealed record WslDistroInfo(string Name, string State, int Version);
+
+public interface IWslCommandRunner
+{
+    Task<WslCommandResult> RunAsync(
+        IReadOnlyList<string> arguments,
+        CancellationToken cancellationToken = default,
+        IReadOnlyDictionary<string, string>? environment = null);
+
+    Task<IReadOnlyList<WslDistroInfo>> ListDistrosAsync(CancellationToken cancellationToken = default);
+
+    Task<WslCommandResult> TerminateDistroAsync(string name, CancellationToken cancellationToken = default);
+
+    Task<WslCommandResult> UnregisterDistroAsync(string name, CancellationToken cancellationToken = default);
+
+    Task<WslCommandResult> RunInDistroAsync(
+        string name, IReadOnlyList<string> command,
+        CancellationToken cancellationToken = default,
+        IReadOnlyDictionary<string, string>? environment = null,
+        string? standardInput = null);
+}
+
+/// <summary>
+/// Lightweight WSL command runner for probing distro state.
+/// Does not include diagnostics tee — use SetupEngine for full setup/teardown.
+/// </summary>
+public sealed class WslExeCommandRunner : IWslCommandRunner
+{
+    private readonly IDaisyClawLogger _logger;
+    private readonly TimeSpan _defaultTimeout;
+
+    public WslExeCommandRunner(
+        IDaisyClawLogger? logger = null,
+        TimeSpan? defaultTimeout = null)
+    {
+        _logger = logger ?? NullLogger.Instance;
+        _defaultTimeout = defaultTimeout ?? TimeSpan.FromSeconds(30);
+    }
+
+    public async Task<IReadOnlyList<WslDistroInfo>> ListDistrosAsync(CancellationToken cancellationToken = default)
+    {
+        var result = await RunAsync(["--list", "--verbose"], cancellationToken);
+        return result.Success ? ParseDistroList(result.StandardOutput) : [];
+    }
+
+    public Task<WslCommandResult> RunAsync(
+        IReadOnlyList<string> arguments,
+        CancellationToken cancellationToken = default,
+        IReadOnlyDictionary<string, string>? environment = null) =>
+        RunProcessAsync(
+            "wsl.exe",
+            arguments,
+            cancellationToken,
+            environment,
+            standardInput: null);
+
+    public Task<WslCommandResult> RunInDistroAsync(
+        string name, IReadOnlyList<string> command,
+        CancellationToken cancellationToken = default,
+        IReadOnlyDictionary<string, string>? environment = null,
+        string? standardInput = null)
+    {
+        var args = new List<string> { "-d", name, "--" };
+        args.AddRange(command);
+        return RunProcessAsync(
+            "wsl.exe",
+            args,
+            cancellationToken,
+            environment,
+            standardInput);
+    }
+
+    public Task<WslCommandResult> TerminateDistroAsync(string name, CancellationToken cancellationToken = default) =>
+        RunAsync(["--terminate", name], cancellationToken);
+
+    public Task<WslCommandResult> UnregisterDistroAsync(string name, CancellationToken cancellationToken = default) =>
+        RunAsync(["--unregister", name], cancellationToken);
+
+    public static IReadOnlyList<WslDistroInfo> ParseDistroList(string output)
+    {
+        var distros = new List<WslDistroInfo>();
+        foreach (var rawLine in output.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries))
+        {
+            var line = rawLine.Replace("\0", string.Empty).Trim();
+            if (line.Length == 0 || line.StartsWith("NAME", StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            if (line[0] == '*')
+                line = line[1..].TrimStart();
+
+            var parts = line.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length < 3)
+                continue;
+
+            if (!int.TryParse(parts[^1], NumberStyles.Integer, CultureInfo.InvariantCulture, out var version))
+                continue;
+
+            var state = parts[^2];
+            var name = string.Join(" ", parts.Take(parts.Length - 2));
+            if (!string.IsNullOrWhiteSpace(name))
+                distros.Add(new WslDistroInfo(name, state, version));
+        }
+
+        return distros;
+    }
+
+    private async Task<WslCommandResult> RunProcessAsync(
+        string fileName,
+        IReadOnlyList<string> arguments,
+        CancellationToken cancellationToken,
+        IReadOnlyDictionary<string, string>? environment,
+        string? standardInput)
+    {
+        var psi = new ProcessStartInfo
+        {
+            FileName = fileName,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            RedirectStandardInput = standardInput is not null,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            StandardOutputEncoding = Encoding.UTF8,
+            StandardErrorEncoding = Encoding.UTF8
+        };
+
+        foreach (var argument in arguments)
+            psi.ArgumentList.Add(argument);
+
+        if (environment is not null)
+        {
+            foreach (var kvp in environment)
+                psi.Environment[kvp.Key] = kvp.Value;
+        }
+
+        _logger.Info($"[WSL] {fileName} {string.Join(" ", arguments)}");
+
+        using var process = new Process { StartInfo = psi };
+        try
+        {
+            process.Start();
+        }
+        catch (Exception ex)
+        {
+            return new WslCommandResult(
+                -1,
+                string.Empty,
+                $"Failed to start wsl.exe: {ex.Message}",
+                OutcomeIndeterminate: true);
+        }
+
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeoutCts.CancelAfter(_defaultTimeout);
+
+        var stdoutTask = process.StandardOutput.ReadToEndAsync(timeoutCts.Token);
+        var stderrTask = process.StandardError.ReadToEndAsync(timeoutCts.Token);
+
+        bool timedOut = false;
+        try
+        {
+            if (standardInput is not null)
+            {
+                try
+                {
+                    await process.StandardInput.WriteAsync(
+                        standardInput.AsMemory(),
+                        timeoutCts.Token);
+                }
+                catch (IOException)
+                {
+                    // The process result below is authoritative when wsl.exe exits
+                    // before accepting the complete script.
+                }
+                catch (ObjectDisposedException)
+                {
+                    // The process closed stdin while failing. Preserve its result.
+                }
+                finally
+                {
+                    try { process.StandardInput.Close(); }
+                    catch (IOException) { }
+                    catch (ObjectDisposedException) { }
+                }
+            }
+
+            await process.WaitForExitAsync(timeoutCts.Token);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            timedOut = true;
+            // slopwatch-ignore: SW003 Shutdown cancellation or disposal is expected and the caller already preserves the safe state.
+            try { process.Kill(entireProcessTree: true); } catch { }
+        }
+        catch (OperationCanceledException)
+        {
+            // slopwatch-ignore: SW003 Shutdown cancellation or disposal is expected and the caller already preserves the safe state.
+            try { process.Kill(entireProcessTree: true); } catch { }
+            throw;
+        }
+
+        string stdout, stderr;
+        try { stdout = await stdoutTask; } catch { stdout = string.Empty; }
+        try { stderr = await stderrTask; } catch { stderr = string.Empty; }
+
+        return timedOut
+            ? new WslCommandResult(-1, stdout, "wsl.exe timed out", TimedOut: true)
+            : new WslCommandResult(process.ExitCode, stdout, stderr);
+    }
+}

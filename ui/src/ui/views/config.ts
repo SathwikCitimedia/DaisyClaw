@@ -1338,88 +1338,127 @@ export function renderConfig(props: ConfigProps) {
     });
   };
 
-  function renderAccordionNav() {
+  /** Leaf-field count for a section, used as an "N settings" hint on the overview. */
+  function countSectionFields(key: string): number {
+    const walk = (node: unknown): number => {
+      if (!node || typeof node !== "object") {
+        return 0;
+      }
+      const nested = (node as { properties?: unknown }).properties;
+      if (!nested || typeof nested !== "object") {
+        return 1;
+      }
+      return Object.values(nested as Record<string, unknown>).reduce<number>(
+        (sum, child) => sum + walk(child),
+        0,
+      );
+    };
+    return walk((schemaProps as Record<string, unknown>)[key]);
+  }
+
+  const activeCategory =
+    props.activeSection == null
+      ? null
+      : (allCategories.find((cat) => cat.sections.some((s) => s.key === props.activeSection)) ??
+        null);
+  const activeSectionLabel =
+    activeCategory?.sections.find((s) => s.key === props.activeSection)?.label ??
+    props.activeSection ??
+    "";
+
+  const backToQuickButton = props.onBackToQuick
+    ? html`
+        <button class="config-advanced__back" @click=${props.onBackToQuick}>
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            width="14"
+            height="14"
+          >
+            <polyline points="15 18 9 12 15 6"></polyline>
+          </svg>
+          Quick Settings
+        </button>
+      `
+    : nothing;
+
+  /**
+   * Header for the card layout: the Quick Settings escape hatch plus, once a
+   * section is open, a breadcrumb back to the overview. Kept to a single row so
+   * it never competes with the scrolling card below it.
+   */
+  function renderAdvancedHeader() {
     return html`
-      <div class="config-accordion-nav">
-        ${props.onBackToQuick
+      <div class="config-advanced__header">
+        ${backToQuickButton}
+        ${props.activeSection != null
           ? html`
-              <button class="config-accordion-nav__back" @click=${props.onBackToQuick}>
-                <svg
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                  width="14"
-                  height="14"
+              <nav class="config-advanced__crumbs" aria-label="Settings breadcrumb">
+                <button
+                  class="config-advanced__crumb config-advanced__crumb--link"
+                  @click=${(e: Event) => {
+                    props.onSectionChange(null);
+                    resetContentScroll(e.currentTarget);
+                  }}
                 >
-                  <polyline points="15 18 9 12 15 6"></polyline>
-                </svg>
-                Quick Settings
-              </button>
+                  Advanced
+                </button>
+                ${activeCategory
+                  ? html`<span class="config-advanced__crumb-sep">›</span>
+                      <span class="config-advanced__crumb">${activeCategory.label}</span>`
+                  : nothing}
+                <span class="config-advanced__crumb-sep">›</span>
+                <span class="config-advanced__crumb config-advanced__crumb--current"
+                  >${activeSectionLabel}</span
+                >
+              </nav>
             `
           : nothing}
+      </div>
+    `;
+  }
+
+  /**
+   * Overview shown when no section is open: one row per category, each listing
+   * its sections as chips. Replaces the old accordion, whose expanded groups
+   * overflowed the fixed-height panel; here every section is one click away and
+   * the content that follows is a single scrolling card.
+   */
+  function renderAdvancedOverview() {
+    return html`
+      <div class="config-advanced-overview">
         ${allCategories.map(
           (cat) => html`
-            <div class="config-accordion-group">
-              <button
-                class="config-accordion-group__header ${props.activeSection != null &&
-                cat.sections.some((s) => s.key === props.activeSection)
-                  ? "config-accordion-group__header--active"
-                  : ""}"
-                @click=${(e: Event) => {
-                  const firstKey = cat.sections[0]?.key ?? null;
-                  const isCurrentlyInGroup = cat.sections.some(
-                    (s) => s.key === props.activeSection,
-                  );
-                  props.onSectionChange(isCurrentlyInGroup ? null : firstKey);
-                  resetContentScroll(e.currentTarget);
-                }}
-              >
-                <span class="config-accordion-group__icon">
+            <section class="config-advanced-overview__group">
+              <h3 class="config-advanced-overview__title">
+                <span class="config-advanced-overview__icon">
                   ${getSectionIcon(cat.sections[0]?.key ?? "default")}
                 </span>
-                <span>${cat.label}</span>
-                <svg
-                  class="config-accordion-group__chevron ${cat.sections.some(
-                    (s) => s.key === props.activeSection,
-                  )
-                    ? "config-accordion-group__chevron--open"
-                    : ""}"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                  width="14"
-                  height="14"
-                >
-                  <polyline points="6 9 12 15 18 9"></polyline>
-                </svg>
-              </button>
-              ${cat.sections.some((s) => s.key === props.activeSection)
-                ? html`
-                    <div class="config-accordion-group__items">
-                      ${cat.sections.map(
-                        (s) => html`
-                          <button
-                            class="config-accordion-group__item ${props.activeSection === s.key
-                              ? "config-accordion-group__item--active"
-                              : ""}"
-                            @click=${(e: Event) => {
-                              props.onSectionChange(s.key);
-                              resetContentScroll(e.currentTarget);
-                            }}
-                          >
-                            <span class="config-accordion-group__item-icon">
-                              ${getSectionIcon(s.key)}
-                            </span>
-                            ${s.label}
-                          </button>
-                        `,
-                      )}
-                    </div>
-                  `
-                : nothing}
-            </div>
+                ${cat.label}
+              </h3>
+              <div class="config-advanced-overview__chips">
+                ${cat.sections.map((s) => {
+                  const fields = countSectionFields(s.key);
+                  return html`
+                    <button
+                      class="config-advanced-chip"
+                      @click=${(e: Event) => {
+                        props.onSectionChange(s.key);
+                        resetContentScroll(e.currentTarget);
+                      }}
+                    >
+                      <span class="config-advanced-chip__icon">${getSectionIcon(s.key)}</span>
+                      <span class="config-advanced-chip__label">${s.label}</span>
+                      ${fields > 0
+                        ? html`<span class="config-advanced-chip__count">${fields}</span>`
+                        : nothing}
+                    </button>
+                  `;
+                })}
+              </div>
+            </section>
           `,
         )}
       </div>
@@ -1466,7 +1505,7 @@ export function renderConfig(props: ConfigProps) {
     Boolean(include?.has("__appearance__"));
 
   return html`
-    <div class="config-layout">
+    <div class="config-layout ${settingsLayout === "accordion" ? "config-layout--accordion" : ""}">
       <main class="config-main">
         <div class="config-actions">
           <div class="config-actions__left">
@@ -1559,7 +1598,7 @@ export function renderConfig(props: ConfigProps) {
         </div>
 
         ${settingsLayout === "accordion"
-          ? renderAccordionNav()
+          ? renderAdvancedHeader()
           : html`
               <div class="config-top-tabs">
                 ${formMode === "form"
@@ -1816,105 +1855,127 @@ export function renderConfig(props: ConfigProps) {
           : nothing}
         <!-- Form content -->
         <div class="config-content">
-          ${props.activeSection === "__appearance__"
-            ? includeVirtualSections
-              ? renderAppearanceSection(props)
-              : nothing
-            : props.activeSection === "__notifications__"
-              ? includeVirtualSections
-                ? renderNotificationsSection(props)
-                : nothing
-              : formMode === "form"
-                ? html`
-                    ${showAppearanceOnRoot ? renderAppearanceSection(props) : nothing}
-                    ${props.schemaLoading
-                      ? html`
-                          <div class="config-loading">
-                            <div class="config-loading__spinner"></div>
-                            <span>Loading schema…</span>
-                          </div>
-                        `
-                      : renderConfigForm({
-                          schema: analysis.schema,
-                          uiHints: props.uiHints,
-                          value: props.formValue,
-                          rawAvailable,
-                          disabled: props.loading || !props.formValue,
-                          unsupportedPaths: analysis.unsupportedPaths,
-                          onPatch: props.onFormPatch,
-                          searchQuery: props.searchQuery,
-                          activeSection: props.activeSection,
-                          activeSubsection: effectiveSubsection,
-                          revealSensitive:
-                            props.activeSection === "env" ? envSensitiveVisible : false,
-                          isSensitivePathRevealed,
-                          onToggleSensitivePath: (path) => {
-                            toggleSensitivePathReveal(path);
-                            requestUpdate();
-                          },
-                        })}
-                  `
-                : (() => {
-                    const sensitiveCount = countSensitiveConfigValues(
-                      props.formValue,
-                      [],
-                      props.uiHints,
-                    );
-                    const blurred = sensitiveCount > 0 && !cvs.rawRevealed;
-                    return html`
-                      ${formUnsafe
-                        ? html`
-                            <div class="callout info" style="margin-bottom: 12px">
-                              Your config contains fields the form editor can't safely represent.
-                              Use Raw mode to edit those entries.
-                            </div>
-                          `
-                        : nothing}
-                      <div class="field config-raw-field">
-                        <span style="display:flex;align-items:center;gap:8px;">
-                          Raw config (JSON/JSON5)
-                          ${sensitiveCount > 0
-                            ? html`
-                                <span class="pill pill--sm"
-                                  >${sensitiveCount} secret${sensitiveCount === 1 ? "" : "s"}
-                                  ${blurred ? "redacted" : "visible"}</span
-                                >
-                                <button
-                                  class="btn btn--icon config-raw-toggle ${blurred ? "" : "active"}"
-                                  title=${blurred
-                                    ? "Reveal sensitive values"
-                                    : "Hide sensitive values"}
-                                  aria-label="Toggle raw config redaction"
-                                  aria-pressed=${!blurred}
-                                  @click=${() => {
-                                    cvs.rawRevealed = !cvs.rawRevealed;
-                                    requestUpdate();
-                                  }}
-                                >
-                                  ${blurred ? icons.eyeOff : icons.eye}
-                                </button>
-                              `
-                            : nothing}
-                        </span>
-                        ${blurred
+          ${settingsLayout === "accordion" && props.activeSection == null
+            ? renderAdvancedOverview()
+            : nothing}
+          ${settingsLayout === "accordion" && props.activeSection != null
+            ? html`<div class="config-advanced-card__header">
+                <h2 class="config-advanced-card__title">${activeSectionLabel}</h2>
+                ${countSectionFields(props.activeSection) > 0
+                  ? html`<span class="config-advanced-card__count"
+                      >${countSectionFields(props.activeSection)} settings</span
+                    >`
+                  : nothing}
+              </div>`
+            : nothing}
+          ${
+            // Card layout with nothing open shows only the overview: rendering
+            // the root form here as well would stack every section under it.
+            settingsLayout === "accordion" && props.activeSection == null
+              ? nothing
+              : props.activeSection === "__appearance__"
+                ? includeVirtualSections
+                  ? renderAppearanceSection(props)
+                  : nothing
+                : props.activeSection === "__notifications__"
+                  ? includeVirtualSections
+                    ? renderNotificationsSection(props)
+                    : nothing
+                  : formMode === "form"
+                    ? html`
+                        ${showAppearanceOnRoot ? renderAppearanceSection(props) : nothing}
+                        ${props.schemaLoading
                           ? html`
-                              <div class="callout info" style="margin-top: 12px">
-                                ${sensitiveCount} sensitive value${sensitiveCount === 1 ? "" : "s"}
-                                hidden. Use the reveal button above to edit the raw config.
+                              <div class="config-loading">
+                                <div class="config-loading__spinner"></div>
+                                <span>Loading schema…</span>
                               </div>
                             `
-                          : html`
-                              <textarea
-                                placeholder="Raw config (JSON/JSON5)"
-                                .value=${props.raw}
-                                @input=${(e: Event) => {
-                                  props.onRawChange((e.target as HTMLTextAreaElement).value);
-                                }}
-                              ></textarea>
-                            `}
-                      </div>
-                    `;
-                  })()}
+                          : renderConfigForm({
+                              schema: analysis.schema,
+                              uiHints: props.uiHints,
+                              value: props.formValue,
+                              rawAvailable,
+                              disabled: props.loading || !props.formValue,
+                              unsupportedPaths: analysis.unsupportedPaths,
+                              onPatch: props.onFormPatch,
+                              searchQuery: props.searchQuery,
+                              activeSection: props.activeSection,
+                              activeSubsection: effectiveSubsection,
+                              revealSensitive:
+                                props.activeSection === "env" ? envSensitiveVisible : false,
+                              isSensitivePathRevealed,
+                              onToggleSensitivePath: (path) => {
+                                toggleSensitivePathReveal(path);
+                                requestUpdate();
+                              },
+                            })}
+                      `
+                    : (() => {
+                        const sensitiveCount = countSensitiveConfigValues(
+                          props.formValue,
+                          [],
+                          props.uiHints,
+                        );
+                        const blurred = sensitiveCount > 0 && !cvs.rawRevealed;
+                        return html`
+                          ${formUnsafe
+                            ? html`
+                                <div class="callout info" style="margin-bottom: 12px">
+                                  Your config contains fields the form editor can't safely
+                                  represent. Use Raw mode to edit those entries.
+                                </div>
+                              `
+                            : nothing}
+                          <div class="field config-raw-field">
+                            <span style="display:flex;align-items:center;gap:8px;">
+                              Raw config (JSON/JSON5)
+                              ${sensitiveCount > 0
+                                ? html`
+                                    <span class="pill pill--sm"
+                                      >${sensitiveCount} secret${sensitiveCount === 1 ? "" : "s"}
+                                      ${blurred ? "redacted" : "visible"}</span
+                                    >
+                                    <button
+                                      class="btn btn--icon config-raw-toggle ${blurred
+                                        ? ""
+                                        : "active"}"
+                                      title=${blurred
+                                        ? "Reveal sensitive values"
+                                        : "Hide sensitive values"}
+                                      aria-label="Toggle raw config redaction"
+                                      aria-pressed=${!blurred}
+                                      @click=${() => {
+                                        cvs.rawRevealed = !cvs.rawRevealed;
+                                        requestUpdate();
+                                      }}
+                                    >
+                                      ${blurred ? icons.eyeOff : icons.eye}
+                                    </button>
+                                  `
+                                : nothing}
+                            </span>
+                            ${blurred
+                              ? html`
+                                  <div class="callout info" style="margin-top: 12px">
+                                    ${sensitiveCount} sensitive
+                                    value${sensitiveCount === 1 ? "" : "s"} hidden. Use the reveal
+                                    button above to edit the raw config.
+                                  </div>
+                                `
+                              : html`
+                                  <textarea
+                                    placeholder="Raw config (JSON/JSON5)"
+                                    .value=${props.raw}
+                                    @input=${(e: Event) => {
+                                      props.onRawChange((e.target as HTMLTextAreaElement).value);
+                                    }}
+                                  ></textarea>
+                                `}
+                          </div>
+                        `;
+                      })()
+          }
         </div>
 
         ${props.issues.length > 0

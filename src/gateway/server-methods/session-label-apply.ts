@@ -18,7 +18,8 @@ type EmitSessionsChangedContext = Parameters<typeof emitSessionsChanged>[0];
  * (store unavailable, label already in use, etc.).
  */
 export async function applyAutoSessionLabel(params: {
-  context: EmitSessionsChangedContext;
+  /** Omit when no gateway context exists yet (e.g. startup repair); UIs pick the label up on their next sessions.list. */
+  context?: EmitSessionsChangedContext;
   cfg: DaisyClawConfig;
   key: string;
   agentId?: string;
@@ -51,11 +52,13 @@ export async function applyAutoSessionLabel(params: {
     if (!applied.ok) {
       return false;
     }
-    emitSessionsChanged(context, {
-      sessionKey: target.canonicalKey,
-      ...(target.canonicalKey === "global" && agentId ? { agentId } : {}),
-      reason: "patch",
-    });
+    if (context) {
+      emitSessionsChanged(context, {
+        sessionKey: target.canonicalKey,
+        ...(target.canonicalKey === "global" && agentId ? { agentId } : {}),
+        reason: "patch",
+      });
+    }
     return true;
   } catch {
     return false;

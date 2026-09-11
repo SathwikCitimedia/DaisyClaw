@@ -8,6 +8,7 @@ import {
   detectRuntimeShell,
   getShellEnv,
   getShellConfig,
+  resolveExecShellConfig,
   resolvePowerShellPath,
   resolveShellFromPath,
   resolveShellFromWhich,
@@ -178,6 +179,74 @@ describe("resolveWindowsBashPath", () => {
 
     expect(resolveWindowsBashPath({ ProgramFiles: programFiles, PATH: "" })).toBe(bashPath);
   });
+
+  it("finds the portable Git bash that our own Windows installer bootstraps", () => {
+    const localAppData = fs.mkdtempSync(path.join(os.tmpdir(), "daisyclaw-localappdata-"));
+    tempDirs.push(localAppData);
+    const bashDir = path.join(localAppData, "DaisyClaw", "deps", "portable-git", "usr", "bin");
+    fs.mkdirSync(bashDir, { recursive: true });
+    const bashPath = path.join(bashDir, "bash.exe");
+    fs.writeFileSync(bashPath, "");
+
+    expect(resolveWindowsBashPath({ LOCALAPPDATA: localAppData, PATH: "" })).toBe(bashPath);
+  });
+
+  it("prefers our portable Git over a system Git for Windows", () => {
+    const localAppData = fs.mkdtempSync(path.join(os.tmpdir(), "daisyclaw-localappdata-"));
+    const programFiles = fs.mkdtempSync(path.join(os.tmpdir(), "daisyclaw-git-bash-"));
+    tempDirs.push(localAppData, programFiles);
+    const portableBinDir = path.join(localAppData, "DaisyClaw", "deps", "portable-git", "bin");
+    fs.mkdirSync(portableBinDir, { recursive: true });
+    const portableBash = path.join(portableBinDir, "bash.exe");
+    fs.writeFileSync(portableBash, "");
+    const systemBashDir = path.join(programFiles, "Git", "bin");
+    fs.mkdirSync(systemBashDir, { recursive: true });
+    fs.writeFileSync(path.join(systemBashDir, "bash.exe"), "");
+
+    expect(
+      resolveWindowsBashPath({
+        LOCALAPPDATA: localAppData,
+        ProgramFiles: programFiles,
+        PATH: "",
+      }),
+    ).toBe(portableBash);
+  });
+
+  it("returns undefined when no bash is installed", () => {
+    const localAppData = fs.mkdtempSync(path.join(os.tmpdir(), "daisyclaw-localappdata-"));
+    tempDirs.push(localAppData);
+
+    expect(resolveWindowsBashPath({ LOCALAPPDATA: localAppData, PATH: "" })).toBeUndefined();
+  });
+});
+
+describe("resolveExecShellConfig", () => {
+  it("keeps the platform default shell for ordinary commands", () => {
+    expect(resolveExecShellConfig("gh issue list --limit 5")).toEqual(getShellConfig());
+  });
+
+  if (isWin) {
+    it("routes POSIX-only commands to bash when one is available", () => {
+      const bash = resolveWindowsBashPath();
+      const config = resolveExecShellConfig('export FOO="bar"; echo "$FOO"');
+      if (bash) {
+        expect(config).toEqual({ shell: bash, args: ["-c"] });
+      } else {
+        // No bash on this machine: PowerShell stays the fallback.
+        expect(config).toEqual(getShellConfig());
+      }
+    });
+
+    it("honors an explicit custom shell over POSIX routing", () => {
+      const powershell = resolvePowerShellPath();
+      const config = resolveExecShellConfig('export FOO="bar"', powershell);
+      expect(config.shell).toBe(powershell);
+    });
+  } else {
+    it("leaves non-Windows platforms untouched", () => {
+      expect(resolveExecShellConfig('export FOO="bar"')).toEqual(getShellConfig());
+    });
+  }
 });
 
 describe("getShellEnv", () => {
@@ -262,6 +331,10 @@ describe("resolveShellFromWhich", () => {
 
       expect(resolveShellFromWhich("bash")).toBe(path.join(binDir, "bash"));
     });
+  } else {
+    it("declines on Windows, which has no which(1)", () => {
+      expect(resolveShellFromWhich("bash")).toBeUndefined();
+    });
   }
 });
 
@@ -299,6 +372,18 @@ describe("detectRuntimeShell", () => {
       process.env.SHELL = "/usr/bin/false";
       process.env.BASH_VERSION = "5.2.0";
 
+      expect(detectRuntimeShell()).toBe("bash");
+    });
+  } else {
+    it("reports a PowerShell flavor on Windows", () => {
+      expect(detectRuntimeShell()).toBe("powershell");
+
+      process.env.POWERSHELL_DISTRIBUTION_CHANNEL = "MSI:Windows 11";
+      expect(detectRuntimeShell()).toBe("pwsh");
+    });
+
+    it("honors the DAISYCLAW_SHELL override", () => {
+      process.env.DAISYCLAW_SHELL = "C:\\Program Files\\Git\\bin\\bash.exe";
       expect(detectRuntimeShell()).toBe("bash");
     });
   }

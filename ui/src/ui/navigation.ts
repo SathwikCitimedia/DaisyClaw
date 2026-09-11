@@ -41,6 +41,10 @@ export type Tab =
   | "logs"
   | "dreams";
 
+/**
+ * Every tab that belongs to the settings family. Drives routing and the
+ * sidebar's single "Settings" entry, so all of these stay reachable by URL.
+ */
 export const SETTINGS_TABS = [
   "config",
   "channels",
@@ -53,6 +57,18 @@ export const SETTINGS_TABS = [
   "debug",
   "logs",
 ] as const satisfies readonly Tab[];
+
+/**
+ * The subset shown as pills in the settings row. `aiAgents` and
+ * `infrastructure` are omitted because they render the same raw config editor
+ * as Settings → Advanced (which now includes their sections instead of
+ * excluding them), and `debug` is a raw RPC console. All three remain routable
+ * for development and support — they are simply not surfaced to everyday
+ * users, who found the row developer-heavy.
+ */
+export const SETTINGS_ROW_TABS = SETTINGS_TABS.filter(
+  (tab) => tab !== "infrastructure" && tab !== "aiAgents" && tab !== "debug",
+) as readonly Tab[];
 
 const TAB_PATHS: Record<Tab, string> = {
   agents: "/agents",
@@ -146,6 +162,36 @@ export function pathForTab(tab: Tab, basePath = ""): string {
 
 export function isSettingsTab(tab: Tab): boolean {
   return (SETTINGS_TABS as readonly Tab[]).includes(tab);
+}
+
+/**
+ * Tabs that only make sense while an optional bundled plugin is enabled. They
+ * stay routable (a deep link still renders the plugin's own "disabled" state)
+ * but are dropped from the sidebar so a switched-off feature never shows up as
+ * a dead entry with a config-key instruction.
+ */
+export const PLUGIN_GATED_SIDEBAR_TABS: Readonly<Partial<Record<Tab, string>>> = {
+  workboard: "workboard",
+};
+
+export type SidebarTabVisibility = {
+  /** Plugin ids currently enabled in the loaded config snapshot. */
+  enabledPluginIds: ReadonlySet<string>;
+};
+
+export function isSidebarTabVisible(tab: Tab, visibility: SidebarTabVisibility): boolean {
+  const pluginId = PLUGIN_GATED_SIDEBAR_TABS[tab];
+  if (!pluginId) {
+    return true;
+  }
+  return visibility.enabledPluginIds.has(pluginId);
+}
+
+export function resolveVisibleSidebarTabs(
+  tabs: readonly Tab[],
+  visibility: SidebarTabVisibility,
+): Tab[] {
+  return tabs.filter((tab) => isSidebarTabVisible(tab, visibility));
 }
 
 export function isTabInGroup(group: (typeof TAB_GROUPS)[number], tab: Tab): boolean {

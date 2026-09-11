@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\DaisyClaw.Shared\DaisyClaw.Shared.csproj" />
+    <ProjectReference Include="..\DaisyClaw.TestSupport\DaisyClaw.TestSupport.csproj" />
+    <ProjectReference Include="..\DaisyClaw.Shared.TestHost\DaisyClaw.Shared.TestHost.csproj"
+                      ReferenceOutputAssembly="false" />
+    <ProjectReference Include="..\..\src\DaisyClaw.Cli\DaisyClaw.Cli.csproj"
+                      ReferenceOutputAssembly="false" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="Mxc\Golden\*.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+</Project>

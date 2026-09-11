@@ -356,15 +356,24 @@ export function renderReadingIndicatorGroup(
   assistant?: AssistantIdentity,
   basePath?: string,
   authToken?: string | null,
+  /** Explains a long wait ("Waiting on anthropic · 12s"); omitted while the wait is short. */
+  waitCaption?: { text: string; emphasizeStop?: boolean } | null,
 ) {
+  const caption = waitCaption?.text?.trim();
+  const captionClass = waitCaption?.emphasizeStop
+    ? "chat-reading-indicator__caption chat-reading-indicator__caption--long"
+    : "chat-reading-indicator__caption";
   return html`
     <div class="chat-group assistant">
       ${renderChatAvatar("assistant", assistant, undefined, basePath, authToken)}
       <div class="chat-group-messages">
-        <div class="chat-bubble chat-reading-indicator" aria-hidden="true">
-          <span class="chat-reading-indicator__dots">
+        <div class="chat-bubble chat-reading-indicator">
+          <span class="chat-reading-indicator__dots" aria-hidden="true">
             <span></span><span></span><span></span>
           </span>
+          ${caption
+            ? html`<span class=${captionClass} role="status" aria-live="polite">${caption}</span>`
+            : nothing}
         </div>
       </div>
     </div>

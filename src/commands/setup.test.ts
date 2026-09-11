@@ -58,18 +58,22 @@ describe("setupCommand", () => {
       await setupCommand({ workspace }, runtime, deps);
 
       const configPath = path.join(home, ".daisyclaw", "daisyclaw.json");
-      const raw = JSON.parse(await fs.readFile(configPath, "utf-8")) as unknown;
+      const raw = JSON.parse(await fs.readFile(configPath, "utf-8")) as {
+        agents?: { defaults?: { workspace?: string } };
+        gateway?: { mode?: string; auth?: { token?: string } };
+        skills?: { entries?: Record<string, { enabled?: boolean }> };
+      };
 
-      expect(raw).toStrictEqual({
-        agents: {
-          defaults: {
-            workspace,
-          },
-        },
-        gateway: {
-          mode: "local",
-        },
-      });
+      expect(raw.agents?.defaults?.workspace).toBe(workspace);
+      expect(raw.gateway?.mode).toBe("local");
+      // Fresh installs must be reachable from the Control UI: a generated
+      // token, and the curated starter pack instead of the full dev catalog.
+      expect(typeof raw.gateway?.auth?.token).toBe("string");
+      expect(raw.gateway?.auth?.token?.length ?? 0).toBeGreaterThan(0);
+      const hiddenEntries = Object.values(raw.skills?.entries ?? {}).filter(
+        (entry) => entry.enabled === false,
+      );
+      expect(hiddenEntries.length).toBeGreaterThan(0);
     });
   });
 
@@ -122,11 +126,50 @@ describe("setupCommand", () => {
 
       const raw = JSON.parse(await fs.readFile(configPath, "utf-8")) as {
         agents?: { defaults?: { workspace?: string } };
-        gateway?: { mode?: string };
+        gateway?: { mode?: string; auth?: { token?: string } };
+        skills?: { entries?: Record<string, { enabled?: boolean }> };
       };
 
       expect(raw.agents?.defaults?.workspace).toBe(workspace);
       expect(raw.gateway?.mode).toBe("local");
+      // Existing installs with no auth get a token (they were unreachable
+      // from the Control UI without one) but keep their skill visibility.
+      expect(typeof raw.gateway?.auth?.token).toBe("string");
+      expect(raw.skills).toBeUndefined();
+    });
+  });
+
+  it("keeps existing auth untouched and generates nothing", async () => {
+    await withTempHome(async (home) => {
+      const runtime = {
+        log: vi.fn(),
+        error: vi.fn(),
+        exit: vi.fn(),
+      };
+      const configDir = path.join(home, ".daisyclaw");
+      const configPath = path.join(configDir, "daisyclaw.json");
+      const deps = createSetupDeps(home);
+
+      await fs.mkdir(configDir, { recursive: true });
+      await fs.writeFile(
+        configPath,
+        JSON.stringify({
+          gateway: { mode: "local", auth: { token: "user-token" } },
+          agents: { defaults: { workspace: path.join(home, "ws") } },
+        }),
+      );
+
+      await setupCommand(undefined, runtime, deps);
+
+      const raw = JSON.parse(await fs.readFile(configPath, "utf-8").catch(() => "null")) as {
+        gateway?: { auth?: { token?: string } };
+      } | null;
+
+      // No rewrite was needed, or if rewritten, the token is preserved.
+      if (raw) {
+        expect(raw.gateway?.auth?.token ?? "user-token").toBe("user-token");
+      }
+      expect(deps.replaceConfigFile).not.toHaveBeenCalled();
     });
   });
 

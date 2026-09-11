@@ -1,6 +1,7 @@
 // Agent mutation tests cover create/update/delete handlers, safe workspace file
 // access, config preconditions, trash cleanup, and attestation handling.
-import { describe, expect, it, vi, beforeEach } from "vitest";
+import path from "node:path";
+import { describe, expect, it, vi, afterEach, beforeEach } from "vitest";
 import { FsSafeError } from "../../infra/fs-safe.js";
 /* ------------------------------------------------------------------ */
 /* Mocks                                                              */
@@ -1292,7 +1293,9 @@ describe("agents.files.list", () => {
     });
     agentsTesting.setDepsForTests({ root: makeRootForTest({ stat: rootStat }) });
     mocks.fsLstat.mockImplementation(async (filePath: unknown) => {
-      if (filePath === "/workspace/main/AGENTS.md") {
+      // Production builds the path with path.join, so match it separator-agnostically
+      // (backslashes on Windows, forward slashes elsewhere).
+      if (filePath === path.join("/workspace/main", "AGENTS.md")) {
         return makeFileStat({ size: 23, mtimeMs: 6789 });
       }
       throw createEnoentError();
@@ -1311,6 +1314,51 @@ describe("agents.files.list", () => {
       size: 23,
     });
     expect(rootStat).toHaveBeenCalled();
+  });
+});
+
+describe("consumer lockdown file protection", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.loadConfigReturn = {};
+    mocks.isWorkspaceSetupCompleted.mockReset().mockResolvedValue(false);
+    mocks.fsReadlink.mockReset().mockResolvedValue("");
+    process.env.DAISYCLAW_CONSUMER_LOCKDOWN = "1";
+  });
+
+  afterEach(() => {
+    delete process.env.DAISYCLAW_CONSUMER_LOCKDOWN;
+  });
+
+  it("hides SOUL.md from agents.files.list", async () => {
+    const names = await listAgentFileNames();
+    expect(names).not.toContain("SOUL.md");
+    expect(names).toContain("AGENTS.md");
+  });
+
+  it("rejects agents.files.get for SOUL.md exactly like an unknown file", async () => {
+    const { respond, promise } = makeCall("agents.files.get", {
+      agentId: "main",
+      name: "SOUL.md",
+    });
+    await promise;
+    expectRespondErrorContaining(respond, 'unsupported file "SOUL.md"');
+  });
+
+  it("rejects agents.files.set for SOUL.md exactly like an unknown file", async () => {
+    const { respond, promise } = makeCall("agents.files.set", {
+      agentId: "main",
+      name: "SOUL.md",
+      content: "tampered",
+    });
+    await promise;
+    expectRespondErrorContaining(respond, 'unsupported file "SOUL.md"');
+  });
+
+  it("keeps SOUL.md listed and accessible when lockdown is off", async () => {
+    delete process.env.DAISYCLAW_CONSUMER_LOCKDOWN;
+    const names = await listAgentFileNames();
+    expect(names).toContain("SOUL.md");
   });
 });
 

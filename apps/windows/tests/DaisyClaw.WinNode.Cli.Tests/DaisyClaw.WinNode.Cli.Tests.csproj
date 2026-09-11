@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\DaisyClaw.WinNode.Cli\DaisyClaw.WinNode.Cli.csproj" />
+    <ProjectReference Include="..\DaisyClaw.TestSupport\DaisyClaw.TestSupport.csproj" />
+  </ItemGroup>
+
+</Project>

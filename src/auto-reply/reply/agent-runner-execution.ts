@@ -748,12 +748,23 @@ function buildCliBackendTimeoutFailureText(message: string): string | null {
   );
 }
 
+/**
+ * Dashboard-first remediation hint for missing model/provider auth. Users of
+ * the packaged app have no terminal, so the primary path is always the
+ * Control UI; CLI repair stays as a secondary hint where it adds value.
+ */
+const DASHBOARD_MODEL_SETUP_HINT =
+  "Open the DaisyClaw dashboard, click the model name above the chat box, and add your provider API key in Model Studio.";
+
 function buildMissingApiKeyFailureText(input: { message: string; error?: unknown }): string | null {
   const normalizedMessage = collapseRepeatedFailureDetail(input.message);
   const provider = isMissingProviderAuthError(input.error)
     ? input.error.provider.trim().toLowerCase()
-    : normalizedMessage
-        .match(/No API key found for provider "([^"]+)"/u)?.[1]
+    : (
+        normalizedMessage.match(/No API key found for provider "([^"]+)"/u)?.[1] ??
+        // formatNoApiKeyFoundMessage emits the unquoted form: `No API key found for openai.`
+        normalizedMessage.match(/No API key found for ([A-Za-z0-9][\w.-]*)\./u)?.[1]
+      )
         ?.trim()
         .toLowerCase();
   if (!provider) {
@@ -763,12 +774,20 @@ function buildMissingApiKeyFailureText(input: { message: string; error?: unknown
     return "⚠️ Missing API key for OpenAI on the gateway. Use `openai/gpt-5.5` with the OpenAI OAuth profile, or set `OPENAI_API_KEY` for direct OpenAI API-key runs.";
   }
   if (provider === "openai") {
-    return '⚠️ Missing API key for provider "openai". Run `daisyclaw doctor --fix` to repair stale OpenAI model/session routes, restart the gateway if doctor asks, then try again. If doctor has nothing to repair or the error persists, re-auth with `daisyclaw models auth login --provider openai` or run `daisyclaw configure`.';
+    return `⚠️ Missing API key for provider "openai". ${DASHBOARD_MODEL_SETUP_HINT} If a key is already set, run \`daisyclaw doctor --fix\` to repair stale OpenAI model/session routes, or re-auth with \`daisyclaw models auth login --provider openai\`.`;
   }
   if (SAFE_MISSING_API_KEY_PROVIDERS.has(provider)) {
-    return `⚠️ Missing API key for provider "${provider}". Configure the gateway auth for that provider, then try again.`;
+    return `⚠️ Missing API key for provider "${provider}". ${DASHBOARD_MODEL_SETUP_HINT}`;
   }
-  return "⚠️ Missing API key for the selected provider on the gateway. Configure provider auth, then try again.";
+  return `⚠️ Missing API key for the selected provider. ${DASHBOARD_MODEL_SETUP_HINT}`;
+}
+
+/** Matches the "no model configured at all" guidance from auth-guidance.ts. */
+function buildNoModelConfiguredFailureText(message: string): string | null {
+  if (!/No model selected\.|No models available\./u.test(message)) {
+    return null;
+  }
+  return `⚠️ No AI model is set up yet, so Daisy can't reply. ${DASHBOARD_MODEL_SETUP_HINT} Then send your message again.`;
 }
 
 function buildAuthProfileFailoverFailureText(error: unknown): string | null {
@@ -841,6 +860,10 @@ function buildExternalRunFailureReply(
   }
   if (options?.isHeartbeat) {
     return { text: HEARTBEAT_EXTERNAL_RUN_FAILURE_TEXT, isGenericRunnerFailure: false };
+  }
+  const noModelConfiguredFailure = buildNoModelConfiguredFailureText(normalizedMessage);
+  if (noModelConfiguredFailure) {
+    return { text: noModelConfiguredFailure, isGenericRunnerFailure: false };
   }
   const cliBackendTimeoutFailure = buildCliBackendTimeoutFailureText(normalizedMessage);
   if (cliBackendTimeoutFailure) {

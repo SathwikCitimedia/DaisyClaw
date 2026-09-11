@@ -62,7 +62,7 @@ import {
 } from "./bash-tools.shared.js";
 import { buildCursorPositionResponse, stripDsrRequests } from "./pty-dsr.js";
 import { maybeWrapCommandWithShellSnapshot } from "./shell-snapshot.js";
-import { getShellConfig, sanitizeBinaryOutput } from "./shell-utils.js";
+import { resolveExecShellConfig, sanitizeBinaryOutput } from "./shell-utils.js";
 
 export { execSchema } from "./bash-tools.schemas.js";
 
@@ -841,7 +841,9 @@ export async function runExecProcess(opts: {
           (opts.usePty ? ("pipe-open" as const) : ("pipe-closed" as const)),
       };
     }
-    const { shell, args: shellArgs } = getShellConfig();
+    // POSIX-only commands (typically copied from a skill body) run in bash on
+    // Windows when one is available; everything else keeps the platform default.
+    const { shell, args: shellArgs } = resolveExecShellConfig(execCommand);
 
     // Wrap the command to enforce PATH prepend precedence over shell RC overrides.
     const commandWithPathPrepend = wrapPosixCommandWithPathPrepend(

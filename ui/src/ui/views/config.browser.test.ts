@@ -1203,4 +1203,73 @@ describe("config view", () => {
       "/r/themes/cmlhfpjhw000004l4f4ax3m7z",
     );
   });
+  it("shows the Advanced overview as section cards, all inside the scrolling area", () => {
+    // The old accordion rendered expanded groups ABOVE the only scrolling
+    // element, so their rows were clipped by the fixed-height panel. Everything
+    // scrollable now lives inside .config-content.
+    const container = document.createElement("div");
+    render(
+      renderConfig({
+        ...baseProps(),
+        settingsLayout: "accordion",
+        onBackToQuick: vi.fn(),
+        schema: {
+          type: "object",
+          properties: {
+            gateway: { type: "object", properties: { port: { type: "number" } } },
+            models: { type: "object", properties: { providers: { type: "object" } } },
+          },
+        },
+      }),
+      container,
+    );
+
+    const layout = container.querySelector(".config-layout") as HTMLElement;
+    expect(layout.classList.contains("config-layout--accordion")).toBe(true);
+    const content = container.querySelector(".config-content") as HTMLElement;
+    expect(content.querySelector(".config-advanced-overview")).toBeTruthy();
+    expect(content.querySelectorAll(".config-advanced-chip").length).toBeGreaterThan(0);
+    // Header stays a single row so it cannot push the card out of view.
+    expect(container.querySelector(".config-advanced__header")).toBeTruthy();
+  });
+
+  it("opens a section as a titled card with a breadcrumb back to the overview", () => {
+    const onSectionChange = vi.fn();
+    const container = document.createElement("div");
+    render(
+      renderConfig({
+        ...baseProps(),
+        settingsLayout: "accordion",
+        onBackToQuick: vi.fn(),
+        onSectionChange,
+        activeSection: "gateway",
+        schema: {
+          type: "object",
+          properties: {
+            gateway: { type: "object", properties: { port: { type: "number" } } },
+          },
+        },
+      }),
+      container,
+    );
+
+    // Overview is replaced by the card, so the two never stack.
+    expect(container.querySelector(".config-advanced-overview")).toBeFalsy();
+    expect(container.querySelector(".config-advanced-card__title")?.textContent?.trim()).toBe(
+      "Gateway",
+    );
+    const crumb = container.querySelector(".config-advanced__crumb--link") as HTMLButtonElement;
+    expect(crumb).toBeTruthy();
+    crumb.click();
+    expect(onSectionChange).toHaveBeenCalledWith(null);
+  });
+
+  it("keeps the default tabs layout unscoped so its content area keeps scrolling", () => {
+    const container = document.createElement("div");
+    render(renderConfig({ ...baseProps() }), container);
+
+    const layout = container.querySelector(".config-layout") as HTMLElement;
+    expect(layout.classList.contains("config-layout--accordion")).toBe(false);
+    expect(container.querySelector(".config-top-tabs")).toBeTruthy();
+  });
 });

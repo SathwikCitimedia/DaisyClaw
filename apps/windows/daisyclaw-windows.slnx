@@ -1,0 +1,46 @@
+<Solution>
+  <Configurations>
+    <Platform Name="Any CPU" />
+    <Platform Name="x64" />
+    <Platform Name="ARM64" />
+  </Configurations>
+  <Folder Name="/src/">
+    <Project Path="src/DaisyClaw.Cli/DaisyClaw.Cli.csproj" />
+    <Project Path="src/DaisyClaw.WinNode.Cli/DaisyClaw.WinNode.Cli.csproj" />
+    <Project Path="src/DaisyClaw.Shared/DaisyClaw.Shared.csproj" />
+    <Project Path="src/DaisyClaw.Connection/DaisyClaw.Connection.csproj" />
+    <Project Path="src/DaisyClaw.Chat/DaisyClaw.Chat.csproj">
+      <Platform Solution="*|Any CPU" Project="x64" />
+      <Platform Solution="*|x64" Project="x64" />
+      <Platform Solution="*|ARM64" Project="ARM64" />
+    </Project>
+    <Project Path="src/DaisyClawTray.FunctionalUI/DaisyClawTray.FunctionalUI.csproj" />
+    <Project Path="src/DaisyClaw.SetupEngine/DaisyClaw.SetupEngine.csproj" />
+    <Project Path="src/DaisyClaw.SetupEngine.UI/DaisyClaw.SetupEngine.UI.csproj">
+      <Platform Solution="*|Any CPU" Project="x64" />
+      <Platform Solution="*|x64" Project="x64" />
+      <Platform Solution="*|ARM64" Project="ARM64" />
+    </Project>
+    <Project Path="src/DaisyClaw.Tray.WinUI/DaisyClaw.Tray.WinUI.csproj">
+      <!-- WindowsAppSDK.SelfContained requires a concrete Platform (x64/ARM64); AnyCPU would need a RID. -->
+      <Platform Solution="*|Any CPU" Project="x64" />
+      <Platform Solution="*|x64" Project="x64" />
+      <Platform Solution="*|ARM64" Project="ARM64" />
+    </Project>
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/DaisyClaw.TestSupport/DaisyClaw.TestSupport.csproj" />
+    <Project Path="tests/DaisyClaw.Shared.TestHost/DaisyClaw.Shared.TestHost.csproj" />
+    <Project Path="tests/DaisyClaw.Shared.Tests/DaisyClaw.Shared.Tests.csproj" />
+    <Project Path="tests/DaisyClaw.Connection.Tests/DaisyClaw.Connection.Tests.csproj" />
+    <Project Path="tests/DaisyClaw.WinNode.Cli.Tests/DaisyClaw.WinNode.Cli.Tests.csproj" />
+    <Project Path="tests/DaisyClaw.Tray.Tests/DaisyClaw.Tray.Tests.csproj" />
+    <Project Path="tests/DaisyClawTray.FunctionalUI.Tests/DaisyClawTray.FunctionalUI.Tests.csproj" />
+    <Project Path="tests/DaisyClaw.Tray.IntegrationTests/DaisyClaw.Tray.IntegrationTests.csproj" />
+    <Project Path="tests/DaisyClaw.Tray.UITests/DaisyClaw.Tray.UITests.csproj">
+      <Platform Solution="*|Any CPU" Project="x64" />
+      <Platform Solution="*|x64" Project="x64" />
+      <Platform Solution="*|ARM64" Project="ARM64" />
+    </Project>
+  </Folder>
+</Solution>

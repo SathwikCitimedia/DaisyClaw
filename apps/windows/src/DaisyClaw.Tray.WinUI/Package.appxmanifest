@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+<Package
+  xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+  xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+  xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
+  IgnorableNamespaces="uap rescap">
+
+  <!-- IMPORTANT: Publisher must exactly match the Azure Artifact Signing certificate subject.
+       Check your certificate profile at: Azure Portal > Artifact Signing > daisyclaw > daisyclaw
+       Update the Publisher= value below to match. -->
+  <!-- Version is patched at build time by the SyncAppxManifestVersionTarget in
+       DaisyClaw.Tray.WinUI.csproj from $(Version) (see docs/VERSIONING.md).
+       The 0.0.0.0 below is a sentinel and is never shipped. -->
+  <Identity
+    Name="DaisyClaw.DaisyAssistant"
+    Publisher="CN=Citimedia"
+    Version="0.0.0.0" />
+
+  <Properties>
+    <DisplayName>Daisy Assistant</DisplayName>
+    <PublisherDisplayName>Citimedia</PublisherDisplayName>
+    <Logo>Assets\StoreLogo.png</Logo>
+  </Properties>
+
+  <Dependencies>
+    <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.19041.0" MaxVersionTested="10.0.26100.0" />
+  </Dependencies>
+
+  <Resources>
+    <Resource Language="x-generate"/>
+  </Resources>
+
+  <Applications>
+    <Application Id="App"
+      Executable="$targetnametoken$.exe"
+      EntryPoint="$targetentrypoint$">
+      <uap:VisualElements
+        DisplayName="Daisy Assistant"
+        Description="Daisy Assistant — your personal AI assistant for Windows"
+        BackgroundColor="transparent"
+        Square150x150Logo="Assets\Square150x150Logo.png"
+        Square44x44Logo="Assets\Square44x44Logo.png">
+        <uap:DefaultTile Wide310x150Logo="Assets\Wide310x150Logo.png" />
+        <uap:SplashScreen Image="Assets\SplashScreen.png" />
+      </uap:VisualElements>
+
+      <Extensions>
+        <!-- Protocol activation for daisyclaw:// deep links -->
+        <uap:Extension Category="windows.protocol">
+          <uap:Protocol Name="daisy">
+            <uap:DisplayName>Daisy Protocol</uap:DisplayName>
+          </uap:Protocol>
+        </uap:Extension>
+      </Extensions>
+    </Application>
+  </Applications>
+
+  <Capabilities>
+    <Capability Name="internetClient" />
+    <rescap:Capability Name="runFullTrust" />
+    <DeviceCapability Name="webcam" />
+    <DeviceCapability Name="microphone" />
+    <DeviceCapability Name="location" />
+  </Capabilities>
+</Package>

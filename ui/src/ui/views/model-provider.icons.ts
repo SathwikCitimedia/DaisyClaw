@@ -1,8 +1,11 @@
-// Brand icons for model rows in Model Studio. Each model renders a small
-// rounded tile tinted in its family's brand color, following the same look as
-// the channel brand icons. Families with a simple, unmistakable mark get a
-// drawn emblem; the rest get a bold brand-colored monogram.
+// Brand icons for model rows in Model Studio. Families we have an official
+// brand SVG for render that logo on a neutral tile (shared with the first-run
+// wizard so both surfaces show the same marks). The rest fall back to a tile
+// tinted in the family's brand color with a drawn emblem or a monogram.
 import { html, svg, type TemplateResult } from "lit";
+import { ifDefined } from "lit/directives/if-defined.js";
+import { GROQ_BRAND_COLOR, WIZARD_PROVIDER_LOGOS } from "./first-run-logos.ts";
+import { MODEL_BRAND_LOGOS, type ModelBrandLogo } from "./model-brand-logos.ts";
 
 type ModelBrand = {
   color: string;
@@ -42,6 +45,31 @@ const FAMILY_BRANDS: Record<string, ModelBrand> = {
 
 const FALLBACK: ModelBrand = { color: "var(--muted)", glyph: chipGlyph };
 
+// Official brand SVGs, keyed by the family/provider keys used above. Anything
+// missing here keeps its drawn emblem or monogram until a real logo is added.
+// Groq (the inference host) and Grok (xAI) are different companies with
+// different marks — keep them distinct.
+const REAL_LOGOS: Record<string, ModelBrandLogo | undefined> = {
+  groq: { svg: WIZARD_PROVIDER_LOGOS.groq, tint: GROQ_BRAND_COLOR },
+  claude: { svg: WIZARD_PROVIDER_LOGOS.anthropic },
+  anthropic: { svg: WIZARD_PROVIDER_LOGOS.anthropic },
+  openai: { svg: WIZARD_PROVIDER_LOGOS.openai },
+  gemini: { svg: WIZARD_PROVIDER_LOGOS.google },
+  google: { svg: WIZARD_PROVIDER_LOGOS.google },
+  openrouter: { svg: WIZARD_PROVIDER_LOGOS.openrouter },
+  grok: { svg: WIZARD_PROVIDER_LOGOS.grok },
+  ...MODEL_BRAND_LOGOS,
+};
+
+/** Inline style for a logo tile's plate and ink, when either is pinned. */
+function buildLogoTileStyle(logo: ModelBrandLogo): string | undefined {
+  const parts = [
+    logo.plate ? `--model-brand-plate: ${logo.plate};` : "",
+    logo.tint ? `color: ${logo.tint};` : "",
+  ].filter(Boolean);
+  return parts.length > 0 ? parts.join(" ") : undefined;
+}
+
 /** Match a model to its family by id/name keywords, falling back to provider. */
 export function resolveModelBrandKey(entry: {
   id: string;
@@ -75,6 +103,17 @@ export function renderModelBrandIcon(entry: {
   provider?: string;
 }): TemplateResult {
   const key = resolveModelBrandKey(entry);
+  const logo = key ? REAL_LOGOS[key] : undefined;
+  if (logo) {
+    // Official logos carry their own colors, so the tile stays neutral unless
+    // the mark needs a fixed plate behind it.
+    return html`<span
+      class="model-brand model-brand--logo ${logo.plate ? "model-brand--plate" : ""}"
+      style=${ifDefined(buildLogoTileStyle(logo))}
+      aria-hidden="true"
+      >${logo.svg}</span
+    >`;
+  }
   const brand = (key && FAMILY_BRANDS[key]) || FALLBACK;
   return html`
     <span class="model-brand" style="--model-brand-color: ${brand.color};" aria-hidden="true">

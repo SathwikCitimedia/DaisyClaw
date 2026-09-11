@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\DaisyClaw.Connection\DaisyClaw.Connection.csproj" />
+    <ProjectReference Include="..\..\src\DaisyClaw.Shared\DaisyClaw.Shared.csproj" />
+    <ProjectReference Include="..\DaisyClaw.TestSupport\DaisyClaw.TestSupport.csproj" />
+  </ItemGroup>
+
+</Project>

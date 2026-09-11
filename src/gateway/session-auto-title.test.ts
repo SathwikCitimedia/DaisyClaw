@@ -57,6 +57,32 @@ describe("buildHeuristicSessionTitle", () => {
     expect(buildHeuristicSessionTitle("   ")).toBeNull();
     expect(buildHeuristicSessionTitle("```code only```")).toBeNull();
   });
+
+  it("strips greetings and politeness so the topic leads", () => {
+    expect(buildHeuristicSessionTitle("hey can you search spotify for shape of you")).toBe(
+      "Search Spotify for Shape of You",
+    );
+    expect(buildHeuristicSessionTitle("Hi Daisy, please help me plan my trip to Goa")).toBe(
+      "Plan my trip to Goa",
+    );
+    expect(buildHeuristicSessionTitle("i want you to fix the login bug please")).toBe(
+      "Fix the Login Bug",
+    );
+  });
+
+  it("title-cases all-lowercase messages but keeps the user's own capitalization", () => {
+    expect(buildHeuristicSessionTitle("write a poem about the sea")).toBe(
+      "Write a Poem About the Sea",
+    );
+    expect(buildHeuristicSessionTitle("explain how HTTPS works to a beginner")).toBe(
+      "Explain how HTTPS works to a beginner",
+    );
+  });
+
+  it("never strips a message down to nothing", () => {
+    expect(buildHeuristicSessionTitle("hey")).toBe("Hey");
+    expect(buildHeuristicSessionTitle("please")).toBe("Please");
+  });
 });
 
 describe("sanitizeGeneratedTitle", () => {
@@ -80,13 +106,49 @@ describe("maybeAutoTitleSession", () => {
     generateLabel: vi.fn(async () => "Login Redirect Loop Fix"),
   });
 
-  it("applies the refined model title for an eligible, untitled session", async () => {
+  it("applies the heuristic title instantly, then upgrades to the model title", async () => {
     const p = baseParams();
     await maybeAutoTitleSession(p);
-    // Refined model title is applied directly; the raw first message is never
-    // surfaced as the session name when a generator is available.
+    // Heuristic first so the chat never shows its raw key while the model is
+    // slow; the model title then replaces it.
+    expect(p.applyLabel).toHaveBeenCalledTimes(2);
+    expect(p.applyLabel).toHaveBeenNthCalledWith(1, "Fix the Login Redirect Loop");
+    expect(p.applyLabel).toHaveBeenNthCalledWith(2, "Login Redirect Loop Fix");
+  });
+
+  it("applies the heuristic before the model call resolves", async () => {
+    let resolveModel: (value: string | null) => void = () => {};
+    const p = {
+      ...baseParams(),
+      generateLabel: vi.fn(() => new Promise<string | null>((resolve) => (resolveModel = resolve))),
+    };
+    const run = maybeAutoTitleSession(p);
+    await Promise.resolve();
     expect(p.applyLabel).toHaveBeenCalledTimes(1);
-    expect(p.applyLabel).toHaveBeenCalledWith("Login Redirect Loop Fix");
+    expect(p.applyLabel).toHaveBeenCalledWith("Fix the Login Redirect Loop");
+    resolveModel("Login Redirect Loop Fix");
+    await run;
+    expect(p.applyLabel).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps a rename the user made while the model was thinking", async () => {
+    const p = {
+      ...baseParams(),
+      readCurrentLabel: vi.fn(async () => "My Login Notes"),
+    };
+    await maybeAutoTitleSession(p);
+    expect(p.applyLabel).toHaveBeenCalledTimes(1);
+    expect(p.applyLabel).toHaveBeenCalledWith("Fix the Login Redirect Loop");
+  });
+
+  it("still upgrades when the current label is the heuristic it applied", async () => {
+    const p = {
+      ...baseParams(),
+      readCurrentLabel: vi.fn(async () => "Fix the Login Redirect Loop"),
+    };
+    await maybeAutoTitleSession(p);
+    expect(p.applyLabel).toHaveBeenCalledTimes(2);
+    expect(p.applyLabel).toHaveBeenLastCalledWith("Login Redirect Loop Fix");
   });
 
   it("skips ineligible sessions", async () => {
@@ -111,8 +173,8 @@ describe("maybeAutoTitleSession", () => {
   it("titles a new session whose prior message count is zero", async () => {
     const p = { ...baseParams(), priorMessageCount: 0 };
     await maybeAutoTitleSession(p);
-    expect(p.applyLabel).toHaveBeenCalledTimes(1);
-    expect(p.applyLabel).toHaveBeenCalledWith("Login Redirect Loop Fix");
+    expect(p.applyLabel).toHaveBeenCalledTimes(2);
+    expect(p.applyLabel).toHaveBeenLastCalledWith("Login Redirect Loop Fix");
   });
 
   it("applies only the heuristic when no generator is provided", async () => {

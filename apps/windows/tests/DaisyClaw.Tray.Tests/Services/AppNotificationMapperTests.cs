@@ -1,0 +1,137 @@
+using DaisyClaw.Shared;
+using DaisyClaw.Shared.Capabilities;
+using DaisyClawTray.Services;
+using Xunit;
+
+namespace DaisyClaw.Tray.Tests.Services;
+
+public sealed class AppNotificationMapperTests
+{
+    [Fact]
+    public void FromGatewayNotification_MapsChatActionAndUsesHashedStableDedupeKey()
+    {
+        var notification = new DaisyClawNotification
+        {
+            Title = "Build complete",
+            Message = "The build passed",
+            Type = "info",
+            IsChat = true,
+            SessionKey = "agent:main:default"
+        };
+
+        var mapped = AppNotificationMapper.FromGatewayNotification(notification, "Open Chat");
+        var mappedAgain = AppNotificationMapper.FromGatewayNotification(notification, "Open Chat");
+
+        Assert.Equal("gateway", mapped.Source);
+        Assert.Equal("info", mapped.Category);
+        Assert.Equal(AppNotificationSeverity.Informational, mapped.Severity);
+        Assert.Equal("Open Chat", mapped.ActionLabel);
+        Assert.True(AppNotificationActionRoutes.TryGetChatSessionKey(mapped.ActionRoute, out var sessionKey));
+        Assert.Equal("agent:main:default", sessionKey);
+        Assert.Equal(mapped.DedupeKey, mappedAgain.DedupeKey);
+        Assert.DoesNotContain(notification.Title, mapped.DedupeKey);
+        Assert.DoesNotContain(notification.Message, mapped.DedupeKey);
+    }
+
+    [Fact]
+    public void FromGatewayNotification_ChatWithoutSessionKey_FallsBackToChatPageAction()
+    {
+        var mapped = AppNotificationMapper.FromGatewayNotification(new DaisyClawNotification
+        {
+            Title = "Chat response",
+            Message = "A response is ready",
+            Type = "info",
+            IsChat = true
+        }, "Open Chat");
+
+        Assert.Equal("Open Chat", mapped.ActionLabel);
+        Assert.Equal("chat", mapped.ActionRoute);
+    }
+
+    [Theory]
+    [InlineData("error", AppNotificationSeverity.Error)]
+    [InlineData("urgent", AppNotificationSeverity.Warning)]
+    [InlineData("health", AppNotificationSeverity.Warning)]
+    [InlineData("reminder", AppNotificationSeverity.Informational)]
+    public void FromGatewayNotification_MapsSeverityFromType(string type, AppNotificationSeverity expected)
+    {
+        var mapped = AppNotificationMapper.FromGatewayNotification(new DaisyClawNotification
+        {
+            Title = "Notification",
+            Message = "Message",
+            Type = type
+        });
+
+        Assert.Equal(expected, mapped.Severity);
+    }
+
+    [Fact]
+    public void FromNodeSystemNotification_UsesNodeSourceAndSystemNotifyCategory()
+    {
+        var mapped = AppNotificationMapper.FromNodeSystemNotification(new SystemNotifyArgs
+        {
+            Title = "Agent notice",
+            Body = "Something happened"
+        });
+
+        Assert.Equal("node", mapped.Source);
+        Assert.Equal("system.notify", mapped.Category);
+        Assert.Equal("Agent notice", mapped.Title);
+        Assert.Equal("Something happened", mapped.Message);
+        Assert.Equal(AppNotificationSeverity.Informational, mapped.Severity);
+    }
+
+    [Fact]
+    public void FromGatewayNotification_FormatsChatMarkdownAndRemovesTrailingControlMarker()
+    {
+        var mapped = AppNotificationMapper.FromGatewayNotification(new DaisyClawNotification
+        {
+            Title = "# Build **complete**",
+            Message = "truncated",
+            FullMessage = "## Result\n- **Build** [passed](https://example.com) with `zero` failures.\n```text\n# Tests: **42**\nDONE\n```\nStatus is DONE. Use <https://example.com> with <requestId>.\nfinishedDONENext stepDONE",
+            IsChat = true
+        });
+
+        Assert.Equal("Build complete", mapped.Title);
+        Assert.Equal(
+            "Result\nBuild passed (https://example.com) with zero failures.\n# Tests: **42**\nDONE\nStatus is DONE. Use https://example.com with <requestId>.\nfinished Next step",
+            mapped.Message);
+
+        var controlOnly = AppNotificationMapper.FromGatewayNotification(new DaisyClawNotification
+        {
+            Title = "Chat response",
+            FullMessage = "DONE",
+            IsChat = true
+        });
+        Assert.Empty(controlOnly.Message);
+    }
+
+    [Fact]
+    public void FromNodeSystemNotification_FormatsMarkdownWithoutChangingMarkerLikeProse()
+    {
+        var mapped = AppNotificationMapper.FromNodeSystemNotification(new SystemNotifyArgs
+        {
+            Title = "**Deploy** notice",
+            Body = "- Review [details](https://example.com) when DONE"
+        });
+
+        Assert.Equal("Deploy notice", mapped.Title);
+        Assert.Equal("Review details (https://example.com) when DONE", mapped.Message);
+    }
+
+    [Fact]
+    public void FromNodeActivity_UsesExplicitMetadata()
+    {
+        var mapped = AppNotificationMapper.FromNodeActivity(
+            "Camera blocked",
+            "Enable camera access.",
+            "node.invoke",
+            AppNotificationSeverity.Error,
+            "node:camera-blocked");
+
+        Assert.Equal("node", mapped.Source);
+        Assert.Equal("node.invoke", mapped.Category);
+        Assert.Equal(AppNotificationSeverity.Error, mapped.Severity);
+        Assert.Equal("node:camera-blocked", mapped.DedupeKey);
+    }
+}

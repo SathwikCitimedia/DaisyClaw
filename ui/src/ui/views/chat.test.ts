@@ -3198,12 +3198,14 @@ describe("chat session controls", () => {
     state.sessionKey = "global";
     state.settings.sessionKey = "global";
     state.assistantAgentId = "beta";
+    // Anthropic is one of the providers that actually honors fastMode, so the
+    // speed control renders here; the assertion below is about agent scoping.
     state.sessionsResult = createSessionsResultFromRows([
       {
         key: "global",
         kind: "global",
-        modelProvider: "openai",
-        model: "gpt-5",
+        modelProvider: "anthropic",
+        model: "claude-sonnet-4-5",
         updatedAt: 1,
       },
     ]);

@@ -1,0 +1,134 @@
+using DaisyClawTray.Services;
+using System.Text.Json;
+
+namespace DaisyClaw.Tray.Tests;
+
+[CollectionDefinition(DaisyClawTrayDataDirEnvironmentCollection.Name, DisableParallelization = true)]
+public sealed class DaisyClawTrayDataDirEnvironmentCollection
+{
+    public const string Name = "DaisyClawTrayDataDirEnvironment";
+}
+
+[Collection(DaisyClawTrayDataDirEnvironmentCollection.Name)]
+public sealed class SettingsManagerIsolationTests
+{
+    [Fact]
+    public void DaisyClawTrayDataDirRedirectsSettingsAwayFromRealAppData()
+    {
+        var previousOverride = Environment.GetEnvironmentVariable("DAISYCLAW_TRAY_DATA_DIR");
+        var isolatedDirectory = Path.Combine(Path.GetTempPath(), "DaisyClawTray.Tests", Guid.NewGuid().ToString("N"));
+        var isolatedSettingsPath = Path.Combine(isolatedDirectory, "settings.json");
+        var realSettingsPath = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+            "DaisyClawTray",
+            "settings.json");
+        var realSettingsBefore = File.Exists(realSettingsPath)
+            ? File.ReadAllText(realSettingsPath)
+            : null;
+        var marker = $"ws://settings-isolation-{Guid.NewGuid():N}.invalid";
+
+        try
+        {
+            Directory.CreateDirectory(isolatedDirectory);
+            Environment.SetEnvironmentVariable("DAISYCLAW_TRAY_DATA_DIR", isolatedDirectory);
+
+            var settings = new SettingsManager
+            {
+                GatewayUrl = marker
+            };
+            settings.Save();
+
+            Assert.Equal(isolatedDirectory, SettingsManager.SettingsDirectoryPath);
+            Assert.True(File.Exists(isolatedSettingsPath));
+            Assert.Contains(marker, File.ReadAllText(isolatedSettingsPath));
+            if (realSettingsBefore is not null)
+            {
+                Assert.Equal(realSettingsBefore, File.ReadAllText(realSettingsPath));
+            }
+            else
+            {
+                Assert.False(File.Exists(realSettingsPath));
+            }
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("DAISYCLAW_TRAY_DATA_DIR", previousOverride);
+            if (Directory.Exists(isolatedDirectory))
+            {
+                // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
+                try { Directory.Delete(isolatedDirectory, recursive: true); } catch { /* best effort */ }
+            }
+        }
+    }
+
+    [Fact]
+    public void LegacyGatewayCredentialsLoadForMigrationButAreNotSaved()
+    {
+        var previousOverride = Environment.GetEnvironmentVariable("DAISYCLAW_TRAY_DATA_DIR");
+        var isolatedDirectory = Path.Combine(Path.GetTempPath(), "DaisyClawTray.Tests", Guid.NewGuid().ToString("N"));
+        var isolatedSettingsPath = Path.Combine(isolatedDirectory, "settings.json");
+
+        try
+        {
+            Directory.CreateDirectory(isolatedDirectory);
+            File.WriteAllText(
+                isolatedSettingsPath,
+                """
+                {
+                  "GatewayUrl": "ws://legacy.example.invalid",
+                  "Token": "legacy-shared-token",
+                  "BootstrapToken": "legacy-bootstrap-token",
+                  "EnableMcpServer": true
+                }
+                """);
+
+            Environment.SetEnvironmentVariable("DAISYCLAW_TRAY_DATA_DIR", isolatedDirectory);
+
+            var settings = new SettingsManager();
+
+            Assert.Equal("legacy-shared-token", settings.LegacyToken);
+            Assert.Equal("legacy-bootstrap-token", settings.LegacyBootstrapToken);
+            Assert.True(settings.HasLegacyGatewayCredentials);
+
+            settings.Save();
+
+            using var saved = JsonDocument.Parse(File.ReadAllText(isolatedSettingsPath));
+            Assert.False(saved.RootElement.TryGetProperty("Token", out _));
+            Assert.False(saved.RootElement.TryGetProperty("BootstrapToken", out _));
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("DAISYCLAW_TRAY_DATA_DIR", previousOverride);
+            if (Directory.Exists(isolatedDirectory))
+            {
+                // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
+                try { Directory.Delete(isolatedDirectory, recursive: true); } catch { /* best effort */ }
+            }
+        }
+    }
+
+    [Fact]
+    public void SaveOrThrow_PropagatesPersistenceFailureWhileSaveRemainsBestEffort()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "DaisyClawTray.Tests", Guid.NewGuid().ToString("N"));
+        var blockedDirectory = Path.Combine(root, "not-a-directory");
+
+        try
+        {
+            Directory.CreateDirectory(root);
+            File.WriteAllText(blockedDirectory, "blocks directory creation");
+            var settings = new SettingsManager(blockedDirectory);
+
+            Assert.Throws<IOException>(() => settings.SaveOrThrow());
+            Assert.Null(Record.Exception(settings.Save));
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+            {
+                // slopwatch-ignore: SW003 Test cleanup is best-effort and must not hide the assertion.
+                try { Directory.Delete(root, recursive: true); } catch { }
+            }
+        }
+    }
+}

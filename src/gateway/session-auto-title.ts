@@ -73,7 +73,77 @@ function clampToTitleLength(value: string): string {
   return `${trimmed.trim()}…`;
 }
 
-/** Instant, no-LLM title derived from the first user message. */
+// Conversational openers that carry no topic. Stripped repeatedly so
+// "hey daisy, can you please ..." collapses to the actual request.
+const LEADING_FILLER_PATTERNS: readonly RegExp[] = [
+  /^(?:hey|hi|hello|yo|ok|okay|so|um|please|pls|plz|daisy|assistant)[\s,!.:;-]+/i,
+  /^(?:can|could|would|will) you (?:please )?/i,
+  /^(?:i (?:want|need|would like|'d like) (?:you )?to|help me (?:to )?|please help me (?:to )?)\s*/i,
+];
+const TRAILING_FILLER_PATTERN = /[\s,]+(?:please|pls|plz|thanks|thank you)[\s!.]*$/i;
+// Words kept lowercase inside a Title Case title (never the first word).
+const TITLE_CASE_SMALL_WORDS = new Set([
+  "a",
+  "an",
+  "the",
+  "and",
+  "or",
+  "but",
+  "for",
+  "to",
+  "of",
+  "in",
+  "on",
+  "at",
+  "by",
+  "with",
+  "from",
+  "vs",
+  "via",
+  "as",
+]);
+
+function stripConversationalFiller(value: string): string {
+  let s = value;
+  for (let i = 0; i < 4; i += 1) {
+    const before = s;
+    for (const pattern of LEADING_FILLER_PATTERNS) {
+      s = s.replace(pattern, "");
+    }
+    s = s.replace(TRAILING_FILLER_PATTERN, "");
+    s = s.trim();
+    if (s === before) {
+      break;
+    }
+  }
+  return s;
+}
+
+// Messages typed in all lowercase get Title Case; anything the user already
+// capitalized keeps their casing apart from a leading capital.
+function applyTitleCasing(value: string): string {
+  if (!value) {
+    return value;
+  }
+  if (/[A-Z]/.test(value)) {
+    return value.charAt(0).toUpperCase() + value.slice(1);
+  }
+  return value
+    .split(" ")
+    .map((word, index) =>
+      index > 0 && TITLE_CASE_SMALL_WORDS.has(word)
+        ? word
+        : word.charAt(0).toUpperCase() + word.slice(1),
+    )
+    .join(" ");
+}
+
+/**
+ * Instant, no-LLM title derived from the first user message. Good enough to be
+ * shown on its own: for users on a slow or single model it may be the only
+ * title they get for a while, so it strips greetings/politeness and normalizes
+ * casing rather than echoing the raw message.
+ */
 export function buildHeuristicSessionTitle(message: string): string | null {
   if (typeof message !== "string") {
     return null;
@@ -93,7 +163,10 @@ export function buildHeuristicSessionTitle(message: string): string | null {
   if (firstSegment && firstSegment.length >= 12) {
     s = firstSegment;
   }
-  return clampToTitleLength(s);
+  const stripped = stripConversationalFiller(s);
+  // Never strip a message down to nothing — fall back to the unstripped text.
+  s = stripped.length >= 3 ? stripped : s;
+  return clampToTitleLength(applyTitleCasing(s));
 }
 
 /** Normalizes an LLM-produced title (strip quotes / trailing punctuation / length). */
@@ -134,6 +207,12 @@ export type MaybeAutoTitleSessionParams = {
   applyLabel: (label: string) => Promise<unknown>;
   /** Optional LLM refinement; omit to use the heuristic title only. */
   generateLabel?: (userMessage: string) => Promise<string | null>;
+  /**
+   * Reads the session's current label right before the refined title is
+   * applied. If the user renamed the chat while the model call was in flight,
+   * their name wins and the refinement is dropped.
+   */
+  readCurrentLabel?: () => Promise<string | null | undefined>;
   onError?: (err: unknown) => void;
 };
 
@@ -158,29 +237,38 @@ export async function maybeAutoTitleSession(params: MaybeAutoTitleSessionParams)
   }
   const heuristic = buildHeuristicSessionTitle(message);
 
-  // ChatGPT/Claude-style: prefer a proper model-generated title and NEVER surface
-  // the user's raw first message as the session name. The raw-message heuristic is
-  // used only as a fallback when no generator is configured or the model call
-  // fails — so the session stays on its default name briefly while the title is
-  // generated, then flips to a clean Title-Case topic.
-  if (params.generateLabel) {
-    try {
-      const refined = sanitizeGeneratedTitle(await params.generateLabel(message));
-      if (refined) {
-        await params.applyLabel(refined);
-        return;
-      }
-    } catch (err) {
-      params.onError?.(err);
-    }
-  }
-
-  // Fallback path: no LLM generator, or generation failed/returned nothing.
+  // Heuristic FIRST, always. The session must never sit on its raw key
+  // ("dashboard:<uuid>") while a model call is in flight — on a slow or
+  // unreachable provider that wait is many seconds, and if the gateway restarts
+  // mid-call the chat would stay unnamed forever. The model then upgrades the
+  // title in the background when (and if) it answers.
   if (heuristic) {
     try {
       await params.applyLabel(heuristic);
     } catch (err) {
       params.onError?.(err);
     }
+  }
+  if (!params.generateLabel) {
+    return;
+  }
+  try {
+    const refined = sanitizeGeneratedTitle(await params.generateLabel(message));
+    if (!refined) {
+      return;
+    }
+    if (heuristic && refined.toLowerCase() === heuristic.toLowerCase()) {
+      return;
+    }
+    if (params.readCurrentLabel) {
+      const current = (await params.readCurrentLabel())?.trim() ?? "";
+      // The user renamed the chat while the model was thinking — keep theirs.
+      if (current && current !== heuristic) {
+        return;
+      }
+    }
+    await params.applyLabel(refined);
+  } catch (err) {
+    params.onError?.(err);
   }
 }

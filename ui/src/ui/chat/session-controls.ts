@@ -64,14 +64,14 @@ type ChatInlineSelectOption = {
   label: string;
 };
 
-const FAST_MODE_PROVIDER_IDS = new Set([
-  "anthropic",
-  "minimax",
-  "minimax-portal",
-  "openai",
-  "openrouter",
-  "xai",
-]);
+// Providers whose runtime actually acts on the fastMode param. Verified against
+// the provider plugins: anthropic sets service_tier
+// (extensions/anthropic/stream-wrappers.ts), while xai and minimax swap in a
+// fast model alias (extensions/xai/stream.ts). openai and openrouter were
+// removed after audit — neither reads fastMode (openai only honors an explicit
+// serviceTier), so the control was a dead switch there. Keep this list honest:
+// showing a toggle that does nothing is worse than not showing it.
+const FAST_MODE_PROVIDER_IDS = new Set(["anthropic", "minimax", "minimax-portal", "xai"]);
 
 const CHAT_SESSION_PICKER_SEARCH_DEBOUNCE_MS = 300;
 const chatSessionPickerSearchControllers = new WeakMap<
@@ -1011,6 +1011,25 @@ type ChatFastModeSelectState = {
   options: ChatInlineSelectOption[];
   supported: boolean;
 };
+
+/**
+ * Whether the active session's provider honors the fast-mode switch.
+ *
+ * Shares FAST_MODE_PROVIDER_IDS with the chat speed selector so both surfaces
+ * agree. Providers outside that list ignore the parameter entirely, so the
+ * control is hidden for them rather than shown as a dead switch.
+ */
+export function sessionSupportsFastMode(state: AppViewState): boolean {
+  const { provider } = resolveThinkingTargetModel(state);
+  return provider ? FAST_MODE_PROVIDER_IDS.has(provider.trim().toLowerCase()) : false;
+}
+
+/** Whether the active session's model offers any thinking level beyond "off". */
+export function sessionSupportsThinking(state: AppViewState): boolean {
+  return resolveChatThinkingSelectState(state).options.some(
+    (option) => option.value !== "" && normalizeThinkLevel(option.value) !== "off",
+  );
+}
 
 function resolveThinkingTargetModel(state: AppViewState): {
   provider: string | null;

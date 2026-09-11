@@ -100,6 +100,10 @@ function normalizeActionsResult(result: unknown): RecommendableActionId[] {
   return out;
 }
 
+// Delay before asking the model to refine the instant heuristic chips. Long
+// enough that a quick follow-up message from the user supersedes it first.
+const REFINE_DELAY_MS = 1500;
+
 function getOrFetchActions(params: {
   client: GatewayClientLike;
   sessionKey: string;
@@ -114,23 +118,49 @@ function getOrFetchActions(params: {
   }
   const entry: ActionRecEntry = { signature, status: "loading", actions: [] };
   cache.set(sessionKey, entry);
+  const requestParams = {
+    sessionKey,
+    messageText: signature,
+    ...(agentId ? { agentId } : {}),
+  };
+  const isCurrent = () => cache.get(sessionKey) === entry;
+  // Two-step: the gateway answers the first request instantly from heuristics
+  // (no model call), so chips appear with the reply. A bounded model refinement
+  // follows only if this reply is still the latest one; it replaces the chips
+  // when it returns something and is silently dropped otherwise.
   void client
-    .request("chat.recommendActions", {
-      sessionKey,
-      messageText: signature,
-      ...(agentId ? { agentId } : {}),
-    })
+    .request("chat.recommendActions", requestParams)
     .then((result) => {
-      // Ignore if a newer reply superseded this request mid-flight.
-      if (cache.get(sessionKey) !== entry) {
+      if (!isCurrent()) {
         return;
       }
       entry.status = "ready";
       entry.actions = normalizeActionsResult(result);
       onRequestUpdate();
+      setTimeout(() => {
+        if (!isCurrent()) {
+          return;
+        }
+        void client
+          .request("chat.recommendActions", { ...requestParams, refine: true })
+          .then((refined) => {
+            if (!isCurrent()) {
+              return;
+            }
+            const source = (refined as { source?: unknown } | null)?.source;
+            const actions = normalizeActionsResult(refined);
+            if (source === "model" && actions.length > 0) {
+              entry.actions = actions;
+              onRequestUpdate();
+            }
+          })
+          .catch(() => {
+            // Refinement is optional; the heuristic chips stay.
+          });
+      }, REFINE_DELAY_MS);
     })
     .catch(() => {
-      if (cache.get(sessionKey) !== entry) {
+      if (!isCurrent()) {
         return;
       }
       entry.status = "error";

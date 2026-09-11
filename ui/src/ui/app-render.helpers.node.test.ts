@@ -140,6 +140,7 @@ function createSettings(): AppViewState["settings"] {
     navCollapsed: false,
     navGroupsCollapsed: {},
     borderRadius: 50,
+    workspaceRailCollapsed: false,
     chatShowThinking: false,
     chatShowToolCalls: true,
   };
@@ -233,6 +234,8 @@ describe("parseSessionKey", () => {
     expect(parseSessionKey("agent:main:imessage:direct:+19257864429")).toEqual({
       prefix: "",
       fallbackName: "iMessage · +19257864429",
+      channel: "imessage",
+      peerId: "+19257864429",
     });
   });
 
@@ -240,6 +243,8 @@ describe("parseSessionKey", () => {
     expect(parseSessionKey("agent:main:telegram:direct:user123")).toEqual({
       prefix: "",
       fallbackName: "Telegram · user123",
+      channel: "telegram",
+      peerId: "user123",
     });
   });
 
@@ -254,6 +259,8 @@ describe("parseSessionKey", () => {
     expect(parseSessionKey("agent:main:mychannel:direct:user1")).toEqual({
       prefix: "",
       fallbackName: "Mychannel · user1",
+      channel: "mychannel",
+      peerId: "user1",
     });
   });
 
@@ -261,10 +268,14 @@ describe("parseSessionKey", () => {
     expect(parseSessionKey("imessage:g-agent-main-imessage-direct-+19257864429")).toEqual({
       prefix: "",
       fallbackName: "iMessage Session",
+      channel: "imessage",
+      peerId: "g-agent-main-imessage-direct-+19257864429",
     });
     expect(parseSessionKey("discord:123:456")).toEqual({
       prefix: "",
       fallbackName: "Discord Session",
+      channel: "discord",
+      peerId: "123:456",
     });
   });
 
@@ -272,6 +283,7 @@ describe("parseSessionKey", () => {
     expect(parseSessionKey("telegram")).toEqual({
       prefix: "",
       fallbackName: "Telegram Session",
+      channel: "telegram",
     });
   });
 
@@ -362,10 +374,21 @@ describe("resolveSessionDisplayName", () => {
     expect(resolveSessionDisplayName("something-custom")).toBe("something-custom");
   });
 
-  it("shows 'Dashboard chat' for untitled dashboard sessions instead of the UUID", () => {
+  it("shows 'New chat' for untitled dashboard sessions instead of the UUID", () => {
     expect(resolveSessionDisplayName("dashboard:dd75051a-2467-4a0b-9d5e-1f2a3b4c5d6e")).toBe(
-      "Dashboard chat",
+      "New chat",
     );
+  });
+
+  it("also covers the agent-scoped dashboard/webchat keys the control UI creates", () => {
+    // These previously fell through to the raw key, so the sidebar showed
+    // "agent:main:dashboard:b48a8727-...".
+    expect(resolveSessionDisplayName("agent:main:dashboard:b48a8727-1f0b-41a7-8ce5-ec03bbf")).toBe(
+      "New chat",
+    );
+    expect(
+      resolveSessionDisplayName("agent:main:webchat:9c1e2f3a-4b5c-6d7e-8f90-1a2b3c4d5e6f"),
+    ).toBe("New chat");
   });
 
   // ── Contact names from channel config ────────────

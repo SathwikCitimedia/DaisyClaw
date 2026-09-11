@@ -31,6 +31,12 @@ export const ChatRecommendActionsParamsSchema = Type.Object(
     sessionKey: NonEmptyString,
     agentId: Type.Optional(NonEmptyString),
     messageText: Type.String({ maxLength: CHAT_RECOMMEND_ACTIONS_TEXT_MAX_LENGTH }),
+    /**
+     * When omitted/false the gateway answers instantly from local heuristics
+     * (no model call). When true it asks the configured model — a bounded,
+     * best-effort refinement the UI requests separately once chips are shown.
+     */
+    refine: Type.Optional(Type.Boolean()),
   },
   { additionalProperties: false },
 );
@@ -39,6 +45,8 @@ export const ChatRecommendActionsParamsSchema = Type.Object(
 export const ChatRecommendActionsResultSchema = Type.Object(
   {
     actions: Type.Array(Type.Union(RECOMMENDABLE_ACTION_IDS.map((id) => Type.Literal(id)))),
+    /** Where the ids came from; absent on older gateways. */
+    source: Type.Optional(Type.Union([Type.Literal("heuristic"), Type.Literal("model")])),
   },
   { additionalProperties: false },
 );

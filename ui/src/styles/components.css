@@ -826,6 +826,43 @@
   fill: currentColor;
 }
 
+/* Official brand SVGs bring their own colors: neutral tile, no tint. The
+   explicit ink color is for marks drawn with currentColor (e.g. Groq) — these
+   tiles stay light in both themes, so inheriting theme text would make a
+   light-on-light mark vanish in dark mode. */
+.model-brand--logo {
+  color: #14161a;
+  background: color-mix(in srgb, var(--bg) 40%, var(--panel));
+  border: 1px solid var(--border);
+}
+
+.model-brand--logo svg {
+  width: 17px;
+  height: 17px;
+}
+
+/* Marks drawn to sit on a colored background carry their own plate. */
+.model-brand--plate {
+  background: var(--model-brand-plate);
+  border-color: transparent;
+}
+
+/* Several official marks are near-black, so dark themes get a light plate
+   behind them instead of black-on-black. Logos with their own plate opt out. */
+:root[data-theme="dark"] .model-brand--logo:not(.model-brand--plate),
+:root[data-theme="dark"] .first-run__provider-logo {
+  background: #f4f5f7;
+  border-color: rgba(255, 255, 255, 0.16);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .model-brand--logo:not(.model-brand--plate),
+  :root:not([data-theme="light"]) .first-run__provider-logo {
+    background: #f4f5f7;
+    border-color: rgba(255, 255, 255, 0.16);
+  }
+}
+
 .model-brand__monogram {
   font-size: 13px;
   font-weight: 750;
@@ -5710,6 +5747,34 @@ td.data-table-key-col {
   animation-delay: 0.3s;
 }
 
+/* Wait caption: explains a slow first token without shouting. */
+.chat-bubble.chat-reading-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.chat-reading-indicator__caption {
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Long waits read slightly stronger, pairing with the Stop control already
+   shown in the composer, so "taking a while" never looks like "frozen". */
+.chat-reading-indicator__caption--long {
+  color: var(--fg);
+  opacity: 0.75;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-reading-indicator__dots > span {
+    animation: none;
+    opacity: 0.5;
+  }
+}
+
 @keyframes chatReadingDot {
   0%,
   80%,
@@ -6896,6 +6961,580 @@ td.data-table-key-col {
   .settings-help__entry {
     grid-template-columns: 1fr;
     gap: 3px;
+  }
+}
+
+/* First-run wizard: full-screen guided setup shown instead of the dashboard
+   on a fresh install. Centered card, calm and consumer-friendly. */
+.first-run {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  padding: 20px;
+  background:
+    radial-gradient(
+      900px 480px at 50% -80px,
+      color-mix(in srgb, var(--accent) 12%, transparent),
+      transparent 70%
+    ),
+    var(--bg);
+  overflow-y: auto;
+  z-index: 100;
+}
+
+/* Auto margins center the wizard when it fits and stay scroll-safe when it
+   doesn't (flex justify-content:center would clip a tall card's top/bottom). */
+.first-run__inner {
+  margin: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  width: min(880px, 100%);
+}
+
+/* Segmented progress line above the card. */
+.first-run__steps {
+  display: flex;
+  gap: 5px;
+  width: min(200px, 60%);
+}
+
+.first-run__step {
+  flex: 1;
+  height: 4px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--muted) 28%, transparent);
+  transition: background 0.2s ease;
+}
+
+.first-run__step--filled {
+  background: var(--accent);
+}
+
+.first-run__topback {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 12px 6px 8px;
+  font-size: 13px;
+  font-weight: 550;
+  color: var(--muted);
+  background: color-mix(in srgb, var(--bg) 40%, var(--panel));
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  cursor: pointer;
+  transition:
+    color 0.15s ease,
+    border-color 0.15s ease,
+    background 0.15s ease;
+}
+
+.first-run__topback:hover {
+  color: var(--text-strong, var(--text));
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+  background: color-mix(in srgb, var(--accent) 6%, var(--panel));
+}
+
+.first-run__topback svg {
+  flex-shrink: 0;
+}
+
+.first-run__panel {
+  position: relative;
+  width: min(680px, 100%);
+  display: grid;
+  gap: 16px;
+  justify-items: center;
+  text-align: center;
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--panel) 96%, white 4%) 0%,
+    var(--panel) 55%
+  );
+  border: 1px solid color-mix(in srgb, var(--border) 82%, white 10%);
+  border-radius: calc(var(--radius-xl, 14px) + 6px);
+  padding: clamp(24px, 4vw, 38px);
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, white 50%, transparent),
+    0 24px 60px color-mix(in srgb, #000 14%, transparent);
+}
+
+.first-run__panel--roomy {
+  width: min(880px, 100%);
+  gap: 14px;
+}
+
+.first-run__panel--roomy .first-run__title {
+  font-size: 1.4rem;
+}
+
+.first-run__panel--roomy .first-run__lead {
+  font-size: 13px;
+}
+
+.first-run__dots {
+  display: flex;
+  gap: 8px;
+}
+
+.first-run__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--muted) 30%, transparent);
+  transition: background 0.2s;
+}
+
+.first-run__dot--active {
+  background: var(--accent);
+}
+
+.first-run__dot--done {
+  background: color-mix(in srgb, var(--accent) 55%, transparent);
+}
+
+.first-run__hero {
+  width: 58px;
+  height: 58px;
+  display: grid;
+  place-items: center;
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--bg) 45%, var(--panel));
+  border: 1px solid var(--border);
+}
+
+.first-run__title {
+  margin: 0;
+  font-size: clamp(1.4rem, 1.1rem + 1vw, 1.9rem);
+  font-weight: 750;
+  letter-spacing: -0.02em;
+  color: var(--text-strong, var(--text));
+  text-wrap: balance;
+}
+
+.first-run__lead {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--muted);
+  max-width: 54ch;
+  text-wrap: balance;
+}
+
+.first-run__panel .first-run__cta {
+  min-width: 200px;
+  padding: 10px 24px;
+  font-size: 14px;
+  color: #fff;
+  border-radius: 10px;
+  border: 1px solid color-mix(in srgb, var(--accent) 75%, black 12%);
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--accent) 84%, white 16%),
+    var(--accent)
+  );
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.35),
+    0 6px 18px color-mix(in srgb, var(--accent) 35%, transparent);
+  transition:
+    transform 0.12s ease,
+    filter 0.12s ease;
+}
+
+.first-run__panel .first-run__cta:hover:not(:disabled) {
+  filter: brightness(1.06);
+  transform: translateY(-1px);
+}
+
+.first-run__panel .first-run__cta:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.first-run__skip-link,
+.first-run__back,
+.first-run__link {
+  background: none;
+  border: none;
+  padding: 4px;
+  font-size: 12.5px;
+  color: var(--muted);
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.first-run__skip-link:hover,
+.first-run__back:hover,
+.first-run__link:hover {
+  color: var(--text);
+}
+
+.first-run__grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+  width: 100%;
+}
+
+.first-run__card {
+  display: grid;
+  gap: 4px;
+  justify-items: start;
+  text-align: left;
+  padding: 14px 16px;
+  border: 1px solid color-mix(in srgb, var(--border) 85%, white 8%);
+  border-radius: var(--radius-lg);
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--panel) 94%, white 6%),
+    color-mix(in srgb, var(--bg) 30%, var(--panel))
+  );
+  box-shadow: inset 0 1px 0 color-mix(in srgb, white 35%, transparent);
+  cursor: pointer;
+  transition:
+    border-color 0.15s,
+    transform 0.12s ease,
+    box-shadow 0.15s;
+}
+
+.first-run__card:hover {
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
+  transform: translateY(-1px);
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, white 35%, transparent),
+    0 8px 20px color-mix(in srgb, var(--accent) 14%, transparent);
+}
+
+.first-run__card-title {
+  font-weight: 650;
+  font-size: 14px;
+  color: var(--text-strong, var(--text));
+}
+
+.first-run__card-desc {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.first-run__provider-form {
+  display: grid;
+  gap: 12px;
+  width: 100%;
+  text-align: left;
+}
+
+.first-run__provider-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.first-run__provider-name {
+  font-weight: 700;
+  font-size: 15px;
+  color: var(--text-strong, var(--text));
+}
+
+.first-run__field {
+  display: grid;
+  gap: 5px;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+.first-run__field input {
+  padding: 9px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 13.5px;
+}
+
+.first-run__field input:focus {
+  outline: 2px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  outline-offset: 1px;
+}
+
+.first-run__hint {
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--muted);
+  text-align: left;
+}
+
+.first-run__hint a {
+  color: var(--accent);
+}
+
+.first-run__error {
+  border: 1px solid color-mix(in srgb, var(--danger, #b42323) 30%, var(--border));
+  background: color-mix(in srgb, var(--danger, #b42323) 6%, var(--panel));
+  border-radius: var(--radius-lg);
+  padding: 9px 12px;
+  font-size: 12.5px;
+  color: var(--text);
+  text-align: left;
+}
+
+.first-run__skills-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  width: 100%;
+  text-align: left;
+}
+
+.first-run__skill-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--border) 85%, white 8%);
+  border-radius: var(--radius-lg);
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--panel) 94%, white 6%),
+    color-mix(in srgb, var(--bg) 30%, var(--panel))
+  );
+  box-shadow: inset 0 1px 0 color-mix(in srgb, white 30%, transparent);
+}
+
+.first-run__skill-logo {
+  flex-shrink: 0;
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--bg) 40%, var(--panel));
+  border: 1px solid var(--border);
+}
+
+.first-run__skill-logo svg {
+  width: 22px;
+  height: 22px;
+}
+
+.first-run__card--provider {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+}
+
+.first-run__provider-logo {
+  flex-shrink: 0;
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--bg) 40%, var(--panel));
+  border: 1px solid var(--border);
+}
+
+.first-run__provider-logo svg {
+  width: 24px;
+  height: 24px;
+}
+
+/* Same currentColor guard as the Model Studio logo tiles. */
+.first-run__provider-logo {
+  color: #14161a;
+}
+
+.first-run__provider-logo[data-provider="groq"] {
+  color: #f55036;
+}
+
+.first-run__provider-text {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.first-run__card--channel {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 11px;
+  padding: 11px 13px;
+}
+
+.first-run__channel-logo {
+  flex-shrink: 0;
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+}
+
+.first-run__channel-logo svg {
+  width: 26px;
+  height: 26px;
+}
+
+.first-run__channel-text {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.first-run__skill-info {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+.first-run__skill-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--text-strong, var(--text));
+  white-space: nowrap;
+}
+
+.first-run__skill-chip {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 1px 7px;
+  white-space: nowrap;
+}
+
+.first-run__skill-desc {
+  font-size: 11.5px;
+  line-height: 1.4;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Toggle switch (hidden checkbox + styled track). */
+.first-run__switch {
+  position: relative;
+  flex-shrink: 0;
+  display: inline-flex;
+  cursor: pointer;
+}
+
+.first-run__switch input {
+  position: absolute;
+  opacity: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  cursor: pointer;
+}
+
+.first-run__switch-track {
+  width: 36px;
+  height: 21px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--muted) 32%, transparent);
+  position: relative;
+  transition: background 0.15s ease;
+}
+
+.first-run__switch-track::after {
+  content: "";
+  position: absolute;
+  top: 2.5px;
+  left: 2.5px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.25);
+  transition: transform 0.15s ease;
+}
+
+.first-run__switch input:checked + .first-run__switch-track {
+  background: var(--accent);
+}
+
+.first-run__switch input:checked + .first-run__switch-track::after {
+  transform: translateX(15px);
+}
+
+.first-run__switch input:focus-visible + .first-run__switch-track {
+  outline: 2px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  outline-offset: 2px;
+}
+
+.first-run__about {
+  margin-top: 4px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--muted);
+  text-align: center;
+  max-width: 52ch;
+}
+
+.first-run__about:empty {
+  display: none;
+}
+
+.first-run__preview-bar {
+  margin-top: 6px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--border);
+  font-size: 12px;
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.first-run__grid--three {
+  grid-template-columns: repeat(3, 1fr);
+}
+
+/* Embedded channel guided setup inside the wizard card. */
+.first-run__channel-setup {
+  width: 100%;
+  text-align: left;
+}
+
+.first-run__channel-setup .ch-setup__actions {
+  justify-content: center;
+}
+
+@media (max-width: 900px) {
+  .first-run__skills-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 700px) {
+  .first-run__grid--three {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 560px) {
+  .first-run__grid,
+  .first-run__skills-grid {
+    grid-template-columns: 1fr;
   }
 }
 

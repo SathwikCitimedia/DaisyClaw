@@ -44,6 +44,7 @@ import {
 } from "../../config/sessions.js";
 import type { IdentityConfig } from "../../config/types.base.js";
 import type { DaisyClawConfig } from "../../config/types.daisyclaw.js";
+import { isConsumerLockdownActive } from "../../infra/consumer-lockdown.js";
 import { root, FsSafeError, type ReadResult } from "../../infra/fs-safe.js";
 import { movePathToTrash } from "../../plugin-sdk/browser-maintenance.js";
 import { DEFAULT_AGENT_ID, normalizeAgentId } from "../../routing/session-key.js";
@@ -102,6 +103,15 @@ const MEMORY_FILE_NAMES = [DEFAULT_MEMORY_FILENAME] as const;
 // Gateway file mutations are intentionally capped to the workspace files the UI owns.
 const ALLOWED_FILE_NAMES = new Set<string>([...BOOTSTRAP_FILE_NAMES, ...MEMORY_FILE_NAMES]);
 
+// Factory files hidden and immutable through the gateway in consumer builds.
+// Enforced server-side so every client (Control UI, Debug console, raw RPC)
+// is covered — UI hiding alone is not a boundary.
+const CONSUMER_LOCKED_FILE_NAMES = new Set<string>([DEFAULT_SOUL_FILENAME]);
+
+function isConsumerLockedFile(name: string): boolean {
+  return CONSUMER_LOCKED_FILE_NAMES.has(name) && isConsumerLockdownActive();
+}
+
 function resolveAgentWorkspaceFileOrRespondError(
   params: Record<string, unknown>,
   respond: RespondFn,
@@ -125,7 +135,8 @@ function resolveAgentWorkspaceFileOrRespondError(
   const name = (
     typeof rawName === "string" || typeof rawName === "number" ? String(rawName) : ""
   ).trim();
-  if (!ALLOWED_FILE_NAMES.has(name)) {
+  // Locked files answer exactly like unknown files so their existence never leaks.
+  if (!ALLOWED_FILE_NAMES.has(name) || isConsumerLockedFile(name)) {
     respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, `unsupported file "${name}"`));
     return null;
   }
@@ -208,13 +219,14 @@ async function listAgentFiles(workspaceDir: string, options?: { hideBootstrap?: 
     updatedAtMs?: number;
   }> = [];
 
+  const bootstrapFileNames = (
+    options?.hideBootstrap ? BOOTSTRAP_FILE_NAMES_POST_ONBOARDING : BOOTSTRAP_FILE_NAMES
+  ).filter((name) => !isConsumerLockedFile(name));
+
   const workspaceRoot = await openWorkspaceRootSafely(workspaceDir);
   if (!workspaceRoot) {
     // Keep the UI shape stable when the workspace path is missing or unsafe.
-    const missingNames = [
-      ...(options?.hideBootstrap ? BOOTSTRAP_FILE_NAMES_POST_ONBOARDING : BOOTSTRAP_FILE_NAMES),
-      DEFAULT_MEMORY_FILENAME,
-    ];
+    const missingNames = [...bootstrapFileNames, DEFAULT_MEMORY_FILENAME];
     return missingNames.map((name) => ({
       name,
       path: path.join(workspaceDir, name),
@@ -222,9 +234,6 @@ async function listAgentFiles(workspaceDir: string, options?: { hideBootstrap?: 
     }));
   }
 
-  const bootstrapFileNames = options?.hideBootstrap
-    ? BOOTSTRAP_FILE_NAMES_POST_ONBOARDING
-    : BOOTSTRAP_FILE_NAMES;
   for (const name of bootstrapFileNames) {
     const filePath = path.join(workspaceDir, name);
     const meta = await statWorkspaceFileSafely(workspaceRoot, workspaceDir, name);

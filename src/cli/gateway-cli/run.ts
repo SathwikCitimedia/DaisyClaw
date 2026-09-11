@@ -539,6 +539,25 @@ export async function runGatewayCommand(opts: GatewayRunOpts) {
     );
   }
 
+  if (!devMode && !opts.allowUnconfigured && !fs.existsSync(CONFIG_PATH)) {
+    // Fresh install: create a minimal usable config (local mode, generated
+    // gateway token, default skill pack) instead of refusing to start. GUI
+    // launches have no terminal to run `daisyclaw setup` in.
+    try {
+      const { initializeFreshConfigForFirstRun } = await import("../../commands/first-run-init.js");
+      const initialized = await startupTrace.measure("cli.first-run-init", () =>
+        initializeFreshConfigForFirstRun(),
+      );
+      if (initialized) {
+        gatewayLog.info(
+          `first run: created ${initialized.configPath} (gateway.mode=local${initialized.generatedToken ? ", generated gateway token" : ""}, starter skill pack applied)`,
+        );
+      }
+    } catch (err) {
+      gatewayLog.warn(`first-run config initialization failed: ${formatErrorMessage(err)}`);
+    }
+  }
+
   gatewayLog.info("loading configuration…");
   const { cfg, snapshot, startupConfigSnapshotRead } = await readGatewayStartupConfig({
     startupTrace,

@@ -73,6 +73,12 @@ Resolve the active state directory first:
 STATE_DIR="${DAISYCLAW_STATE_DIR:-$HOME/.daisyclaw}"
 ```
 
+Windows:
+
+```powershell
+$StateDir = if ($env:DAISYCLAW_STATE_DIR) { $env:DAISYCLAW_STATE_DIR } else { Join-Path $env:USERPROFILE ".daisyclaw" }
+```
+
 Then write those resolved paths into the active DaisyClaw config file (`$DAISYCLAW_CONFIG_PATH`, default `~/.daisyclaw/daisyclaw.json`):
 
 ```json5
@@ -96,10 +102,22 @@ The wrapper lives in this skill folder. Run it directly, or add the wrapper to P
 export PATH="{baseDir}/bin:$PATH"
 ```
 
+Windows:
+
+```powershell
+$env:PATH = "{baseDir}\bin;$env:PATH"
+```
+
 ## Usage
 
 ```bash
 {baseDir}/bin/sherpa-onnx-tts -o ./tts.wav "Hello from local TTS."
+```
+
+Windows:
+
+```powershell
+node "{baseDir}\bin\sherpa-onnx-tts" -o .\tts.wav "Hello from local TTS."
 ```
 
 Notes:

@@ -1,0 +1,344 @@
+# Connection Architecture
+
+This document describes the gateway connection system - how the tray app discovers, authenticates with, and maintains connections to DaisyClaw gateways.
+
+## Project structure
+
+Connection management lives in three layers:
+
+```
+DaisyClaw.Shared (net10.0)           - WebSocket transport, gateway protocol, device identity
+    ↑
+DaisyClaw.Connection (net10.0)       - connection lifecycle, registry, credentials, state machine
+    ↑
+DaisyClaw.Tray.WinUI (net10.0-windows) - UI app, tray icon, pages, windows
+```
+
+**DaisyClaw.Shared** owns the low-level gateway clients (`DaisyClawGatewayClient`, `WindowsNodeClient`, `WebSocketClientBase`), device identity/signing (`DeviceIdentity`), protocol models, and the `IOperatorGatewayClient` interface.
+
+`WindowsNodeClient` also owns gateway invocation lifetime at the transport
+boundary. Active invokes are registered by invoke ID in a focused cancellation
+registry, linked to the node connection lifetime, and cancelled individually by
+the gateway `node.invoke.cancel` event. Active invocations atomically transition
+to cancelled or completed when capability execution returns; whichever
+transition wins determines the protocol outcome. Capability implementations
+remain responsible for cooperative cancellation of their own underlying work.
+
+**DaisyClaw.Connection** owns all connection management. `GatewayConnectionManager`
+is the public lifecycle façade and sole writer of the overall state machine,
+operator lifecycle, active gateway context, tunnel, and operator reconnect
+orchestration. Three narrower owners sit behind it:
+
+- `NodeConnectionCoordinator` owns node generation/CTS/start ordering, connector
+  event handling, node token-mismatch recovery, and node connection telemetry.
+- `BootstrapTokenLifecycle` owns bootstrap/shared/device handoff timing, the
+  durable two-role token clear gate, and operator token-mismatch recovery timing.
+- `DevicePairApprovalCoordinator` owns typed device role-upgrade approval and its
+  one-in-flight plus one-queued bounded node reconnect workflow.
+
+`GatewayRegistry`, `CredentialResolver`, `ConnectionStateMachine`,
+`NodeConnector`, `SshTunnelService/Manager`, `SetupCodeDecoder`, and connection
+interfaces/DTOs/enums remain separate. This project has zero WinUI dependencies
+and is independently testable.
+
+**DaisyClaw.Tray.WinUI** consumes the connection layer through interfaces. It never creates gateway clients directly - `GatewayConnectionManager` owns that entirely.
+
+## Consumer API
+
+The tray app interacts with three main objects:
+
+### `IGatewayConnectionManager` - connection lifecycle
+
+```csharp
+// Lifecycle
+ConnectAsync(gatewayId?)          // connect to active or specified gateway
+DisconnectAsync()                 // tear down all connections
+ReconnectAsync()                  // disconnect + connect
+SwitchGatewayAsync(gatewayId)     // switch to different gateway (stops tunnel, resets state)
+ApplySetupCodeAsync(setupCode)    // decode QR/setup code → register → connect
+
+// State
+CurrentSnapshot                   // immutable GatewayConnectionSnapshot
+OperatorClient                    // IOperatorGatewayClient for sending gateway requests
+ActiveGatewayUrl                  // which gateway we're connected to
+Diagnostics                       // ring buffer of connection events
+
+// Events
+StateChanged                      // snapshot updated → UI refreshes tray icon, status
+OperatorClientChanged             // client swapped → rewire data event handlers
+DiagnosticEvent                   // timeline entry for Connection Status window
+```
+
+### `GatewayRegistry` - gateway catalog
+
+```csharp
+GetAll() / GetById(id) / GetActive()   // read configured gateways
+AddOrUpdate(record)                     // create or update a gateway record
+SetActive(id)                           // switch which gateway is active
+FindByUrl(url)                          // lookup by URL (deduplication)
+Save() / Load()                         // persist to gateways.json
+GetIdentityDirectory(id)                // per-gateway identity directory path
+MigrateFromSettings(...)                // one-time legacy migration
+```
+
+### `IOperatorGatewayClient` - gateway API (via `OperatorClientChanged`)
+
+The operator client is received through the `OperatorClientChanged` event. The app subscribes to data events (sessions, nodes, usage, config, pairing, models, agents, etc.) and calls request methods for chat, node invocations, and configuration.
+
+### Chat timeline event routing
+
+Inbound chat and agent timeline events must include the gateway's canonical `sessionKey`. The tray client must not synthesize a literal `main` key for keyless inbound events, because that can merge unrelated events into the wrong timeline. When a keyless chat or agent event arrives, the tray drops it and raises a one-shot diagnostic so the protocol issue is visible without exposing the dropped message contents.
+
+## Startup wiring (App.xaml.cs)
+
+```
+1. Create GatewayRegistry(SettingsManager.SettingsDirectoryPath)
+2. Load gateway registry from gateways.json
+3. Create CredentialResolver(DeviceIdentityFileReader.Instance)
+4. Create GatewayClientFactory()
+5. Create ConnectionDiagnostics()
+6. Create NodeConnector(logger, diagnostics)
+7. Wire NodeConnector.ClientCreated → NodeService.AttachClient
+8. Create SshTunnelService(logger)
+9. Create GatewayConnectionManager(resolver, factory, registry, logger,
+                                    identityStore, nodeConnector, node mode flag,
+                                    diagnostics, tunnelService)
+10. Subscribe to OperatorClientChanged → wire/unwire 25+ data event handlers
+11. Subscribe to StateChanged → update tray icon + hub window
+12. Ensure NodeService exists before gateway initialization
+13. Call InitializeGatewayClient() → connects to active gateway
+```
+
+Settings changes are classified by `SettingsChangeClassifier.Classify()` which compares `ConnectionSettingsSnapshot` before/after to determine the minimum reconnect action:
+
+| Impact | Action |
+|--------|--------|
+| `NoOp` | Nothing |
+| `UiOnly` | Nothing (UI preferences only) |
+| `CapabilityReload` | Reload node capabilities |
+| `NodeReconnectRequired` | Reconnect node only |
+| `OperatorReconnectRequired` | Reconnect operator (SSH tunnel changed) |
+| `FullReconnectRequired` | Full tear down and reconnect (gateway URL changed) |
+
+## Connection state machine
+
+`ConnectionStateMachine` (internal) drives state transitions for both operator and node roles:
+
+```
+Idle → Connecting → Connected
+                  → PairingRequired → (approved) → Connected
+                  → Error → (reconnect) → Connecting
+                  → RateLimited
+```
+
+`OverallConnectionState` is derived from both roles:
+
+| Operator | Node | Overall |
+|----------|------|---------|
+| Error | * | Error |
+| PairingRequired | * | PairingRequired |
+| Connected | Connected | Ready |
+| Connected | Error/Rejected | Degraded |
+| Connected | PairingRequired | PairingRequired |
+| Connected | Connecting | Connecting |
+| Connected | Idle while Node mode is intended | Degraded |
+| Connected | Disabled/Off | Ready |
+
+`GatewayConnectionSnapshot.NodeConnectionIntended` records the Node mode intent used by the manager's state machine. If Node mode is enabled but node startup is skipped, blocked, or missing a node credential, the manager publishes a blocked node snapshot (`NodeState=Error`, `NodeError=...`) instead of leaving the node idle and letting tray surfaces report a healthy connection.
+
+### Status projection and legacy ledger
+
+`GatewayConnectionManager.CurrentSnapshot` is the lifecycle truth. Tray/UI state
+must treat `AppState.Status` / `ConnectionStatus` as a derived compatibility
+projection only, produced from the manager snapshot by
+`ConnectionStatusPresenter`. New connection diagnostics should read
+`GatewayConnectionSnapshot`, `GatewayRegistry`, and `ConnectionDiagnostics`
+directly instead of writing a second runtime model.
+
+Current derived compatibility debt:
+
+| Surface | Status | Notes |
+|---|---|---|
+| `AppState.Status` | Derived read-side adapter | The only writer is the manager `StateChanged` handler, which maps the snapshot through `ConnectionStatusPresenter` for older UI consumers. |
+| `ConnectionStatus` enum | Retained | Still used by shared gateway/client and tray read-side surfaces. Do not remove it until protocol/client and UI consumers are separated in a smaller migration. |
+| Command Center / tray projections | Mixed | New diagnostics use snapshot-derived DTOs. Some older warnings still read `AppStateSnapshot.Status`; those reads are compatibility gates, not lifecycle ownership. |
+
+The local MCP `app.connection.status` command is the agent-facing projection of
+this model. It reports effective mode/state, active gateway metadata,
+operator/node credential resolution, MCP runtime state, browser-proxy caveats,
+pending approval actions, retry hints from diagnostics, and recent diagnostic
+events without exposing token values.
+
+## Gateway registry and persistence
+
+`GatewayRegistry` is the source of truth for configured gateways:
+
+```
+%APPDATA%\DaisyClawTray\gateways.json           - gateway records
+%APPDATA%\DaisyClawTray\gateways\<id>\          - per-gateway identity directory
+%APPDATA%\DaisyClawTray\gateways\<id>\device-key-ed25519.json  - keypair + tokens
+```
+
+Each `GatewayRecord` contains: `Id`, `Url`, `FriendlyName`, `SharedGatewayToken`, `BootstrapToken`, `LastConnected`, `SshTunnel` config, `IsLocal`, `RequiresV2Signature`, `SetupManagedDistroName`, and `BrowserControlPort`. The `IdentityDirName` property is computed from `Id`.
+
+Many gateway records may be saved, but only `ActiveId` in `gateways.json` is the effective gateway. Active gateway changes must be made through `GatewayRegistry.SetActive(...)` and saved immediately by connection flows that switch or apply credentials. `SetActive(...)` raises `GatewayRegistry.Changed`, so UI and diagnostics can observe a gateway switch even before the new connection finishes. Each active gateway resolves identity from `%APPDATA%\DaisyClawTray\gateways\<id>\`; old gateway events are ignored by `GatewayConnectionManager` generation + gateway-id guards after a switch.
+
+`SettingsManager` still owns general tray settings (node mode, MCP mode, SSH tunnel toggles, notifications, UI preferences). It may read legacy `Token` / `BootstrapToken` JSON fields into memory for migration, but save must not write those legacy credential fields back.
+
+`GatewayDirectConnectService` is the single transaction owner for direct-connect UI surfaces. It commits the registry and active id, applies identity changes, persists `SettingsManager`, waits for a terminal manager state, and rolls back ordinary asynchronous connection failures as well as thrown failures. When the operation replaced a live operator connection, successful rollback reconnects that previous gateway before returning the failure. The Connection page and Connection Status window only validate controls and render the result. MCP shared-token replacement keeps its device-token-preserving validation semantics, then asks this service to synchronize the committed active gateway into settings and the runtime tunnel.
+
+## Credential precedence
+
+Credential resolution order is intentionally strict:
+
+1. **Stored device token** in the per-gateway identity directory.
+2. **`GatewayRecord.SharedGatewayToken`** - shared token for HTTP/chat surfaces.
+3. **`GatewayRecord.BootstrapToken`** - one-time setup, limited scopes.
+4. **No credential** - caller logs and skips client init.
+
+The invariant is that a paired device token always wins. Do not downgrade a paired operator or node to a shared/bootstrap token, because that can reduce scopes or trigger unnecessary re-pairing.
+
+**`CredentialResolver`** implements the precedence for WebSocket connections (operator and node roles). It also returns a detailed `GatewayCredentialResolution` so the active snapshot and diagnostics can distinguish `Resolved`, `Missing`, `Unreadable`, `Corrupt`, `FallbackUsed`, and `BootstrapRequired`. Shared-token-only gateways are a clean resolved state when no paired device token exists. If a stored per-gateway device token is unreadable or corrupt and the resolver falls back to a shared/bootstrap token, `GatewayConnectionSnapshot` preserves that fallback status instead of reporting only the token source.
+
+Unreadable/corrupt identity fallback is a credential-resolution diagnostic, not permission to replace an existing keypair. A readable stored device token still always wins. When the per-gateway identity file cannot be read or parsed, resolution may identify a same-gateway shared/bootstrap credential, but gateway client construction fails closed until the persisted identity is readable or the user explicitly resets pairing. DaisyClaw never regenerates, overwrites, or otherwise changes the identity path on a load failure. The snapshot and diagnostics report the persisted-identity error so UI and diagnostics can prompt repair or explicit re-pair. Credential reads never fall back to another gateway's identity directory.
+
+Node credential precedence follows the same invariant with a distinct stored token:
+
+1. **Stored node device token** in the per-gateway identity directory.
+2. **`GatewayRecord.SharedGatewayToken`** - shared token fallback when no paired node token exists.
+3. **`GatewayRecord.BootstrapToken`** - one-time setup, limited scopes.
+4. **No credential** - caller logs and skips node client init.
+
+**`InteractiveGatewayCredentialResolver`** resolves credentials for HTTP surfaces (chat URL `?token=` auth). It **prefers SharedGatewayToken** over DeviceToken because HTTP endpoints expect the shared token, not the per-device WebSocket token. Browser proxy diagnostics should treat the missing shared token as a browser-control caveat, not as proof that the operator or node gateway connection is disconnected.
+
+## Self-recovery and automatic local-gateway repair
+
+Two orthogonal self-healing behaviors keep the connection reliable without dead-ending the user:
+
+### Stale device-token self-recovery (operator + node)
+
+The gateway may reject a stored device token with the structured code `AUTH_DEVICE_TOKEN_MISMATCH` (a rotated/revoked/replaced device token) - distinct from a wrong *shared* token. `GatewayErrorClassifier` is the single classifier for this: `ClassifyWithCode(message, ...codes)` inspects the structured `error.code`/`error.details.code` **before** the textual heuristic and returns the exact `GatewayErrorKind.DeviceTokenMismatch`, keeping a stale *device* token (auto-recoverable) separate from a wrong *shared* token (`Auth`, not device-recoverable). Broad `GatewayErrorKind.TokenDrift` remains a manual re-pair signal for UI copy.
+
+On a device-token mismatch, the applicable credential owner clears **only the
+rejected role's** device token and reconnects, letting `CredentialResolver` fall
+back to the same record's `SharedGatewayToken` (preferred) or
+`BootstrapToken`. `BootstrapTokenLifecycle` owns operator recovery;
+`NodeConnectionCoordinator` owns node recovery from the connector's classified
+`INodeConnectorTelemetryEvents.ConnectionFailure(GatewayErrorKind)`. The
+manager subscribes once and forwards typed connector events. The node owner
+captures lifecycle plus node generation and is the only implementation of the
+combined current-node-attempt check. A per-gateway, per-role attempt guard
+(reset on handshake success / node pairing) prevents
+clear→reconnect→mismatch loops.
+
+**Security - trust gate and endpoint provenance.** Clearing a device token downgrades to the more powerful shared/bootstrap credential, so `IsRecoverySafeEndpoint` restricts recovery to trusted endpoints: an owned SSH tunnel, a validated TLS (`wss`/`https`) endpoint, or a setup-managed WSL loopback gateway proven by `ManagedLocalGatewayPortProvenanceService`. The managed-local proof accepts either the existing verified Windows WSL relay identity or a relayless mirrored-networking endpoint with a complete empty Windows listener snapshot, positive expected-distro systemd MainPID ownership, and an immediate second complete empty snapshot. Strong credentials repeat that relayless proof immediately before use. Loopback is not treated as identity by itself: incomplete capture or any unknown, conflicting, or changed Windows listener blocks fallback, so a wrong local process cannot return a device-token mismatch to induce disclosure of the shared credential. A plain `ws://` remote endpoint is never eligible.
+
+### Automatic managed-local WSL gateway repair (tray)
+
+For an app-owned setup-managed local WSL gateway (`WslKeepAlivePolicy.IsSetupManagedLocalRecord` - never SSH/remote/ambiguous-localhost), the tray owns process supervision, keeping it out of the connection layer. `ManagedLocalGatewayAutoRepairMonitor` watches the operator connection and, when it is positively transport-unreachable (`GatewayErrorKind.Network`/`Server`, plus a cold-start `Connecting` state with no failure yet; never unknown/auth/pairing/rate-limit/scope/TLS/tunnel/token-drift) for a sustained window, invokes `ManagedLocalGatewayRepairCoordinator`. A typed `LocalPortConflict` is also repairable because its remediation is provenance-gated rather than a blind process restart. The monitor honors a **startup grace** (so a slow WSL cold start is not interrupted), a per-gateway unhealthy threshold and cooldown, a manager-owned explicit disconnect/stop intent, and a settings **kill switch** (`SettingsData.EnableManagedLocalGatewayAutoRepair`, default on).
+
+**Default-on product contract and macOS parity.** App-installed local gateways are supervised by default for both fresh setups and upgrades, matching the macOS local-mode contract where launchd supervision is active unless DaisyClaw is paused. Fresh Windows setup writes `EnableManagedLocalGatewayAutoRepair=true` explicitly; an existing settings file that predates the field deserializes to the same default. This enrollment is restricted to records whose setup-managed ownership is positively linked to the installed endpoint. Manual localhost, repointed, SSH, and remote records are never adopted. The user-facing controls are **Disconnect** and **Stop** on the Connection page: either records explicit operator intent and suppresses automatic restart, process remediation, and reconnect until the operator explicitly connects/starts again. An explicitly persisted `false` remains available as a policy/debug kill switch and is never overwritten by setup merge.
+
+`ManagedLocalGatewayRepairCoordinator` **probes before it restarts**: if the gateway is already reachable it just reconnects (the macOS "attach" path); only a genuinely-down gateway triggers a WSL distro restart (via `WslGatewayController`), a keepalive re-arm (`WslGatewayKeepAliveService.TryEnsureAsync`), and a reconnect. For the native-vs-WSL collision case, `ManagedLocalGatewayPortProvenanceService` classifies listeners by address and proves process command line plus scheduled-task/profile lineage. Relayless mirrored networking is accepted only when complete Windows captures remain empty around positive expected-distro systemd MainPID proof. It automatically disables/stops only a fully proven obsolete native DaisyClaw gateway; an unknown, incomplete, or conflicting listener is never trusted or killed and produces precise `LocalPortConflict` diagnostics. The shared lifecycle lease serializes that destructive work with manual WSL actions. Reconnect is **gateway-pinned, intent-aware, and cancellable** (`GatewayConnectionManager.ReconnectIfCurrentAsync(gatewayId, ct)`), so gateway switches, explicit Disconnect/Stop, and shutdown always win. Repair is single-flight, verifies success by a real operator connection to the same gateway, is per-gateway restart-budget-bounded, and never reads or logs credentials.
+
+## Client instance lifecycle
+
+**Operator client** (`DaisyClawGatewayClient`): Single instance at a time, owned by `GatewayConnectionManager`. Created via `GatewayClientFactory.Create()`. Old instance disposed before creating new one. `OperatorClientChanged` event notifies consumers of swaps.
+
+**Node client** (`WindowsNodeClient`): Two mutually exclusive creation paths:
+- **Normal**: `NodeConnector` creates it → fires `ClientCreated` → `NodeService.AttachClient()` receives it (no new client created)
+- **Local setup**: `NodeService.ConnectAsync()` creates its own client (used only during WSL local gateway setup)
+
+Both paths dispose old clients before creating new ones.
+
+## Setup-code and pairing flow
+
+Setup codes (from QR scan or paste) decode to `{ url, bootstrapToken }` via `SetupCodeDecoder`. The flow:
+
+1. `ApplySetupCodeAsync(code)` decodes and validates the gateway URL and bootstrap token
+2. Creates/updates and persists the active `GatewayRecord`, preserving any shared token and durable per-role device tokens
+3. Disconnects the previous connection only after the record is durable
+4. `BootstrapTokenLifecycle` forces `auth.bootstrapToken` for this connection attempt without clearing stored device tokens; the record-scoped force flag is consumed or cleared even when identity loading fails
+5. After successful pairing, the gateway returns `hello-ok.auth.deviceToken` and `BootstrapTokenLifecycle` persists the replacement role token
+6. If pairing or connection fails, the previously stored device tokens remain intact, so retrying or returning to the prior pairing does not require an unintended full re-pair
+
+The bootstrap token is cleared only after operator and node role tokens are both durably readable.
+
+**Approval boundaries**: `GatewayConnectionManager` leaves node-pair command-trust requests and reapproval pending for explicit operator approval. It may automatically approve and reconnect only an explicitly typed device-pair request used for a device role upgrade.
+
+## Inbound pairing approval (operator)
+
+When **another** device or node requests pairing, the gateway broadcasts `device.pair.requested` / `node.pair.requested` to operators with pairing scope. `DaisyClawGatewayClient` refreshes the pending lists and raises `DevicePairListUpdated` / `NodePairListUpdated`, which `GatewayService` forwards via its `PairListsChanged` event.
+
+`PairingApprovalCoordinator` (tray) reconciles those snapshots through the pure `PairingApprovalQueue` (DaisyClaw.Connection) into add/resolve deltas, de-duplicating, suppressing already-decided requests, and filtering out the local node's own pending request (handled by the auto-approve path above). For genuinely new requests - when `ShowPairingApprovalDialog` is enabled and the operator holds pairing scope - it raises `ApprovalRequested`, and the app presents a focused **`PairingApprovalDialog`** plus an awareness toast (with a "Review" action). The dialog shows the requester's identity and the **operator scopes being granted** (mapped to friendly text by `PairingScopeDescriptions`), with Approve / Reject / Decide-later. Approve is briefly disabled on each new request to prevent click-through. Approve/Reject call the `IOperatorGatewayClient.{Device,Node}Pair{Approve,Reject}Async` RPCs; the queue advances and the dialog closes when empty. The existing Connections-page "Pending approvals" banner remains as the passive fallback when the dialog is disabled. Pure queue/scope logic is unit-tested in `DaisyClaw.Connection.Tests`.
+
+## SSH tunnel integration
+
+`SshTunnelService` manages an SSH local port-forward process and implements `ISshTunnelManager` directly for the connection manager.
+
+When a `GatewayRecord` has `SshTunnel` config, the connection manager starts the tunnel before connecting the WebSocket client to `ws://localhost:<localPort>`. The config stores the SSH daemon port (`sshPort`, default `22`) separately from the remote gateway port forwarded by `-L`. Startup allows up to 20 seconds for SSH transport, key exchange, authentication, and local-forward binding, while every sample still fails closed on incomplete listener capture or a conflicting loopback/wildcard owner. Same-number listeners bound only to non-loopback interfaces are irrelevant to the local forward and are ignored.
+
+Credential handoff pins the verified tunnel lifecycle generation (or managed-local process identity) from preflight through the initial challenge authorization. If ownership changes between WebSocket acceptance and the credential frame, the current socket is aborted and only a fresh, reauthorized socket may retry.
+
+`SshTunnelSnapshot` provides a read-only point-in-time view of tunnel state for UI consumption (avoids coupling UI to the mutable service).
+
+## MCP-only mode
+
+`EnableMcpServer` and `EnableNodeMode` are independent:
+
+| EnableNodeMode | EnableMcpServer | Behavior |
+|---|---|---|
+| false | false | Operator-only tray app |
+| false | true | Local MCP server only; no gateway required |
+| true | false | Gateway node only |
+| true | true | Gateway node plus local MCP server |
+
+The `EnableMcpServer=true`, `EnableNodeMode=false` path creates a local-only `NodeService` without requiring a gateway credential.
+
+## Tray action UX
+
+Tray actions should never silently no-op on common pairing/configuration issues:
+
+- Chat resolves credentials from the active registry record and per-gateway identity. If no usable credential exists, it opens Connection settings instead.
+- Canvas opens only when the Windows node is initialized, paired, and the Canvas capability is enabled in settings; otherwise it opens Connection settings.
+- Quick Send uses the live operator client and surfaces scope/pairing errors from gateway calls.
+- `system.run` and `system.run.prepare` are gated by `NodeSystemRunEnabled` (default `true` for backward compatibility). When disabled, those commands are dropped from advertised capabilities and invocations are rejected.
+
+## Legacy migration
+
+On first startup with a `GatewayRegistry`, if no active gateway record exists, the app migrates legacy settings credentials:
+
+- `LegacyToken` → `GatewayRecord.SharedGatewayToken`
+- `LegacyBootstrapToken` → `GatewayRecord.BootstrapToken`
+- Old identity file copied into per-gateway identity directory
+
+Migration is idempotent and deduplicates by URL.
+
+## Signature protocol
+
+The connect handshake uses Ed25519 signatures with v3→v2 fallback:
+- Client tries v3 signature first (includes platform and device family)
+- If gateway rejects v3, falls back to v2 and remembers for the session
+- The `_gatewayNeedsV2Signature` flag persists across reconnects within the same `GatewayConnectionManager` lifetime
+
+## Tests
+
+Connection tests live in `tests/DaisyClaw.Connection.Tests/`:
+
+- `ConnectionStateMachineTests` - FSM transitions, derived overall state
+- `CredentialResolverTests` - credential precedence for operator and node
+- `GatewayConnectionManagerTests` - connect/disconnect/switch, diagnostics, handshake
+- `GatewayRegistryTests` / `GatewayRegistryMigrationTests` - persistence, migration
+- `InteractiveGatewayCredentialResolverTests` - HTTP credential resolution
+- `NodeConnectorTests` - node client lifecycle
+- `PairingFlowTests` / `NodePairAutoApproveTests` - pairing lifecycle, device role-upgrade auto-approval, and manual node command-trust boundary
+- `SetupCodeFlowTests` / `SetupCodeDecoderTests` - QR code → connect flow
+- `StaleEventGuardTests` - generation-guarded event handling
+- `SettingsChangeImpactTests` - settings change classification
+- `RetryPolicyTests` - backoff policy
+- `ConnectionDiagnosticsTests` - ring buffer diagnostics
+- `NodeConnectionCoordinatorTests` - singular node generation and telemetry contract
+- `BootstrapTokenLifecycleTests` - durable role-token handoff and clear gate
+- `DevicePairApprovalCoordinatorTests` - bounded device role-upgrade reconnect workflow
+
+The heaviest remaining gap is Windows shell UI behavior (tray clicks, tooltip visibility, WinUI menu routing). Cover pure decision logic in unit tests; use manual or integration smoke tests for shell behavior.

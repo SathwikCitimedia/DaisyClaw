@@ -6009,7 +6009,7 @@ describe("runAgentTurnWithFallback", () => {
     expect(result.kind).toBe("final");
     if (result.kind === "final") {
       expect(result.payload.text).toBe(
-        '⚠️ Missing API key for provider "openai". Run `daisyclaw doctor --fix` to repair stale OpenAI model/session routes, restart the gateway if doctor asks, then try again. If doctor has nothing to repair or the error persists, re-auth with `daisyclaw models auth login --provider openai` or run `daisyclaw configure`.',
+        '⚠️ Missing API key for provider "openai". Open the DaisyClaw dashboard, click the model name above the chat box, and add your provider API key in Model Studio. If a key is already set, run `daisyclaw doctor --fix` to repair stale OpenAI model/session routes, or re-auth with `daisyclaw models auth login --provider openai`.',
       );
     }
   });
@@ -6047,7 +6047,7 @@ describe("runAgentTurnWithFallback", () => {
     expect(result.kind).toBe("final");
     if (result.kind === "final") {
       expect(result.payload.text).toBe(
-        '⚠️ Missing API key for provider "openai". Run `daisyclaw doctor --fix` to repair stale OpenAI model/session routes, restart the gateway if doctor asks, then try again. If doctor has nothing to repair or the error persists, re-auth with `daisyclaw models auth login --provider openai` or run `daisyclaw configure`.',
+        '⚠️ Missing API key for provider "openai". Open the DaisyClaw dashboard, click the model name above the chat box, and add your provider API key in Model Studio. If a key is already set, run `daisyclaw doctor --fix` to repair stale OpenAI model/session routes, or re-auth with `daisyclaw models auth login --provider openai`.',
       );
     }
   });
@@ -6084,7 +6084,7 @@ describe("runAgentTurnWithFallback", () => {
     expect(result.kind).toBe("final");
     if (result.kind === "final") {
       expect(result.payload.text).toBe(
-        "⚠️ Missing API key for the selected provider on the gateway. Configure provider auth, then try again.",
+        "⚠️ Missing API key for the selected provider. Open the DaisyClaw dashboard, click the model name above the chat box, and add your provider API key in Model Studio.",
       );
     }
   });

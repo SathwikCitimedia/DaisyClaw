@@ -158,25 +158,30 @@ export async function setupCommand(
   const workspace =
     desiredWorkspace ?? defaults.workspace ?? (await resolveDefaultAgentWorkspaceDir(deps));
 
+  // A gateway with mode=local but no auth at all is permanently unreachable
+  // from the Control UI (default auth mode is token, and a missing token
+  // rejects every connection). Generate one here so setup always yields a
+  // connectable gateway. The starter skill pack applies to fresh installs
+  // only — existing installs keep their current skill visibility.
+  const { buildFirstRunConfig } = await import("./first-run-init.js");
+  const firstRun = buildFirstRunConfig(cfg, { applySkillPack: !existingRaw.exists });
   const next: DaisyClawConfig = {
-    ...cfg,
+    ...firstRun.config,
     agents: {
-      ...cfg.agents,
+      ...firstRun.config.agents,
       defaults: {
         ...defaults,
         workspace,
       },
-    },
-    gateway: {
-      ...cfg.gateway,
-      mode: cfg.gateway?.mode ?? "local",
     },
   };
 
   if (
     !existingRaw.exists ||
     defaults.workspace !== workspace ||
-    cfg.gateway?.mode !== next.gateway?.mode
+    cfg.gateway?.mode !== next.gateway?.mode ||
+    firstRun.generatedToken ||
+    firstRun.hiddenSkillCount > 0
   ) {
     // Preserve all existing config fields and touch only workspace/gateway mode
     // defaults that this command owns.
@@ -196,6 +201,12 @@ export async function setupCommand(
       }
       if (cfg.gateway?.mode !== next.gateway?.mode) {
         updates.push("set gateway.mode");
+      }
+      if (firstRun.generatedToken) {
+        updates.push("generated gateway.auth.token");
+      }
+      if (firstRun.hiddenSkillCount > 0) {
+        updates.push(`applied starter skill pack (${firstRun.hiddenSkillCount} hidden)`);
       }
       const suffix = updates.length > 0 ? `(${updates.join(", ")})` : undefined;
       await (deps.logConfigUpdated ?? logDefaultConfigUpdated)(runtime, {

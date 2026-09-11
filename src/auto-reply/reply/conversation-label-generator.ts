@@ -11,7 +11,9 @@ import type { TextContent } from "../../llm/types.js";
 import { getRuntimeAuthForModel } from "../../plugins/runtime/runtime-model-auth.runtime.js";
 
 const DEFAULT_MAX_LABEL_LENGTH = 128;
-const TIMEOUT_MS = 15_000;
+// Label generation is a background nicety: the caller has already applied a
+// heuristic answer, so a slow provider should be cut off rather than waited on.
+const DEFAULT_TIMEOUT_MS = 8_000;
 
 /** Inputs for generating a short conversation label from the active model. */
 export type ConversationLabelParams = {
@@ -21,6 +23,8 @@ export type ConversationLabelParams = {
   agentId?: string;
   agentDir?: string;
   maxLength?: number;
+  /** Abort budget for the model call; defaults to {@link DEFAULT_TIMEOUT_MS}. */
+  timeoutMs?: number;
 };
 
 function isTextContentBlock(block: { type: string }): block is TextContent {
@@ -70,8 +74,14 @@ export async function generateConversationLabel(
   const apiKey = requireApiKey(runtimeAuth, modelRef.provider);
   const runtimeModel = applyPreparedRuntimeAuthToModel(completionModel, runtimeAuth);
 
+  const timeoutMs =
+    typeof params.timeoutMs === "number" &&
+    Number.isFinite(params.timeoutMs) &&
+    params.timeoutMs > 0
+      ? Math.floor(params.timeoutMs)
+      : DEFAULT_TIMEOUT_MS;
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), TIMEOUT_MS);
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
     // Label generation should never block normal reply handling for long.
     const result = await completeSimple(

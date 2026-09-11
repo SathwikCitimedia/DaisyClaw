@@ -511,6 +511,202 @@
   scroll-behavior: smooth;
 }
 
+/* ── Advanced settings: overview + section card ──
+   The old accordion put expanded groups ABOVE the only scrolling element, so
+   their rows were clipped by the fixed-height panel and unreachable. The card
+   layout keeps the header to one row and puts everything scrollable —
+   overview or section form — inside .config-content. */
+
+.config-advanced__header {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  padding: 0 22px 12px;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 45%, transparent);
+}
+
+.config-advanced__back {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--accent);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 6px 8px;
+  border-radius: var(--radius-md);
+  transition:
+    opacity var(--duration-fast) var(--ease-out),
+    background var(--duration-fast) var(--ease-out);
+}
+
+.config-advanced__back:hover {
+  opacity: 0.85;
+  background: var(--accent-subtle);
+}
+
+.config-advanced__crumbs {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8125rem;
+  min-width: 0;
+}
+
+.config-advanced__crumb {
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.config-advanced__crumb--link {
+  background: none;
+  border: none;
+  padding: 2px 4px;
+  cursor: pointer;
+  color: var(--accent);
+  font: inherit;
+  border-radius: var(--radius-sm);
+}
+
+.config-advanced__crumb--link:hover {
+  background: var(--accent-subtle);
+}
+
+.config-advanced__crumb--current {
+  color: var(--fg);
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.config-advanced__crumb-sep {
+  color: var(--muted);
+  opacity: 0.6;
+}
+
+/* Overview: one row per category, sections as chips. */
+.config-advanced-overview {
+  display: grid;
+  gap: 22px;
+}
+
+.config-advanced-overview__group {
+  display: grid;
+  gap: 10px;
+}
+
+.config-advanced-overview__title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.config-advanced-overview__icon {
+  display: inline-flex;
+  color: var(--accent);
+}
+
+.config-advanced-overview__icon svg {
+  width: 15px;
+  height: 15px;
+}
+
+.config-advanced-overview__chips {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: 8px;
+}
+
+.config-advanced-chip {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 11px 13px;
+  border: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+  border-radius: var(--radius-md);
+  background: var(--panel);
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  color: var(--fg);
+  transition:
+    border-color var(--duration-fast) var(--ease-out),
+    background var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out);
+}
+
+.config-advanced-chip:hover {
+  border-color: var(--accent);
+  background: var(--accent-subtle);
+  transform: translateY(-1px);
+}
+
+.config-advanced-chip__icon {
+  display: inline-flex;
+  flex: 0 0 auto;
+  color: var(--muted);
+}
+
+.config-advanced-chip__icon svg {
+  width: 15px;
+  height: 15px;
+}
+
+.config-advanced-chip__label {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 0.875rem;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.config-advanced-chip__count {
+  flex: 0 0 auto;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  color: var(--muted);
+  background: color-mix(in srgb, var(--border) 35%, transparent);
+  border-radius: var(--radius-full);
+  padding: 2px 7px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Open section: a titled card whose body is the scrolling form. */
+.config-advanced-card__header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 0 14px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 45%, transparent);
+}
+
+.config-advanced-card__title {
+  margin: 0;
+  font-size: 1.0625rem;
+  font-weight: 700;
+  color: var(--fg);
+}
+
+.config-advanced-card__count {
+  flex: 0 0 auto;
+  font-size: 0.75rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
 /* ===========================================
    Appearance Section
    =========================================== */

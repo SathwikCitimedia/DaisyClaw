@@ -99,17 +99,6 @@ export async function setupWizardCommand(
     await handleReset(resetScope, resolveUserPath(workspaceDefault), runtime);
   }
 
-  if (process.platform === "win32") {
-    runtime.log(
-      [
-        "Windows detected - DaisyClaw runs great on WSL2!",
-        "Native Windows might be trickier.",
-        "Quick setup: wsl --install (one command, one reboot)",
-        "Guide: https://docs.daisyclaw.ai/windows",
-      ].join("\n"),
-    );
-  }
-
   if (normalizedOpts.nonInteractive) {
     await runNonInteractiveSetup(normalizedOpts, runtime);
     return;

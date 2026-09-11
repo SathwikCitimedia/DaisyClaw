@@ -84,6 +84,8 @@ function createProps(overrides: Partial<SkillsProps> = {}): SkillsProps {
     clawhubDetailError: null,
     clawhubInstallSlug: null,
     clawhubInstallMessage: null,
+    clawhubAmbiguousMatches: null,
+    onClawHubInstallRef: () => undefined,
     onFilterChange: () => undefined,
     onStatusFilterChange: () => undefined,
     onRefresh: () => undefined,

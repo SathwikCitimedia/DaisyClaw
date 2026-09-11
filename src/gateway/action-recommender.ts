@@ -88,21 +88,82 @@ export function parseRecommendedActionIds(raw: string | null | undefined): Recom
   return out;
 }
 
+// The model refinement is a nicety layered on top of instant heuristic chips,
+// so it gets a short budget: a slow provider must never make the chips (or the
+// user's next message, which shares the provider connection) wait on it.
+const REFINE_TIMEOUT_MS = 4_000;
+
+// Reply shapes that make a given follow-up obviously useful. Deliberately
+// conservative: a missing chip costs nothing, an irrelevant one looks broken.
+const LONG_REPLY_WORDS = 120;
+const MEDIUM_REPLY_WORDS = 60;
+const LIST_LINE_PATTERN = /^\s*(?:[-*•]|\d+[.)])\s+\S/;
+const STEPS_PATTERN = /\bstep\s*\d|\bsteps\b/i;
+const EMAIL_PATTERN = /\b(?:dear\s+\w+|kind regards|best regards|sincerely|subject:)\b/i;
+
+/**
+ * Instant, no-model chips derived from the reply's shape. This is what users
+ * see first (and, on a slow or single-model setup, possibly all they see).
+ */
+export function buildHeuristicActionRecommendations(messageText: string): RecommendableActionId[] {
+  const text = typeof messageText === "string" ? messageText.trim() : "";
+  if (!text) {
+    return [];
+  }
+  const words = text.split(/\s+/).length;
+  const listLines = text.split(/\r?\n/).filter((line) => LIST_LINE_PATTERN.test(line)).length;
+  const out: RecommendableActionId[] = [];
+  const push = (id: RecommendableActionId) => {
+    if (out.length < MAX_RECOMMENDED_ACTIONS && !out.includes(id)) {
+      out.push(id);
+    }
+  };
+  if (words >= LONG_REPLY_WORDS) {
+    push("summarize");
+  }
+  if (words >= MEDIUM_REPLY_WORDS) {
+    push("short_version");
+  }
+  if (listLines >= 3 || STEPS_PATTERN.test(text)) {
+    push("break_steps");
+  }
+  if (EMAIL_PATTERN.test(text)) {
+    push("draft_email");
+  }
+  return out;
+}
+
 export type RecommendActionsParams = {
   messageText: string;
   cfg: DaisyClawConfig;
   agentId?: string;
   agentDir?: string;
+  /** Ask the configured model (bounded). Default: heuristic only, no model call. */
+  refine?: boolean;
   debug?: (message: string) => void;
 };
 
-/** Returns LLM-picked, whitelisted follow-up action ids for a reply (best-effort). */
+export type RecommendActionsOutcome = {
+  actions: RecommendableActionId[];
+  source: "heuristic" | "model";
+};
+
+/**
+ * Returns whitelisted follow-up action ids for a reply. Heuristic by default
+ * (instant, offline); with `refine` it asks the model under a short timeout and
+ * falls back to the heuristic set when the model fails or times out.
+ */
 export async function generateActionRecommendations(
   params: RecommendActionsParams,
-): Promise<RecommendableActionId[]> {
+): Promise<RecommendActionsOutcome> {
   const trimmed = params.messageText.trim();
   if (!trimmed) {
-    return [];
+    return { actions: [], source: "heuristic" };
+  }
+  const heuristic = buildHeuristicActionRecommendations(trimmed);
+  if (!params.refine) {
+    params.debug?.(`heuristic=${JSON.stringify(heuristic)}`);
+    return { actions: heuristic, source: "heuristic" };
   }
   const raw = await generateConversationLabel({
     userMessage: trimmed,
@@ -111,8 +172,14 @@ export async function generateActionRecommendations(
     ...(params.agentId ? { agentId: params.agentId } : {}),
     ...(params.agentDir ? { agentDir: params.agentDir } : {}),
     maxLength: 200,
+    timeoutMs: REFINE_TIMEOUT_MS,
   });
-  const actions = parseRecommendedActionIds(raw);
-  params.debug?.(`raw=${JSON.stringify(raw)} parsed=${JSON.stringify(actions)}`);
-  return actions;
+  params.debug?.(
+    `raw=${JSON.stringify(raw)} parsed=${JSON.stringify(parseRecommendedActionIds(raw))}`,
+  );
+  if (raw === null) {
+    // Model unavailable / timed out: keep whatever the heuristic already showed.
+    return { actions: heuristic, source: "heuristic" };
+  }
+  return { actions: parseRecommendedActionIds(raw), source: "model" };
 }

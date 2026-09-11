@@ -118,9 +118,17 @@ export function parseSessionKey(key: string): SessionKeyInfo {
   }
 
   // Dashboard/webchat sessions without a saved title: show a human fallback
-  // instead of the raw UUID key.
-  if (normalized.startsWith("dashboard:") || normalized.startsWith("webchat:")) {
-    return { prefix: "", fallbackName: "Dashboard chat" };
+  // instead of the raw UUID key. Matches both the bare form ("dashboard:<id>")
+  // and the agent-scoped form ("agent:<id>:dashboard:<id>") the control UI
+  // actually creates — otherwise these fall through and render the raw key.
+  if (
+    normalized.startsWith("dashboard:") ||
+    normalized.startsWith("webchat:") ||
+    /^agent:[^:]+:(?:dashboard|webchat):/.test(normalized)
+  ) {
+    // An untitled dashboard chat is either brand-new or was never sent to, so
+    // "New chat" reads better than naming the surface it came from.
+    return { prefix: "", fallbackName: "New chat" };
   }
 
   // Direct chat: agent:<x>:<channel>:direct:<id>.

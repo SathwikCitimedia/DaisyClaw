@@ -21,7 +21,7 @@ describe("DaisyClawApp Model Studio", () => {
     models: {
       providers: {
         litellm: {
-          baseUrl: "http://10.21.66.8:4000/v1",
+          baseUrl: "http://127.0.0.1:4000/v1",
           apiKey: "sk-redacted",
           timeoutSeconds: 120,
           models: [
@@ -117,7 +117,7 @@ describe("DaisyClawApp Model Studio", () => {
       expect(app.configSettingsMode).toBe("advanced");
 
       const back = app.renderRoot.querySelector(
-        ".config-accordion-nav__back",
+        ".config-advanced__back",
       ) as HTMLButtonElement | null;
       expect(back, "Back-to-quick button should render in advanced mode").toBeTruthy();
       back!.click();

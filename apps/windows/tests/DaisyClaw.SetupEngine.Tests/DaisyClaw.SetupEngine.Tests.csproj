@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\DaisyClaw.SetupEngine\DaisyClaw.SetupEngine.csproj" />
+    <ProjectReference Include="..\DaisyClaw.TestSupport\DaisyClaw.TestSupport.csproj" />
+    <ProjectReference Include="..\DaisyClaw.Shared.TestHost\DaisyClaw.Shared.TestHost.csproj"
+                      ReferenceOutputAssembly="false"
+                      OutputItemType="Content"
+                      CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

@@ -36,6 +36,8 @@ import {
   resolveChatAgentFilterId,
   resolveChatAgentFilterOptions,
   resolvePreferredSessionForAgent,
+  sessionSupportsFastMode,
+  sessionSupportsThinking,
 } from "./chat/session-controls.ts";
 import { confirmDialog } from "./confirm-dialog.ts";
 import {
@@ -178,7 +180,9 @@ import {
   isSettingsTab,
   normalizeBasePath,
   pathForTab,
-  SETTINGS_TABS,
+  PLUGIN_GATED_SIDEBAR_TABS,
+  resolveVisibleSidebarTabs,
+  SETTINGS_ROW_TABS,
   TAB_GROUPS,
   subtitleForTab,
   titleForTab,
@@ -221,6 +225,7 @@ import {
 import { renderDreamingRestartConfirmation } from "./views/dreaming-restart-confirmation.ts";
 import { renderDreaming } from "./views/dreaming.ts";
 import { renderExecApprovalPrompt } from "./views/exec-approval.ts";
+import { renderFirstRunWizard } from "./views/first-run-wizard.ts";
 import { renderGatewayUrlConfirmation } from "./views/gateway-url-confirmation.ts";
 import { renderLoginGate } from "./views/login-gate.ts";
 import { renderMcp } from "./views/mcp.ts";
@@ -466,7 +471,7 @@ function renderSettingsSectionNav(state: AppViewState) {
   }
   return html`
     <nav class="settings-section-nav" aria-label=${t("common.settingsSections")}>
-      ${SETTINGS_TABS.map((tab) => {
+      ${SETTINGS_ROW_TABS.map((tab) => {
         const active = state.tab === tab;
         const href = pathForTab(tab, state.basePath);
         return html`
@@ -572,6 +577,20 @@ function resolveSidebarRecentSessions(state: AppViewState): GatewaySessionRow[] 
     )
     .toSorted((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0))
     .slice(0, 5);
+}
+
+/** Plugin ids (from the sidebar's plugin-gated tabs) enabled in the current config. */
+function resolveEnabledSidebarPluginIds(state: AppViewState): ReadonlySet<string> {
+  const enabled = new Set<string>();
+  for (const pluginId of Object.values(PLUGIN_GATED_SIDEBAR_TABS)) {
+    if (
+      pluginId &&
+      isPluginEnabledInConfigSnapshot(state.configSnapshot, pluginId, { enabledByDefault: false })
+    ) {
+      enabled.add(pluginId);
+    }
+  }
+  return enabled;
 }
 
 function renderSidebarSessions(state: AppViewState) {
@@ -1078,13 +1097,21 @@ type ConfigTabOverrides = Pick<
     >
   >;
 
-const SCOPED_CONFIG_SECTION_KEYS = new Set<string>([
+/**
+ * Config sections that belong to a dedicated settings tab, so the main
+ * Settings → Advanced editor neither lists nor selects them. AI & Agents and
+ * Infrastructure are intentionally absent: their sections now live in Advanced
+ * (their standalone tabs were removed from the settings row), and `mcp` stays
+ * here because the MCP tab remains.
+ */
+const TAB_OWNED_CONFIG_SECTION_KEYS = [
   ...COMMUNICATION_SECTION_KEYS,
   ...APPEARANCE_SECTION_KEYS,
   ...AUTOMATION_SECTION_KEYS,
-  ...INFRASTRUCTURE_SECTION_KEYS,
-  ...AI_AGENTS_SECTION_KEYS,
-]);
+  "mcp",
+] as const;
+
+const SCOPED_CONFIG_SECTION_KEYS = new Set<string>(TAB_OWNED_CONFIG_SECTION_KEYS);
 
 function normalizeMainConfigSelection(
   activeSection: string | null,
@@ -1507,6 +1534,12 @@ export function renderApp(state: AppViewState) {
   // The gateway URL confirmation overlay is always rendered so URL-param flows still work.
   if (!state.connected) {
     return html` ${renderLoginGate(state)} ${renderGatewayUrlConfirmation(state)} `;
+  }
+
+  // First-run gate: a fresh install (no model provider configured) gets the
+  // guided setup wizard instead of the dashboard, once.
+  if (state.firstRunActive) {
+    return html`${renderFirstRunWizard(state)}`;
   }
 
   const presenceCount = state.presenceEntries.length;
@@ -2031,10 +2064,13 @@ export function renderApp(state: AppViewState) {
                 })();
               },
               onOpenAdvanced: () => {
+                // Models now live in Settings → Advanced rather than a
+                // standalone AI & Agents tab.
                 state.modelStudioOpen = false;
                 state.configSettingsMode = "advanced";
-                state.aiAgentsActiveSection = "models";
-                state.setTab("aiAgents");
+                state.configActiveSection = "models";
+                state.configActiveSubsection = null;
+                state.setTab("config");
               },
             });
           // Crash guard: a dialog bug must degrade to an error toast, never
@@ -2056,6 +2092,8 @@ export function renderApp(state: AppViewState) {
             currentModel,
             thinkingLevel,
             fastMode,
+            thinkingSupported: sessionSupportsThinking(state),
+            fastModeSupported: sessionSupportsFastMode(state),
             onModelChange: () => {
               state.modelStudioOpen = true;
               state.modelStudioError = null;
@@ -2245,14 +2283,12 @@ export function renderApp(state: AppViewState) {
             state.configSettingsMode = "quick";
             requestHostUpdate?.();
           },
-          excludeSections: [
-            ...COMMUNICATION_SECTION_KEYS,
-            ...AUTOMATION_SECTION_KEYS,
-            ...INFRASTRUCTURE_SECTION_KEYS,
-            ...AI_AGENTS_SECTION_KEYS,
-            "ui",
-            "wizard",
-          ],
+          // Advanced is now the single home for expert config: the AI & Agents
+          // and Infrastructure categories render here (they used to be their
+          // own top-level tabs, which made the settings row read as
+          // developer-facing). Only sections that still own a dedicated tab
+          // are excluded, so nothing appears in two places.
+          excludeSections: [...TAB_OWNED_CONFIG_SECTION_KEYS],
         });
       }
       case "channels":
@@ -2788,6 +2824,9 @@ export function renderApp(state: AppViewState) {
                 ${TAB_GROUPS.filter((group) => group.label !== "settings").map((group) => {
                   const isGroupCollapsed = state.settings.navGroupsCollapsed[group.label] ?? false;
                   const showItems = navCollapsed || !isGroupCollapsed;
+                  const visibleTabs = resolveVisibleSidebarTabs(group.tabs, {
+                    enabledPluginIds: resolveEnabledSidebarPluginIds(state),
+                  });
 
                   return html`
                     <section class="nav-section ${!showItems ? "nav-section--collapsed" : ""}">
@@ -2815,7 +2854,7 @@ export function renderApp(state: AppViewState) {
                           `
                         : nothing}
                       <div class="nav-section__items">
-                        ${group.tabs.map((tab) =>
+                        ${visibleTabs.map((tab) =>
                           renderTab(state, tab, { collapsed: navCollapsed }),
                         )}
                       </div>

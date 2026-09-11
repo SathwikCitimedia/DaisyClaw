@@ -2732,10 +2732,11 @@ export const chatHandlers: GatewayRequestHandlers = {
       );
       return;
     }
-    const { sessionKey, messageText } = params as {
+    const { sessionKey, messageText, refine } = params as {
       sessionKey: string;
       agentId?: string;
       messageText: string;
+      refine?: boolean;
     };
     const agentIdOverride = normalizeOptionalText((params as { agentId?: string }).agentId);
     const requestedAgentId = resolveRequestedChatAgentId({
@@ -2755,18 +2756,20 @@ export const chatHandlers: GatewayRequestHandlers = {
       return;
     }
     // Best-effort: a failed recommendation must never surface an error to the
-    // chat UI, it just means no chips for this reply.
+    // chat UI, it just means no chips for this reply. The default (no `refine`)
+    // path is heuristic-only and never touches the model.
     try {
-      const actions = await generateActionRecommendations({
+      const outcome = await generateActionRecommendations({
         messageText,
         cfg,
         ...(selectedAgent.agentId ? { agentId: selectedAgent.agentId } : {}),
-        debug: (message) => context.logGateway.info(`[recommendActions] ${message}`),
+        refine: refine === true,
+        debug: (message) => context.logGateway.debug(`[recommendActions] ${message}`),
       });
-      respond(true, { actions });
+      respond(true, { actions: outcome.actions, source: outcome.source });
     } catch (err) {
       context.logGateway.warn(`chat.recommendActions failed: ${formatForLog(err)}`);
-      respond(true, { actions: [] });
+      respond(true, { actions: [], source: "heuristic" });
     }
   },
   "chat.message.get": async ({ params, respond, context }) => {
@@ -3548,6 +3551,13 @@ export const chatHandlers: GatewayRequestHandlers = {
                 ...(autoTitleAgentId ? { agentId: autoTitleAgentId } : {}),
                 maxLength: MAX_SESSION_TITLE_LENGTH,
               }),
+            // Re-read right before applying the model title so a rename the
+            // user made while the model was thinking is never overwritten.
+            readCurrentLabel: async () =>
+              loadSessionEntry(
+                sessionKey,
+                autoTitleAgentId ? { agentId: autoTitleAgentId } : undefined,
+              ).entry?.label ?? null,
             onError: (err) =>
               context.logGateway.warn(`auto session title failed: ${formatForLog(err)}`),
           });

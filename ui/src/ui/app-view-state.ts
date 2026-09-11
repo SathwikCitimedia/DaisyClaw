@@ -172,6 +172,7 @@ export type AppViewState = {
   nodesLoading: boolean;
   nodes: Array<Record<string, unknown>>;
   chatNewMessagesBelow: boolean;
+  chatShowScrollButton: boolean;
   navDrawerOpen: boolean;
   sidebarOpen: boolean;
   sidebarContent: SidebarContent | null;
@@ -201,6 +202,12 @@ export type AppViewState = {
   configSaving: boolean;
   configApplying: boolean;
   settingsHelpOpen: boolean;
+  firstRunActive: boolean | null;
+  firstRunStep: number;
+  firstRunBusy: boolean;
+  firstRunError: string | null;
+  firstRunProvider: string | null;
+  firstRunChannel: string | null;
   updateRunning: boolean;
   applySessionKey: string;
   configSnapshot: ConfigSnapshot | null;

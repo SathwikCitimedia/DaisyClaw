@@ -10,7 +10,7 @@ import {
 } from "./models.ts";
 
 function createState(config: Record<string, unknown>) {
-  const request = vi.fn(async (method: string) => {
+  const request = vi.fn(async (method: string, _payload?: unknown) => {
     if (method === "config.get") {
       return { hash: "hash-1", config };
     }
@@ -53,7 +53,7 @@ describe("model studio mutations", () => {
 
     await saveCustomProvider(state, {
       providerId: "litellm",
-      baseUrl: "http://10.21.66.8:4000/v1",
+      baseUrl: "http://127.0.0.1:4000/v1",
       apiKey: "sk-lite",
       modelId: "claude-sonnet-4-5",
     });
@@ -63,7 +63,7 @@ describe("model studio mutations", () => {
         models: {
           providers: {
             litellm: {
-              baseUrl: "http://10.21.66.8:4000/v1",
+              baseUrl: "http://127.0.0.1:4000/v1",
               apiKey: "sk-lite",
               models: [{ id: "claude-sonnet-4-5", name: "claude-sonnet-4-5" }],
             },

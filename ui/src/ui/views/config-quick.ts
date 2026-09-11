@@ -68,6 +68,10 @@ export type QuickSettingsProps = {
   currentModel: string;
   thinkingLevel: string;
   fastMode: boolean;
+  /** False when the active model offers no thinking level beyond "off". */
+  thinkingSupported?: boolean;
+  /** False when the active provider ignores fast mode (non-Anthropic). */
+  fastModeSupported?: boolean;
   onModelChange?: () => void;
   onThinkingChange?: (level: string) => void;
   onFastModeToggle?: () => void;
@@ -408,6 +412,56 @@ function renderCardHeader(icon: TemplateResult, title: string, action?: Template
   `;
 }
 
+// Thinking only takes effect on reasoning models; other models clamp every
+// level to "off" server-side. Show the control as unavailable rather than
+// letting it look like it applied.
+function renderThinkingRow(props: QuickSettingsProps) {
+  const supported = props.thinkingSupported !== false;
+  return html`
+    <div class="qs-row">
+      <span class="qs-row__label">Thinking</span>
+      ${supported
+        ? html`
+            <div class="qs-segmented">
+              ${THINKING_LEVELS.map(
+                (level) => html`
+                  <button
+                    class="qs-segmented__btn ${level === props.thinkingLevel
+                      ? "qs-segmented__btn--active"
+                      : ""}"
+                    @click=${() => props.onThinkingChange?.(level)}
+                  >
+                    ${level.charAt(0).toUpperCase() + level.slice(1)}
+                  </button>
+                `,
+              )}
+            </div>
+          `
+        : html`<span class="qs-row__value muted">Not available for this model</span>`}
+    </div>
+  `;
+}
+
+// Fast mode maps to Anthropic's service_tier and is ignored by every other
+// provider, so the switch is hidden unless it can actually do something.
+function renderFastModeRow(props: QuickSettingsProps) {
+  if (props.fastModeSupported === false) {
+    return nothing;
+  }
+  return html`
+    <div class="qs-row">
+      <span class="qs-row__label">Fast mode</span>
+      <label class="qs-toggle">
+        <input type="checkbox" .checked=${props.fastMode} @change=${props.onFastModeToggle} />
+        <span class="qs-toggle__track"></span>
+        <span class="qs-toggle__hint muted"
+          >${props.fastMode ? "On — prefers faster capacity" : "Off — standard capacity"}</span
+        >
+      </label>
+    </div>
+  `;
+}
+
 function renderModelCard(props: QuickSettingsProps) {
   return html`
     <div class="qs-card qs-card--model">
@@ -420,33 +474,7 @@ function renderModelCard(props: QuickSettingsProps) {
             <button class="btn btn--sm" @click=${props.onModelChange}>Manage</button>
           </span>
         </div>
-        <div class="qs-row">
-          <span class="qs-row__label">Thinking</span>
-          <div class="qs-segmented">
-            ${THINKING_LEVELS.map(
-              (level) => html`
-                <button
-                  class="qs-segmented__btn ${level === props.thinkingLevel
-                    ? "qs-segmented__btn--active"
-                    : ""}"
-                  @click=${() => props.onThinkingChange?.(level)}
-                >
-                  ${level.charAt(0).toUpperCase() + level.slice(1)}
-                </button>
-              `,
-            )}
-          </div>
-        </div>
-        <div class="qs-row">
-          <span class="qs-row__label">Fast mode</span>
-          <label class="qs-toggle">
-            <input type="checkbox" .checked=${props.fastMode} @change=${props.onFastModeToggle} />
-            <span class="qs-toggle__track"></span>
-            <span class="qs-toggle__hint muted"
-              >${props.fastMode ? "On — cheaper, less capable" : "Off"}</span
-            >
-          </label>
-        </div>
+        ${renderThinkingRow(props)} ${renderFastModeRow(props)}
       </div>
     </div>
   `;

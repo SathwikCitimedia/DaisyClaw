@@ -10,6 +10,7 @@ import path from "node:path";
 import { readStringValue } from "@daisyclaw/normalization-core/string-coerce";
 import { resolveLegacyStateDirs, resolveStateDir } from "../config/paths.js";
 import { openRootFile } from "../infra/boundary-file-read.js";
+import { isConsumerLockdownActive } from "../infra/consumer-lockdown.js";
 import { pathExists } from "../infra/fs-safe.js";
 import { replaceFileAtomic } from "../infra/replace-file.js";
 import {
@@ -116,6 +117,9 @@ function stripFrontMatter(content: string): string {
   return trimmed;
 }
 
+// Consumer builds seed SOUL.md from the factory persona instead of the dev template.
+const PRODUCTION_SOUL_TEMPLATE_FILENAME = "production-soul.md";
+
 async function loadTemplate(name: string): Promise<string> {
   const cached = workspaceTemplateCache.get(name);
   if (cached) {
@@ -127,16 +131,24 @@ async function loadTemplate(name: string): Promise<string> {
       name === DEFAULT_HEARTBEAT_FILENAME
         ? [await resolveWorkspaceTemplateDir()]
         : await resolveWorkspaceTemplateSearchDirs();
+    // Under consumer lockdown, prefer the production persona for SOUL.md and
+    // fall back to the regular template so workspace creation never bricks.
+    const candidateNames =
+      name === DEFAULT_SOUL_FILENAME && isConsumerLockdownActive()
+        ? [PRODUCTION_SOUL_TEMPLATE_FILENAME, name]
+        : [name];
     const triedPaths: string[] = [];
-    for (const templateDir of templateDirs) {
-      const templatePath = path.join(templateDir, name);
-      triedPaths.push(templatePath);
-      try {
-        const content = await fs.readFile(templatePath, "utf-8");
-        return stripFrontMatter(content);
-      } catch (error) {
-        if ((error as NodeJS.ErrnoException | undefined)?.code !== "ENOENT") {
-          throw error;
+    for (const candidateName of candidateNames) {
+      for (const templateDir of templateDirs) {
+        const templatePath = path.join(templateDir, candidateName);
+        triedPaths.push(templatePath);
+        try {
+          const content = await fs.readFile(templatePath, "utf-8");
+          return stripFrontMatter(content);
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException | undefined)?.code !== "ENOENT") {
+            throw error;
+          }
         }
       }
     }

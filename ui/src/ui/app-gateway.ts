@@ -99,6 +99,7 @@ import type {
   UpdateAvailable,
 } from "./types.ts";
 import type { ChatQueueItem, ChatSessionRefreshTarget } from "./ui-types.ts";
+import { evaluateFirstRunWizard } from "./views/first-run-wizard.ts";
 
 function isGenericBrowserFetchFailure(message: string): boolean {
   return /^(?:typeerror:\s*)?(?:fetch failed|failed to fetch)$/i.test(message.trim());
@@ -818,6 +819,8 @@ export function connectGateway(host: GatewayHost, options?: ConnectGatewayOption
       host.chatError = null;
       host.hello = hello;
       applySnapshot(host, hello);
+      // Fresh installs get the first-run wizard; decided once per session.
+      void evaluateFirstRunWizard(host as unknown as Parameters<typeof evaluateFirstRunWizard>[0]);
       prepareHelloScopedComposerRestore(host);
       restoreChatComposerState(host as unknown as Parameters<typeof restoreChatComposerState>[0], {
         preserveCurrent: true,

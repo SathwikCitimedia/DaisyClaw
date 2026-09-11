@@ -7,8 +7,8 @@ import { monitorEventLoopDelay, performance } from "node:perf_hooks";
 import { setTimeout as sleep } from "node:timers/promises";
 import type { CliDeps } from "../cli/deps.types.js";
 import { resolveStateDir } from "../config/paths.js";
-import type { GatewayTailscaleMode } from "../config/types.gateway.js";
 import type { DaisyClawConfig } from "../config/types.daisyclaw.js";
+import type { GatewayTailscaleMode } from "../config/types.gateway.js";
 import { hasConfiguredInternalHooks } from "../hooks/configured.js";
 import { isTruthyEnvValue } from "../infra/env.js";
 import type { scheduleGatewayUpdateCheck } from "../infra/update-startup.js";
@@ -34,6 +34,14 @@ const STARTUP_PROVIDER_DISCOVERY_TIMEOUT_MS = 5_000;
 const PROVIDER_AUTH_PREWARM_START_DELAY_MS = 5_000;
 const PROVIDER_AUTH_REWARM_DELAY_MS = 1_000;
 const AGENT_RUNTIME_PLUGIN_PREWARM_START_DELAY_MS = 10_000;
+// The first models.list has to build the whole provider catalog, which takes
+// far longer than the clients' request timeouts (the Windows app waits 10s), so
+// clients on a freshly started gateway would see an empty model picker until a
+// later retry. Building it here means the cache is populated before anyone asks.
+const MODEL_CATALOG_PREWARM_START_DELAY_MS = 2_000;
+// Untitled control-UI chats (shown as "Dashboard <uuid>") are renamed from
+// their first message once per start. Cheap and offline, but not urgent.
+const SESSION_TITLE_REPAIR_START_DELAY_MS = 4_000;
 const DEFERRED_SIDECAR_START_DELAY_MS = 100;
 const SESSION_LOCK_CLEANUP_CONCURRENCY = 4;
 const SKIP_STARTUP_MODEL_PREWARM_ENV = "DAISYCLAW_SKIP_STARTUP_MODEL_PREWARM";
@@ -330,6 +338,110 @@ function scheduleProviderAuthStatePrewarm(params: {
       if (rewarmTimer) {
         clearTimeout(rewarmTimer);
         rewarmTimer = undefined;
+      }
+    },
+  };
+}
+
+/**
+ * Warms the gateway model catalog cache shortly after startup.
+ *
+ * loadGatewayModelCatalog already caches for the process lifetime and refreshes
+ * stale entries in the background; the only slow call is the very first one.
+ * Doing it here moves that cost off the first client request. Failures are
+ * logged and ignored — the request path still builds the catalog on demand.
+ */
+function scheduleModelCatalogPrewarm(params: {
+  log: {
+    info: (msg: string) => void;
+    warn: (msg: string) => void;
+  };
+  delayMs?: number;
+}): GatewayPostReadySidecarHandle {
+  let stopped = false;
+  let startupTimer: ReturnType<typeof setTimeout> | undefined;
+  const delayMs = params.delayMs ?? MODEL_CATALOG_PREWARM_START_DELAY_MS;
+  startupTimer = setTimeout(
+    () => {
+      startupTimer = undefined;
+      void (async () => {
+        if (stopped) {
+          return;
+        }
+        const startedAt = Date.now();
+        const { loadGatewayModelCatalog } = await import("./server-model-catalog.js");
+        const catalog = await loadGatewayModelCatalog();
+        if (stopped) {
+          return;
+        }
+        params.log.info(
+          `model catalog pre-warmed (${catalog.length} models in ${Date.now() - startedAt}ms)`,
+        );
+      })().catch((err: unknown) => {
+        params.log.warn(`model catalog pre-warm failed: ${String(err)}`);
+      });
+    },
+    Math.max(0, delayMs),
+  );
+  startupTimer.unref?.();
+  return {
+    stop: () => {
+      stopped = true;
+      if (startupTimer) {
+        clearTimeout(startupTimer);
+        startupTimer = undefined;
+      }
+    },
+  };
+}
+
+/**
+ * Gives every untitled control-UI chat a heuristic title from its first user
+ * message, once, shortly after startup. Offline and best-effort: failures are
+ * logged and never affect startup.
+ */
+function scheduleUntitledSessionTitleRepair(params: {
+  getConfig: () => DaisyClawConfig;
+  log: {
+    info: (msg: string) => void;
+    warn: (msg: string) => void;
+  };
+  delayMs?: number;
+}): GatewayPostReadySidecarHandle {
+  let stopped = false;
+  let startupTimer: ReturnType<typeof setTimeout> | undefined;
+  const delayMs = params.delayMs ?? SESSION_TITLE_REPAIR_START_DELAY_MS;
+  startupTimer = setTimeout(
+    () => {
+      startupTimer = undefined;
+      void (async () => {
+        if (stopped) {
+          return;
+        }
+        const { repairUntitledControlSessions } = await import("./session-title-repair.js");
+        const result = await repairUntitledControlSessions({
+          cfg: params.getConfig(),
+          log: params.log,
+        });
+        if (stopped || result.scanned === 0) {
+          return;
+        }
+        params.log.info(
+          `session titles repaired: ${result.repaired}/${result.scanned} untitled chats named from their first message`,
+        );
+      })().catch((err: unknown) => {
+        params.log.warn(`session title repair failed: ${String(err)}`);
+      });
+    },
+    Math.max(0, delayMs),
+  );
+  startupTimer.unref?.();
+  return {
+    stop: () => {
+      stopped = true;
+      if (startupTimer) {
+        clearTimeout(startupTimer);
+        startupTimer = undefined;
       }
     },
   };
@@ -1187,6 +1299,14 @@ export async function startGatewayPostAttachRuntime(
       delayMs?: number;
       getConfig?: () => DaisyClawConfig;
     };
+    modelCatalogPrewarm?: {
+      enabled?: boolean;
+      delayMs?: number;
+    };
+    sessionTitleRepair?: {
+      enabled?: boolean;
+      delayMs?: number;
+    };
     agentRuntimePluginPrewarm?: {
       enabled?: boolean;
       delayMs?: number;
@@ -1365,6 +1485,23 @@ export async function startGatewayPostAttachRuntime(
             }),
           );
         }
+        if (params.modelCatalogPrewarm?.enabled !== false) {
+          gatewayLifetimeSidecars.push(
+            scheduleModelCatalogPrewarm({
+              log: params.log,
+              delayMs: params.modelCatalogPrewarm?.delayMs,
+            }),
+          );
+        }
+        if (params.sessionTitleRepair?.enabled !== false) {
+          gatewayLifetimeSidecars.push(
+            scheduleUntitledSessionTitleRepair({
+              getConfig: params.providerAuthPrewarm?.getConfig ?? (() => params.cfgAtStart),
+              log: params.log,
+              delayMs: params.sessionTitleRepair?.delayMs,
+            }),
+          );
+        }
         if (params.gatewayPluginConfigAtStart.transcripts?.autoStart?.length) {
           gatewayLifetimeSidecars.push(
             scheduleTranscriptsAutoStartSidecar({
@@ -1457,6 +1594,9 @@ export async function startGatewayPostAttachRuntime(
 
 export const testing = {
   providerAuthPrewarmStartDelayMs: PROVIDER_AUTH_PREWARM_START_DELAY_MS,
+  modelCatalogPrewarmStartDelayMs: MODEL_CATALOG_PREWARM_START_DELAY_MS,
+  scheduleModelCatalogPrewarm,
+  scheduleUntitledSessionTitleRepair,
   hasRestartSentinelFileFast,
   prewarmConfiguredPrimaryModel,
   prewarmConfiguredPrimaryModelWithTimeout,

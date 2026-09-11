@@ -130,6 +130,22 @@ const toOptionString = (value: unknown): string | undefined => {
   return undefined;
 };
 
+/**
+ * Applies a pending factory reset (marker written by `system.factoryReset`).
+ * Returns true when data was erased and a fresh first-run config was seeded.
+ * Never throws: a failed reset must not stop the gateway from coming back up.
+ */
+async function applyPendingFactoryResetForGateway(): Promise<boolean> {
+  try {
+    const { applyPendingFactoryReset } = await import("../../infra/factory-reset.js");
+    const outcome = await applyPendingFactoryReset({ log: gatewayLog });
+    return outcome !== null;
+  } catch (err) {
+    gatewayLog.error(`factory reset failed: ${formatErrorMessage(err)}`);
+    return false;
+  }
+}
+
 function extractGatewayMiskeys(parsed: unknown): {
   hasGatewayToken: boolean;
   hasRemoteToken: boolean;
@@ -539,6 +555,10 @@ export async function runGatewayCommand(opts: GatewayRunOpts) {
     );
   }
 
+  // A factory reset requested before a crash/stop is applied on boot; the
+  // in-process restart path applies it inside the run loop's start callback.
+  await applyPendingFactoryResetForGateway();
+
   if (!devMode && !opts.allowUnconfigured && !fs.existsSync(CONFIG_PATH)) {
     // Fresh install: create a minimal usable config (local mode, generated
     // gateway token, default skill pack) instead of refusing to start. GUI
@@ -843,8 +863,12 @@ export async function runGatewayCommand(opts: GatewayRunOpts) {
       lockPort: port,
       healthHost,
       start: async ({ startupStartedAt } = {}) => {
-        const startupConfigSnapshotReadForThisStart = startupConfigSnapshotReadForNextStart;
+        let startupConfigSnapshotReadForThisStart = startupConfigSnapshotReadForNextStart;
         startupConfigSnapshotReadForNextStart = undefined;
+        if (await applyPendingFactoryResetForGateway()) {
+          // The pre-read snapshot describes the erased config; force a fresh read.
+          startupConfigSnapshotReadForThisStart = undefined;
+        }
         return await startGatewayServer(port, {
           bind,
           auth: authOverride,

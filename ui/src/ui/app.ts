@@ -423,6 +423,10 @@ export class DaisyClawApp extends LitElement {
   @state() firstRunError: string | null = null;
   @state() firstRunProvider: string | null = null;
   @state() firstRunChannel: string | null = null;
+  @state() modelSetupMissing: boolean | null = null;
+  @state() settingsResetOpen = false;
+  @state() settingsResetAcknowledged = false;
+  @state() factoryResetBusy = false;
   @state() configSettingsMode: "quick" | "advanced" = "quick";
   @state() configFormMode: "form" | "raw" = "form";
   @state() configSearchQuery = "";

@@ -8,6 +8,7 @@ import {
   isFirstRunDismissed,
   markFirstRunDone,
   renderFirstRunWizard,
+  reopenFirstRunWizard,
 } from "./first-run-wizard.ts";
 
 const DONE_KEY = "daisyclaw.control.firstRunDone.v1";
@@ -20,6 +21,7 @@ function createState(overrides: Record<string, unknown> = {}): AppViewState {
     firstRunBusy: false,
     firstRunError: null,
     firstRunProvider: null,
+    modelSetupMissing: null,
     skillsLoading: false,
     skillsReport: null,
     skillMessages: {},
@@ -191,5 +193,62 @@ describe("renderFirstRunWizard", () => {
     expect(state.firstRunActive).toBe(false);
     expect(isFirstRunDismissed()).toBe(true);
     expect(state.setTab).toHaveBeenCalledWith("chat");
+  });
+});
+
+describe("first-run wizard: skipping the AI brain", () => {
+  it("offers a skip on the brain step that moves on to skills", () => {
+    const state = createState({ firstRunActive: true, firstRunStep: 1 });
+    const host = document.createElement("div");
+    render(renderFirstRunWizard(state), host);
+    const skip = host.querySelector<HTMLButtonElement>("[data-first-run-skip-brain]");
+    expect(skip).toBeTruthy();
+    expect(skip?.textContent).toContain("Skip for now");
+    skip?.click();
+    expect(state.firstRunStep).toBe(2);
+    expect(state.firstRunProvider).toBeNull();
+  });
+
+  it("changes the Done screen wording after a skip and still finishes to the dashboard", () => {
+    const state = createState({ firstRunActive: true, firstRunStep: 1 });
+    const host = document.createElement("div");
+    render(renderFirstRunWizard(state), host);
+    host.querySelector<HTMLButtonElement>("[data-first-run-skip-brain]")?.click();
+    state.firstRunStep = 4;
+    render(renderFirstRunWizard(state), host);
+    const text = host.textContent ?? "";
+    expect(text).toContain("Almost there");
+    expect(text).toContain("add an AI brain");
+    (host.querySelector(".first-run__cta") as HTMLButtonElement).click();
+    expect(isFirstRunDismissed()).toBe(true);
+    expect(state.setTab).toHaveBeenCalledWith("chat");
+  });
+
+  it("records whether a model is missing even when the wizard was dismissed", async () => {
+    localStorage.setItem(DONE_KEY, "done");
+    const state = createState();
+    await evaluateFirstRunWizard(state);
+    expect(state.firstRunActive).toBe(false);
+    expect(state.modelSetupMissing).toBe(true);
+
+    const configured = createState({
+      client: {
+        request: vi.fn(async () => ({
+          config: { models: { providers: { openai: { apiKey: "sk" } } } },
+        })),
+      },
+    });
+    await evaluateFirstRunWizard(configured);
+    expect(configured.firstRunActive).toBe(false);
+    expect(configured.modelSetupMissing).toBe(false);
+  });
+
+  it("reopenFirstRunWizard clears the done marker and restarts at the welcome step", () => {
+    localStorage.setItem(DONE_KEY, "done");
+    const state = createState({ firstRunActive: false, firstRunStep: 3 });
+    reopenFirstRunWizard(state);
+    expect(isFirstRunDismissed()).toBe(false);
+    expect(state.firstRunActive).toBe(true);
+    expect(state.firstRunStep).toBe(0);
   });
 });

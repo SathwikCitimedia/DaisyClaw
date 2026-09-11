@@ -122,6 +122,19 @@ export type QuickSettingsProps = {
   // Navigation
   onAdvancedSettings?: () => void;
 
+  // Reset / start over
+  /** Re-open the guided first-run setup without erasing anything. */
+  onRunSetupAgain?: () => void;
+  /** Whether the "what happens" card is expanded. */
+  resetOpen?: boolean;
+  onResetOpenChange?: (open: boolean) => void;
+  /** Whether the "I understand" box is ticked. */
+  resetAcknowledged?: boolean;
+  onResetAcknowledgedChange?: (acknowledged: boolean) => void;
+  /** Erase everything and restart into the wizard. */
+  onFactoryReset?: () => void;
+  factoryResetBusy?: boolean;
+
   // Connection
   connected: boolean;
   gatewayUrl: string;
@@ -1088,6 +1101,95 @@ function renderPresetsCard(props: QuickSettingsProps) {
   `;
 }
 
+/** What a factory reset erases; shown verbatim in the confirm card. */
+export const FACTORY_RESET_ERASES: readonly string[] = [
+  "Every chat and its history",
+  "Daisy's memory, notes, tasks and reminders",
+  "API keys, model choices and your custom servers",
+  "Connected channels — WhatsApp, Telegram, Discord… will need linking again",
+  "Skill settings and anything Daisy saved to her workspace",
+];
+
+function renderResetCard(props: QuickSettingsProps) {
+  const open = props.resetOpen === true;
+  const acknowledged = props.resetAcknowledged === true;
+  const busy = props.factoryResetBusy === true;
+  return html`
+    <div class="qs-card qs-card--reset" data-qs-reset>
+      ${renderCardHeader(icons.refresh, "Start over")}
+      <div class="qs-card__body">
+        <div class="qs-reset__intro">
+          <p>
+            Run the guided setup again to change your AI brain, skills or channels — nothing is
+            deleted. Or reset Daisy completely to erase all data and begin like a fresh install.
+          </p>
+          <div class="qs-reset__actions">
+            <button class="btn btn--sm" ?disabled=${busy} @click=${() => props.onRunSetupAgain?.()}>
+              Run setup again
+            </button>
+            <button
+              class="btn btn--sm"
+              data-qs-reset-toggle
+              aria-expanded=${open ? "true" : "false"}
+              ?disabled=${busy}
+              @click=${() => props.onResetOpenChange?.(!open)}
+            >
+              ${open ? "Keep my data" : "Reset Daisy…"}
+            </button>
+          </div>
+        </div>
+        ${open
+          ? html`
+              <div class="qs-reset__panel" role="region" aria-label="Reset Daisy">
+                <div class="qs-reset__panel-title">
+                  ${icons.alertTriangle} This erases everything on this computer
+                </div>
+                <ul class="qs-reset__list">
+                  ${FACTORY_RESET_ERASES.map((line) => html`<li>${line}</li>`)}
+                </ul>
+                <div class="qs-reset__keep">
+                  Kept: the link between this app and Daisy's engine, so Daisy reopens by itself and
+                  the setup guide starts right away. Nothing is sent anywhere — this only touches
+                  this computer.
+                </div>
+                <label class="qs-reset__ack">
+                  <input
+                    type="checkbox"
+                    data-qs-reset-ack
+                    .checked=${acknowledged}
+                    ?disabled=${busy}
+                    @change=${(event: Event) =>
+                      props.onResetAcknowledgedChange?.(
+                        (event.currentTarget as HTMLInputElement).checked,
+                      )}
+                  />
+                  <span>I understand this cannot be undone.</span>
+                </label>
+                <div class="qs-reset__confirm-row">
+                  <button
+                    class="btn danger"
+                    data-qs-reset-confirm
+                    ?disabled=${!acknowledged || busy}
+                    @click=${() => props.onFactoryReset?.()}
+                  >
+                    ${busy ? "Resetting…" : "Erase everything and start over"}
+                  </button>
+                  <button
+                    class="btn btn--sm"
+                    ?disabled=${busy}
+                    @click=${() => props.onResetOpenChange?.(false)}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            `
+          : nothing}
+      </div>
+    </div>
+  `;
+}
+
 function renderConnectionFooter(props: QuickSettingsProps) {
   return html`
     <div class="qs-footer">
@@ -1119,7 +1221,7 @@ export function renderQuickSettings(props: QuickSettingsProps) {
         <div class="qs-side-stack">
           ${renderAppearanceCard(props)} ${renderAutomationsCard(props)}
         </div>
-        ${renderPresetsCard(props)}
+        ${renderPresetsCard(props)} ${renderResetCard(props)}
       </div>
 
       ${renderConnectionFooter(props)}

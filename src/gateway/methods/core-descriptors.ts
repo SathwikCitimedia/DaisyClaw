@@ -89,6 +89,7 @@ export const CORE_GATEWAY_METHOD_SPECS: readonly CoreGatewayMethodSpec[] = [
   { name: "talk.mode", scope: "operator.write" },
   { name: "commands.list", scope: "operator.read" },
   { name: "models.list", scope: "operator.read", startup: true },
+  { name: "models.probeProvider", scope: "operator.write" },
   { name: "models.authStatus", scope: "operator.read" },
   {
     name: "models.authLogout",
@@ -135,6 +136,7 @@ export const CORE_GATEWAY_METHOD_SPECS: readonly CoreGatewayMethodSpec[] = [
   { name: "skills.proposals.quarantine", scope: "operator.admin" },
   { name: "update.status", scope: "operator.admin" },
   { name: "update.run", scope: "operator.admin", controlPlaneWrite: true },
+  { name: "system.factoryReset", scope: "operator.admin", controlPlaneWrite: true },
   { name: "voicewake.get", scope: "operator.read" },
   { name: "voicewake.set", scope: "operator.write" },
   { name: "secrets.reload", scope: "operator.admin" },

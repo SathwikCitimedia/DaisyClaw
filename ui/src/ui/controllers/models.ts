@@ -126,10 +126,117 @@ export async function saveProviderApiKey(
   }));
 }
 
+/**
+ * Loads the catalog right after a provider/model save. The gateway rebuilds
+ * its catalog on config hot-reload, which can land a moment after the write,
+ * so when the expected model is missing we wait briefly and try again instead
+ * of showing "not in the current catalog" for a model that was just saved.
+ */
+export async function loadModelsExpecting(
+  client: GatewayBrowserClient,
+  expectedRef: string | null | undefined,
+  options: { retries?: number; delayMs?: number; sleep?: (ms: number) => Promise<void> } = {},
+): Promise<ModelCatalogEntry[]> {
+  const retries = options.retries ?? 2;
+  const delayMs = options.delayMs ?? 1200;
+  const sleep =
+    options.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
+  let catalog = await loadModels(client);
+  const expected = expectedRef?.trim();
+  if (!expected) {
+    return catalog;
+  }
+  for (let attempt = 0; attempt < retries; attempt += 1) {
+    if (catalog.some((entry) => modelCatalogRef(entry) === expected || entry.id === expected)) {
+      return catalog;
+    }
+    await sleep(delayMs);
+    invalidateModelCatalog(client);
+    catalog = await loadModels(client);
+  }
+  return catalog;
+}
+
+/** What the gateway learned about a user-typed OpenAI-compatible server. */
+export type CustomProviderProbe = {
+  reachable: boolean;
+  kind: "litellm" | "ollama" | "lmstudio" | "vllm" | "openai-compatible" | "unknown";
+  providerId: string;
+  label: string;
+  baseUrl: string;
+  models: string[];
+  version?: string;
+  authRejected: boolean;
+  error?: string;
+};
+
+/** Friendly names for the provider ids a custom server can be saved under. */
+export const CUSTOM_PROVIDER_LABELS: Record<string, string> = {
+  litellm: "LiteLLM",
+  ollama: "Ollama",
+  lmstudio: "LM Studio",
+  vllm: "vLLM",
+  custom: "Custom server",
+};
+
+/**
+ * Asks the gateway to look at a server and say which product it is (LiteLLM,
+ * Ollama, …) plus the models it advertises. Never throws for an unreachable
+ * server; returns a generic "custom" answer instead so saving can proceed.
+ */
+export async function probeCustomProvider(
+  client: GatewayBrowserClient | null,
+  input: { baseUrl: string; apiKey?: string },
+): Promise<CustomProviderProbe> {
+  const fallback: CustomProviderProbe = {
+    reachable: false,
+    kind: "unknown",
+    providerId: "custom",
+    label: CUSTOM_PROVIDER_LABELS.custom,
+    baseUrl: input.baseUrl.trim(),
+    models: [],
+    authRejected: false,
+  };
+  if (!client) {
+    return fallback;
+  }
+  try {
+    const result = await client.request<CustomProviderProbe>("models.probeProvider", {
+      baseUrl: input.baseUrl.trim(),
+      ...(input.apiKey?.trim() ? { apiKey: input.apiKey.trim() } : {}),
+    });
+    if (!result || typeof result !== "object" || typeof result.providerId !== "string") {
+      return fallback;
+    }
+    return {
+      ...fallback,
+      ...result,
+      models: Array.isArray(result.models)
+        ? result.models.filter((id): id is string => typeof id === "string" && !!id.trim())
+        : [],
+    };
+  } catch {
+    // Older gateways without the probe method: keep the generic answer.
+    return fallback;
+  }
+}
+
+/** Most models a probed server may add to the list next to the one the user typed. */
+const MAX_PROBED_MODELS = 40;
+
 /** Register a custom OpenAI-compatible provider (LiteLLM, vLLM, local server…). */
 export async function saveCustomProvider(
   state: ModelsMutationState,
-  input: { providerId: string; baseUrl: string; apiKey?: string; modelId: string },
+  input: {
+    providerId: string;
+    baseUrl: string;
+    apiKey?: string;
+    modelId: string;
+    /** Extra model ids the server advertised; listed after the typed model. */
+    extraModelIds?: string[];
+    /** Display suffix for listed models, e.g. "LiteLLM" → "gpt-5 (LiteLLM)". */
+    modelNameSuffix?: string;
+  },
 ): Promise<void> {
   const providerId = input.providerId.trim().toLowerCase();
   const baseUrl = input.baseUrl.trim();
@@ -138,6 +245,12 @@ export async function saveCustomProvider(
     throw new Error("server name, address, and model id are required");
   }
   const apiKey = input.apiKey?.trim();
+  const suffix = input.modelNameSuffix?.trim();
+  const displayName = (id: string) => (suffix ? `${id} (${suffix})` : id);
+  const extraIds = (input.extraModelIds ?? [])
+    .map((id) => id.trim())
+    .filter((id) => id && id !== modelId)
+    .slice(0, MAX_PROBED_MODELS);
   await patchConfig(state, (config) => {
     const providers =
       ((config.models as Record<string, unknown> | undefined)?.providers as
@@ -147,17 +260,24 @@ export async function saveCustomProvider(
     const existingModels = Array.isArray(existing.models)
       ? (existing.models as Array<{ id?: string }>)
       : [];
-    const alreadyListed = existingModels.some((entry) => entry?.id === modelId);
+    const listed = new Set(
+      existingModels.map((entry) => entry?.id).filter((id): id is string => typeof id === "string"),
+    );
+    const additions = [modelId, ...extraIds]
+      .filter((id) => !listed.has(id))
+      .map((id) => ({ id, name: displayName(id) }));
+    const alreadyListed = additions.length === 0;
     return {
       patch: {
         models: {
           providers: {
             [providerId]: {
               baseUrl,
+              // Custom servers speak the OpenAI chat dialect; say so explicitly
+              // so the gateway never guesses from the id.
+              ...(typeof existing.api === "string" ? {} : { api: "openai-completions" }),
               ...(apiKey ? { apiKey } : {}),
-              ...(alreadyListed
-                ? {}
-                : { models: [...existingModels, { id: modelId, name: modelId }] }),
+              ...(alreadyListed ? {} : { models: [...existingModels, ...additions] }),
             },
           },
         },

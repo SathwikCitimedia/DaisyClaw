@@ -125,8 +125,11 @@ import {
 import { loadLogs } from "./controllers/logs.ts";
 import { loadModelAuthStatusState } from "./controllers/model-auth-status.ts";
 import {
+  CUSTOM_PROVIDER_LABELS,
   invalidateModelCatalog,
   loadModels,
+  loadModelsExpecting,
+  probeCustomProvider,
   resolveDefaultModelSelection,
   saveCustomProvider,
   saveProviderApiKey,
@@ -170,10 +173,16 @@ import {
 } from "./controllers/skills.ts";
 import { captureSessionToWorkboard, getWorkboardState } from "./controllers/workboard.ts";
 import { getCronJobPayload } from "./cron-payload.ts";
+import {
+  FACTORY_RESET_CONFIRM_PHRASE,
+  isFactoryResetPending,
+  markFactoryResetPending,
+  readFactoryResetPendingAt,
+} from "./factory-reset.ts";
 import { formatTimeMs } from "./format.ts";
 import { formatRelativeTimestamp } from "./format.ts";
-import { icons } from "./icons.ts";
 import "./components/dashboard-header.ts";
+import { icons } from "./icons.ts";
 import { createLazyView, renderLazyView } from "./lazy-view.ts";
 import {
   iconForTab,
@@ -225,12 +234,17 @@ import {
 import { renderDreamingRestartConfirmation } from "./views/dreaming-restart-confirmation.ts";
 import { renderDreaming } from "./views/dreaming.ts";
 import { renderExecApprovalPrompt } from "./views/exec-approval.ts";
-import { isFirstRunDismissed, renderFirstRunWizard } from "./views/first-run-wizard.ts";
+import {
+  isFirstRunDismissed,
+  renderFirstRunWizard,
+  reopenFirstRunWizard,
+} from "./views/first-run-wizard.ts";
 import { renderGatewayUrlConfirmation } from "./views/gateway-url-confirmation.ts";
 import {
   renderLoginGate,
   renderPreparingGate,
   renderReconnectingGate,
+  renderResettingGate,
   shouldShowReconnectingGate,
 } from "./views/login-gate.ts";
 import { renderMcp } from "./views/mcp.ts";
@@ -1627,6 +1641,40 @@ function isMainSessionKey(key: string): boolean {
 
 // Re-render once a second while the reconnecting card is shown so the elapsed
 // counter advances and the grace period expiry is re-evaluated.
+/**
+ * Settings → "Erase everything and start over". Asks the gateway to reset;
+ * it restarts and wipes its data on the way back up. We mark the reset as
+ * pending so the UI shows the "Resetting…" card and reloads into the wizard
+ * on the first reconnect (see app-gateway onOpen).
+ */
+async function runFactoryReset(state: AppViewState): Promise<void> {
+  if (state.factoryResetBusy) {
+    return;
+  }
+  const client = state.client;
+  if (!client || !state.connected) {
+    showToast("Daisy is offline right now. Try again once it reconnects.", { tone: "error" });
+    return;
+  }
+  state.factoryResetBusy = true;
+  try {
+    await client.request("system.factoryReset", { confirm: FACTORY_RESET_CONFIRM_PHRASE });
+    markFactoryResetPending();
+    state.settingsResetOpen = false;
+    state.settingsResetAcknowledged = false;
+    // Drop what the dashboard remembers about the old install right away, so
+    // even a reload before the gateway drops shows the wizard, not old chats.
+    state.chatMessages = [];
+    state.sessionsResult = null;
+  } catch (err) {
+    showToast(`Reset didn't start: ${err instanceof Error ? err.message : String(err)}`, {
+      tone: "error",
+    });
+  } finally {
+    state.factoryResetBusy = false;
+  }
+}
+
 let reconnectGateTick: number | null = null;
 function scheduleReconnectGateTick(requestHostUpdate?: () => void) {
   if (reconnectGateTick !== null || typeof window === "undefined" || !requestHostUpdate) {
@@ -1645,6 +1693,17 @@ export function renderApp(state: AppViewState) {
       ? () => updatableState.requestUpdate?.()
       : undefined;
   pendingUpdate = requestHostUpdate;
+
+  // Factory reset in flight: hold a calm card through the gateway restart,
+  // whether the socket is still up or already dropped. app-gateway reloads the
+  // page on the first reconnect, which lands in the first-run wizard; the TTL
+  // guard drops the card if the gateway never returns.
+  if (isFactoryResetPending()) {
+    const startedAt = readFactoryResetPendingAt() ?? Date.now();
+    const elapsed = Date.now() - startedAt;
+    scheduleReconnectGateTick(requestHostUpdate);
+    return html`${renderResettingGate(state, { slow: elapsed > 45_000 })}`;
+  }
 
   // Gate: require successful gateway connection before showing the dashboard.
   // The gateway URL confirmation overlay is always rendered so URL-param flows still work.
@@ -2103,7 +2162,12 @@ export function renderApp(state: AppViewState) {
             invalidateModelCatalog(state.client);
             await loadConfig(state);
             if (state.client) {
-              state.modelStudioCatalog = await loadModels(state.client);
+              // The gateway rebuilds its catalog on hot-reload a moment after
+              // the write; wait for the saved default to show up before rendering.
+              const expected = resolveDefaultModelSelection(
+                state.configForm ?? state.configSnapshot?.config,
+              ).primary;
+              state.modelStudioCatalog = await loadModelsExpecting(state.client, expected);
             }
             void loadModelAuthStatusState(state, { refresh: true }).then(() =>
               requestHostUpdate?.(),
@@ -2132,19 +2196,40 @@ export function renderApp(state: AppViewState) {
                   state.modelStudioBusy = `provider:${providerId || "custom"}`;
                   state.modelStudioError = null;
                   try {
+                    let connectedLabel = providerId;
                     if (input.baseUrl !== undefined || input.modelId !== undefined) {
-                      await saveCustomProvider(state, {
-                        providerId: providerId || "custom",
+                      // Recognise the server (LiteLLM, Ollama, …) so it is saved
+                      // under its real provider id with the models it advertises.
+                      const probe = await probeCustomProvider(state.client, {
                         baseUrl: input.baseUrl ?? "",
                         apiKey: input.apiKey,
-                        modelId: input.modelId ?? "",
                       });
+                      const userNamed = providerId && providerId !== "custom";
+                      const resolvedId = userNamed ? providerId : probe.providerId || "custom";
+                      connectedLabel = userNamed
+                        ? providerId
+                        : probe.label || CUSTOM_PROVIDER_LABELS[resolvedId] || resolvedId;
+                      await saveCustomProvider(state, {
+                        providerId: resolvedId,
+                        baseUrl: probe.baseUrl || input.baseUrl || "",
+                        apiKey: input.apiKey,
+                        modelId: input.modelId ?? "",
+                        extraModelIds: probe.models,
+                        modelNameSuffix: resolvedId === "custom" ? undefined : connectedLabel,
+                      });
+                      if (!probe.reachable) {
+                        showToast(
+                          "Saved, but the server didn't answer right now — Daisy will connect once it's online (VPN on?).",
+                          { tone: "info" },
+                        );
+                      }
                     } else {
                       await saveProviderApiKey(state, providerId, input.apiKey ?? "");
                     }
+                    state.modelSetupMissing = false;
                     await refreshModelStudioData();
                     state.modelStudioProvider = null;
-                    showToast("Provider connected — its models are now available.", {
+                    showToast(`${connectedLabel} connected — its models are now available.`, {
                       tone: "success",
                     });
                   } catch (err) {
@@ -2382,6 +2467,26 @@ export function renderApp(state: AppViewState) {
             onResetConfig: () => resetConfigPendingChanges(state),
             onSaveConfig: () => void saveConfig(state),
             onApplyConfig: () => void applyConfig(state),
+            onRunSetupAgain: () => {
+              state.settingsResetOpen = false;
+              state.settingsResetAcknowledged = false;
+              reopenFirstRunWizard(state);
+            },
+            resetOpen: state.settingsResetOpen,
+            onResetOpenChange: (open) => {
+              state.settingsResetOpen = open;
+              if (!open) {
+                state.settingsResetAcknowledged = false;
+              }
+            },
+            resetAcknowledged: state.settingsResetAcknowledged,
+            onResetAcknowledgedChange: (acknowledged) => {
+              state.settingsResetAcknowledged = acknowledged;
+            },
+            factoryResetBusy: state.factoryResetBusy,
+            onFactoryReset: () => {
+              void runFactoryReset(state);
+            },
             onAdvancedSettings: () => {
               state.configSettingsMode = "advanced";
               requestHostUpdate?.();
@@ -4232,8 +4337,38 @@ export function renderApp(state: AppViewState) {
                   realtimeTalkOptionsOpen: state.realtimeTalkOptionsOpen,
                   realtimeTalkOptions: state.realtimeTalkOptions,
                   connected: state.connected,
-                  canSend: state.connected,
+                  canSend: state.connected && state.modelSetupMissing !== true,
                   disabledReason: chatDisabledReason,
+                  composeLocked: state.modelSetupMissing === true,
+                  setupNotice:
+                    state.connected && state.modelSetupMissing === true
+                      ? {
+                          title: t("chat.noModel.title"),
+                          body: t("chat.noModel.body"),
+                          actionLabel: t("chat.noModel.action"),
+                          onAction: () => {
+                            // Model Studio lives on the Quick Settings tab.
+                            state.configSettingsMode = "quick";
+                            state.setTab("config");
+                            state.modelStudioOpen = true;
+                            state.modelStudioProvider = null;
+                            state.modelStudioError = null;
+                            state.modelStudioLoading = true;
+                            void (async () => {
+                              try {
+                                await loadConfig(state);
+                                if (state.client) {
+                                  state.modelStudioCatalog = await loadModels(state.client);
+                                }
+                              } catch {
+                                // Model Studio shows its own retry affordance.
+                              } finally {
+                                state.modelStudioLoading = false;
+                              }
+                            })();
+                          },
+                        }
+                      : null,
                   error: chatViewError,
                   runStatus: state.chatRunStatus,
                   onDismissError: () => dismissChatError(state),

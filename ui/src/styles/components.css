@@ -9182,3 +9182,34 @@ details[open] > .ov-expandable-toggle::after {
     gap: 4px;
   }
 }
+
+/* Chat: "no AI brain yet" notice shown above the transcript while the composer is locked. */
+.chat-setup-notice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 16px;
+  margin: 12px 16px 0;
+  padding: 12px 16px;
+  border-radius: var(--radius-lg);
+  background: color-mix(in srgb, var(--accent) 8%, var(--card));
+  border: 1px solid color-mix(in srgb, var(--accent) 32%, transparent);
+}
+
+.chat-setup-notice__text {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.chat-setup-notice__title {
+  font-weight: 650;
+  font-size: 0.92rem;
+}
+
+.chat-setup-notice__body {
+  font-size: 0.82rem;
+  color: var(--muted);
+  max-width: 64ch;
+}

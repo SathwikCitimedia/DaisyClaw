@@ -74,6 +74,11 @@ import {
   type SessionsState,
 } from "./controllers/sessions.ts";
 import {
+  clearFactoryResetPending,
+  clearLocalStateForFactoryReset,
+  isFactoryResetPending,
+} from "./factory-reset.ts";
+import {
   resolveGatewayErrorDetailCode,
   type GatewayEventFrame,
   type GatewayHelloOk,
@@ -99,7 +104,7 @@ import type {
   UpdateAvailable,
 } from "./types.ts";
 import type { ChatQueueItem, ChatSessionRefreshTarget } from "./ui-types.ts";
-import { evaluateFirstRunWizard } from "./views/first-run-wizard.ts";
+import { evaluateFirstRunWizard, resolveModelSetupMissing } from "./views/first-run-wizard.ts";
 
 function isGenericBrowserFetchFailure(message: string): boolean {
   return /^(?:typeerror:\s*)?(?:fetch failed|failed to fetch)$/i.test(message.trim());
@@ -815,8 +820,14 @@ export function connectGateway(host: GatewayHost, options?: ConnectGatewayOption
         return;
       }
       shutdownHost.pendingShutdownMessage = null;
+      const reconnectedAfterDrop = host.disconnectedAtMs !== null;
       host.connected = true;
       host.disconnectedAtMs = null;
+      if (reconnectedAfterDrop && isFactoryResetPending()) {
+        // The gateway restarted after "Erase everything": once its config is
+        // genuinely fresh, reload into the first-run wizard.
+        void finishFactoryResetIfFresh(client);
+      }
       host.loginGateRequested = false;
       host.lastError = null;
       host.lastErrorCode = null;
@@ -1429,6 +1440,30 @@ function handleGatewayEventUnsafe(host: GatewayHost, evt: GatewayEventFrame) {
   if (evt.event === GATEWAY_EVENT_UPDATE_AVAILABLE) {
     const payload = evt.payload as GatewayUpdateAvailableEventPayload | undefined;
     host.updateAvailable = payload?.updateAvailable ?? null;
+  }
+}
+
+/**
+ * After a factory reset the gateway comes back with a fresh config. Confirm
+ * that (rather than trusting the reconnect alone — a flaky socket could bounce
+ * before the restart) and then reload so the page starts in the wizard. The
+ * pending marker's TTL takes care of a gateway that never comes back.
+ */
+async function finishFactoryResetIfFresh(client: GatewayBrowserClient): Promise<void> {
+  try {
+    const snapshot = (await client.request("config.get", {})) as {
+      config?: Record<string, unknown>;
+    } | null;
+    if (!resolveModelSetupMissing(snapshot?.config)) {
+      return;
+    }
+  } catch {
+    return;
+  }
+  clearFactoryResetPending();
+  clearLocalStateForFactoryReset();
+  if (typeof window !== "undefined") {
+    window.location.reload();
   }
 }
 

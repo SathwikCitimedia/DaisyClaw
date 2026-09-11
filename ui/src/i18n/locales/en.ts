@@ -1184,6 +1184,11 @@ export const en: TranslationMap = {
       waiting: "Waiting for",
       details: "Connection details",
     },
+    resetting: {
+      title: "Resetting Daisy…",
+      summary: "Erasing your data and starting fresh. The setup guide opens when it's done.",
+      slow: "Still resetting. This can take a minute on a slow disk.",
+    },
     subtitle: "Gateway Dashboard",
     passwordPlaceholder: "optional",
     showToken: "Show token",
@@ -1332,10 +1337,16 @@ export const en: TranslationMap = {
       retrySend: "Retry send",
       retryQueuedMessage: "Retry queued message",
     },
+    noModel: {
+      title: "Daisy needs an AI brain before she can chat",
+      body: "Pick a provider and paste your key, or point Daisy at your own server. Everything else already works.",
+      action: "Add AI brain",
+    },
     composer: {
       placeholder: "Message {name} (Enter to send)",
       placeholderWithAttachments: "Add a message or paste more images...",
       placeholderDisconnected: "Connect to the gateway to start chatting...",
+      placeholderNoModel: "Add an AI brain in Settings to start chatting…",
       attachFile: "Attach file",
       startTalk: "Start Talk",
       stillListening: "Still listening",

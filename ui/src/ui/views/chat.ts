@@ -156,6 +156,14 @@ export type ChatProps = {
   connected: boolean;
   canSend: boolean;
   disabledReason: string | null;
+  /**
+   * True while chatting is impossible for a reason other than connectivity
+   * (no AI model configured yet). Locks the composer without showing the
+   * "disconnected" placeholder.
+   */
+  composeLocked?: boolean;
+  /** Friendly notice with a call to action, shown above the transcript. */
+  setupNotice?: { title: string; body: string; actionLabel: string; onAction: () => void } | null;
   error: string | null;
   sessions: SessionsListResult | null;
   focusMode?: boolean;
@@ -1761,7 +1769,7 @@ function renderChatLoadingSlow(props: ChatProps) {
 }
 
 export function renderChat(props: ChatProps) {
-  const canCompose = props.connected;
+  const canCompose = props.connected && !props.composeLocked;
   const isBusy = props.sending || props.stream !== null;
   const canAbort = Boolean(props.canAbort && props.onAbort);
   const hasTerminalStatus = hasTerminalRunStatus(props.runStatus);
@@ -1791,11 +1799,13 @@ export function renderChat(props: ChatProps) {
   const tokens = tokenEstimate(visibleDraft);
   const composerControls = props.composerControls;
 
-  const placeholder = props.connected
-    ? hasAttachments
-      ? t("chat.composer.placeholderWithAttachments")
-      : t("chat.composer.placeholder", { name: props.assistantName || "agent" })
-    : t("chat.composer.placeholderDisconnected");
+  const placeholder = !props.connected
+    ? t("chat.composer.placeholderDisconnected")
+    : props.composeLocked
+      ? t("chat.composer.placeholderNoModel")
+      : hasAttachments
+        ? t("chat.composer.placeholderWithAttachments")
+        : t("chat.composer.placeholder", { name: props.assistantName || "agent" });
 
   const requestUpdate = props.onRequestUpdate ?? (() => {});
   const splitRatio = props.splitRatio ?? 0.6;
@@ -2297,7 +2307,7 @@ export function renderChat(props: ChatProps) {
       if (e.isComposing || e.keyCode === 229) {
         return;
       }
-      if (!props.connected) {
+      if (!canCompose) {
         return;
       }
       e.preventDefault();
@@ -2340,6 +2350,19 @@ export function renderChat(props: ChatProps) {
       @dragover=${(e: DragEvent) => e.preventDefault()}
     >
       ${props.disabledReason ? html`<div class="callout">${props.disabledReason}</div>` : nothing}
+      ${props.setupNotice
+        ? html`
+            <div class="chat-setup-notice" role="status" data-chat-setup-notice>
+              <div class="chat-setup-notice__text">
+                <span class="chat-setup-notice__title">${props.setupNotice.title}</span>
+                <span class="chat-setup-notice__body">${props.setupNotice.body}</span>
+              </div>
+              <button class="btn primary btn--sm" @click=${props.setupNotice.onAction}>
+                ${props.setupNotice.actionLabel}
+              </button>
+            </div>
+          `
+        : nothing}
       ${props.error
         ? html`
             <div class="callout danger callout--dismissible" role="alert">
@@ -2433,7 +2456,7 @@ export function renderChat(props: ChatProps) {
                   props.sessions?.defaults?.contextTokens ?? null,
                   {
                     compactBusy,
-                    compactDisabled: !props.connected || isBusy || showAbortableUi,
+                    compactDisabled: !canCompose || isBusy || showAbortableUi,
                     onCompact: props.onCompact,
                   },
                 )}
@@ -2484,7 +2507,7 @@ export function renderChat(props: ChatProps) {
                   })}
                   .value=${visibleDraft}
                   dir=${detectTextDirection(visibleDraft)}
-                  ?disabled=${!props.connected}
+                  ?disabled=${!canCompose}
                   aria-autocomplete="list"
                   aria-controls=${ifDefined(slashMenuVisible ? SLASH_MENU_LISTBOX_ID : undefined)}
                   aria-activedescendant=${ifDefined(activeSlashMenuOptionId ?? undefined)}
@@ -2514,7 +2537,7 @@ export function renderChat(props: ChatProps) {
                     @click=${clickComposerFileInput}
                     title=${t("chat.composer.attachFile")}
                     aria-label=${t("chat.composer.attachFile")}
-                    ?disabled=${!props.connected}
+                    ?disabled=${!canCompose}
                   >
                     ${icons.paperclip}
                     <span class="agent-chat__control-label">${t("chat.composer.attachFile")}</span>
@@ -2533,7 +2556,7 @@ export function renderChat(props: ChatProps) {
                           aria-label=${props.realtimeTalkActive
                             ? t("chat.composer.stopTalk")
                             : t("chat.composer.startTalk")}
-                          ?disabled=${!props.connected}
+                          ?disabled=${!canCompose}
                         >
                           ${icons.mic}
                           <span class="agent-chat__control-label"
@@ -2554,7 +2577,7 @@ export function renderChat(props: ChatProps) {
                           title="Talk settings"
                           aria-label="Talk settings"
                           aria-expanded=${props.realtimeTalkOptionsOpen ? "true" : "false"}
-                          ?disabled=${!props.connected || props.realtimeTalkActive}
+                          ?disabled=${!canCompose || props.realtimeTalkActive}
                         >
                           ${icons.settings}
                           <span class="agent-chat__control-label">Talk settings</span>

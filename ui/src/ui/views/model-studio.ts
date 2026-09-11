@@ -2,6 +2,7 @@
 import { html, nothing } from "lit";
 import { ref } from "lit/directives/ref.js";
 import { modelCatalogRef } from "../controllers/models.ts";
+import { CUSTOM_PROVIDER_LABELS } from "../controllers/models.ts";
 import { icons } from "../icons.ts";
 import type { ModelAuthStatusResult, ModelCatalogEntry } from "../types.ts";
 import { renderModelBrandIcon, renderProviderBrandIcon } from "./model-provider.icons.ts";
@@ -140,6 +141,12 @@ function showDialogWhenClosed(el?: Element) {
       }
     });
   }
+}
+
+/** Friendly provider name for catalog rows ("litellm" → "LiteLLM"). */
+export function providerDisplayName(providerId: string): string {
+  const preset = PROVIDER_PRESETS.find((entry) => entry.id === providerId);
+  return preset?.label ?? CUSTOM_PROVIDER_LABELS[providerId] ?? providerId;
 }
 
 function readField(root: HTMLElement, name: string): string {
@@ -285,7 +292,7 @@ function renderModelRow(entry: ModelCatalogEntry, props: ModelStudioProps) {
       </span>
       <span class="model-studio__row-main">
         <span class="model-studio__row-name">${entry.name || entry.id}</span>
-        <span class="model-studio__row-meta">${entry.provider}</span>
+        <span class="model-studio__row-meta">${providerDisplayName(entry.provider)}</span>
       </span>
       ${isDefault
         ? html`<span class="model-studio__badge">Default</span>`
@@ -377,7 +384,7 @@ export function renderModelStudio(props: ModelStudioProps) {
                     </span>
                     <span class="model-studio__hero-meta">
                       ${defaultEntry
-                        ? `via ${defaultEntry.provider}`
+                        ? `via ${providerDisplayName(defaultEntry.provider)}`
                         : "not in the current catalog"}
                       ${props.defaultModel.fallbacks.length > 0
                         ? ` · ${props.defaultModel.fallbacks.length} backup${

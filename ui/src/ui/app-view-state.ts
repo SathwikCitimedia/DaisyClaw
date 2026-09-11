@@ -214,6 +214,12 @@ export type AppViewState = {
   firstRunError: string | null;
   firstRunProvider: string | null;
   firstRunChannel: string | null;
+  /** Null until the first config read; true when no AI model/provider is configured. */
+  modelSetupMissing: boolean | null;
+  /** Settings → Reset card state. */
+  settingsResetOpen: boolean;
+  settingsResetAcknowledged: boolean;
+  factoryResetBusy: boolean;
   updateRunning: boolean;
   applySessionKey: string;
   configSnapshot: ConfigSnapshot | null;

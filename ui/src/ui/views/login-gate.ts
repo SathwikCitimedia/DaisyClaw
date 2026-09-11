@@ -372,6 +372,26 @@ export function renderPreparingGate(state: AppViewState) {
   `;
 }
 
+/** Full-screen card shown from "Erase everything" until the fresh gateway is back. */
+export function renderResettingGate(state: AppViewState, opts?: { slow?: boolean }) {
+  const basePath = normalizeBasePath(state.basePath ?? "");
+  const faviconSrc = agentLogoUrl(basePath);
+  return html`
+    <div class="login-gate" data-resetting="true">
+      <div class="login-gate__card login-gate__card--reconnecting" role="status" aria-live="polite">
+        <div class="login-gate__header">
+          <img class="login-gate__logo" src=${faviconSrc} alt="Daisy" />
+          <div class="login-gate__spinner" aria-hidden="true"></div>
+          <div class="login-gate__title">${t("login.resetting.title")}</div>
+          <div class="login-gate__sub">
+            ${opts?.slow ? t("login.resetting.slow") : t("login.resetting.summary")}
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
 export function renderLoginGate(state: AppViewState) {
   const basePath = normalizeBasePath(state.basePath ?? "");
   const faviconSrc = agentLogoUrl(basePath);

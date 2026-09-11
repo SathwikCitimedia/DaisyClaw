@@ -123,6 +123,7 @@ describe("renderQuickSettings", () => {
       "qs-card--personal",
       "qs-card--appearance",
       "qs-card--automations",
+      "qs-card--reset",
     ]);
     expect(container.querySelectorAll(".qs-side-stack .qs-card")).toHaveLength(2);
     expect(container.querySelectorAll(".qs-card--span-all")).toHaveLength(1);
@@ -479,5 +480,81 @@ describe("model & thinking capability gating", () => {
     const hint = expectRowByLabel(container, "Fast mode").textContent ?? "";
     expect(hint).toContain("faster capacity");
     expect(hint).not.toContain("less capable");
+  });
+});
+
+describe("quick settings reset card", () => {
+  it("starts collapsed with 'Run setup again' and 'Reset Daisy…' actions", () => {
+    const onRunSetupAgain = vi.fn();
+    const onResetOpenChange = vi.fn();
+    const container = document.createElement("div");
+    render(renderQuickSettings(createProps({ onRunSetupAgain, onResetOpenChange })), container);
+    expect(container.querySelector("[data-qs-reset]")).toBeTruthy();
+    expect(container.querySelector("[data-qs-reset-confirm]")).toBeNull();
+    expectButtonByText(container, "Run setup again").click();
+    expect(onRunSetupAgain).toHaveBeenCalledTimes(1);
+    expectButtonByText(container, "Reset Daisy…").click();
+    expect(onResetOpenChange).toHaveBeenCalledWith(true);
+  });
+
+  it("lists what is erased and keeps the red confirm disabled until acknowledged", () => {
+    const onFactoryReset = vi.fn();
+    const onResetAcknowledgedChange = vi.fn();
+    const container = document.createElement("div");
+    render(
+      renderQuickSettings(
+        createProps({ resetOpen: true, onFactoryReset, onResetAcknowledgedChange }),
+      ),
+      container,
+    );
+    const text = container.textContent ?? "";
+    expect(text).toContain("Every chat and its history");
+    expect(text).toContain("Connected channels");
+    expect(text).toContain("cannot be undone");
+    const confirm = container.querySelector<HTMLButtonElement>("[data-qs-reset-confirm]");
+    expect(confirm).toBeTruthy();
+    expect(confirm?.disabled).toBe(true);
+    expect(confirm?.classList.contains("danger")).toBe(true);
+    confirm?.click();
+    expect(onFactoryReset).not.toHaveBeenCalled();
+
+    const ack = container.querySelector<HTMLInputElement>("[data-qs-reset-ack]");
+    expect(ack).toBeTruthy();
+    if (ack) {
+      ack.checked = true;
+      ack.dispatchEvent(new Event("change"));
+    }
+    expect(onResetAcknowledgedChange).toHaveBeenCalledWith(true);
+  });
+
+  it("fires the reset once acknowledged and shows progress while busy", () => {
+    const onFactoryReset = vi.fn();
+    const container = document.createElement("div");
+    render(
+      renderQuickSettings(
+        createProps({ resetOpen: true, resetAcknowledged: true, onFactoryReset }),
+      ),
+      container,
+    );
+    const confirm = container.querySelector<HTMLButtonElement>("[data-qs-reset-confirm]");
+    expect(confirm?.disabled).toBe(false);
+    expect(confirm?.textContent?.trim()).toBe("Erase everything and start over");
+    confirm?.click();
+    expect(onFactoryReset).toHaveBeenCalledTimes(1);
+
+    render(
+      renderQuickSettings(
+        createProps({
+          resetOpen: true,
+          resetAcknowledged: true,
+          factoryResetBusy: true,
+          onFactoryReset,
+        }),
+      ),
+      container,
+    );
+    const busy = container.querySelector<HTMLButtonElement>("[data-qs-reset-confirm]");
+    expect(busy?.disabled).toBe(true);
+    expect(busy?.textContent?.trim()).toBe("Resetting…");
   });
 });

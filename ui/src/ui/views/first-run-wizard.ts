@@ -8,13 +8,16 @@ import { getSafeLocalStorage } from "../../local-storage.ts";
 import type { AppViewState } from "../app-view-state.ts";
 import { loadConfig, updateConfigFormValue } from "../controllers/config.ts";
 import {
+  CUSTOM_PROVIDER_LABELS,
   invalidateModelCatalog,
   loadModels,
+  probeCustomProvider,
   saveCustomProvider,
   saveProviderApiKey,
   setDefaultModel,
 } from "../controllers/models.ts";
 import { loadSkills, updateSkillEnabled } from "../controllers/skills.ts";
+import { showToast } from "../toast.ts";
 import type { SkillStatusEntry } from "../types.ts";
 import { renderChannelSetup } from "./channels.setup.ts";
 import type { ChannelsProps } from "./channels.types.ts";
@@ -115,6 +118,38 @@ function isFirstRunPreviewForced(): boolean {
   }
 }
 
+/**
+ * True when the config has neither a model provider nor a default model —
+ * Daisy cannot answer chats until the user adds an "AI brain".
+ */
+export function resolveModelSetupMissing(
+  config: Record<string, unknown> | null | undefined,
+): boolean {
+  const cfg = config ?? {};
+  const models = cfg.models as { providers?: Record<string, unknown> } | undefined;
+  const hasProvider = Object.keys(models?.providers ?? {}).length > 0;
+  const agents = cfg.agents as { defaults?: { model?: unknown } } | undefined;
+  const hasDefaultModel = agents?.defaults?.model !== undefined;
+  return !hasProvider && !hasDefaultModel;
+}
+
+/** Re-reads the config and updates `state.modelSetupMissing`. Safe to call any time. */
+export async function refreshModelSetupState(state: AppViewState): Promise<boolean | null> {
+  const client = state.client;
+  if (!client) {
+    return state.modelSetupMissing;
+  }
+  try {
+    const snapshot = (await client.request("config.get", {})) as {
+      config?: Record<string, unknown>;
+    } | null;
+    state.modelSetupMissing = resolveModelSetupMissing(snapshot?.config);
+  } catch {
+    // Leave the previous answer in place; the chat lock is advisory.
+  }
+  return state.modelSetupMissing;
+}
+
 export async function evaluateFirstRunWizard(state: AppViewState): Promise<void> {
   if (state.firstRunActive !== null) {
     return;
@@ -126,24 +161,23 @@ export async function evaluateFirstRunWizard(state: AppViewState): Promise<void>
     void loadSkills(state).catch(() => undefined);
     return;
   }
-  if (isFirstRunDismissed()) {
-    state.firstRunActive = false;
-    return;
-  }
+  const dismissed = isFirstRunDismissed();
   const client = state.client;
   if (!client) {
+    if (dismissed) {
+      state.firstRunActive = false;
+    }
     return;
   }
   try {
-    const snapshot = (await client.request("config.get", {})) as {
-      config?: Record<string, unknown>;
-    } | null;
-    const cfg = snapshot?.config ?? {};
-    const models = cfg.models as { providers?: Record<string, unknown> } | undefined;
-    const hasProvider = Object.keys(models?.providers ?? {}).length > 0;
-    const agents = cfg.agents as { defaults?: { model?: unknown } } | undefined;
-    const hasDefaultModel = agents?.defaults?.model !== undefined;
-    state.firstRunActive = !hasProvider && !hasDefaultModel;
+    const missing = await refreshModelSetupState(state);
+    if (dismissed) {
+      // Setup was finished (or skipped) before: stay on the dashboard, where
+      // the chat shows an "add an AI brain" notice if the model is missing.
+      state.firstRunActive = false;
+      return;
+    }
+    state.firstRunActive = missing === true;
     if (state.firstRunActive) {
       // Prefetch so the skills screen opens populated.
       void loadSkills(state).catch(() => undefined);
@@ -151,6 +185,36 @@ export async function evaluateFirstRunWizard(state: AppViewState): Promise<void>
   } catch {
     state.firstRunActive = false;
   }
+}
+
+/** Settings → "Run setup again": reopens the guided setup without erasing anything. */
+export function reopenFirstRunWizard(state: AppViewState): void {
+  try {
+    getSafeLocalStorage()?.removeItem(FIRST_RUN_DONE_KEY);
+  } catch {
+    // ignore
+  }
+  brainSkipped = false;
+  resetDraft();
+  state.firstRunError = null;
+  state.firstRunBusy = false;
+  state.firstRunProvider = null;
+  state.firstRunChannel = null;
+  state.firstRunStep = 0;
+  state.firstRunActive = true;
+  void loadSkills(state).catch(() => undefined);
+}
+
+// True when the user skipped the AI-brain screen in this wizard session; the
+// Done screen then points at Settings instead of promising a chat.
+let brainSkipped = false;
+
+function skipBrainForNow(state: AppViewState): void {
+  brainSkipped = true;
+  state.firstRunError = null;
+  state.firstRunProvider = null;
+  resetDraft();
+  state.firstRunStep = 2;
 }
 
 function finishToDashboard(state: AppViewState): void {
@@ -163,14 +227,49 @@ async function connectProvider(state: AppViewState, preset: ProviderPreset): Pro
   state.firstRunError = null;
   try {
     if (preset.custom) {
-      const providerId = "custom";
-      await saveCustomProvider(state, {
-        providerId,
+      if (!draft.baseUrl.trim() || !draft.modelId.trim()) {
+        throw new Error("Enter the server URL and a model name.");
+      }
+      // Ask the gateway which product answers at that address so the server
+      // is saved under its real name (LiteLLM, Ollama, …) with its model list.
+      const probe = await probeCustomProvider(state.client, {
         baseUrl: draft.baseUrl,
         apiKey: draft.apiKey.trim() ? draft.apiKey : undefined,
-        modelId: draft.modelId,
       });
-      await setDefaultModel(state, `${providerId}/${draft.modelId.trim()}`);
+      const providerId = probe.providerId || "custom";
+      const label = probe.label || CUSTOM_PROVIDER_LABELS[providerId] || "Custom server";
+      const modelId = draft.modelId.trim();
+      await saveCustomProvider(state, {
+        providerId,
+        baseUrl: probe.baseUrl || draft.baseUrl,
+        apiKey: draft.apiKey.trim() ? draft.apiKey : undefined,
+        modelId,
+        extraModelIds: probe.models,
+        modelNameSuffix: providerId === "custom" ? undefined : label,
+      });
+      await setDefaultModel(state, `${providerId}/${modelId}`);
+      if (state.client) {
+        invalidateModelCatalog(state.client);
+      }
+      if (!probe.reachable) {
+        showToast(
+          `Saved. Couldn't reach ${label.toLowerCase() === "custom server" ? "the server" : label} right now — Daisy will connect once it's online (VPN on?).`,
+          { tone: "info" },
+        );
+      } else if (probe.authRejected) {
+        showToast(`${label} rejected the API key. Check it in Settings if chats fail.`, {
+          tone: "info",
+        });
+      } else if (probe.models.length > 0 && !probe.models.includes(modelId)) {
+        showToast(
+          `${label} doesn't list "${modelId}". Saved anyway — double-check the model name.`,
+          {
+            tone: "info",
+          },
+        );
+      } else {
+        showToast(`Connected to ${label}.`, { tone: "success" });
+      }
     } else {
       await saveProviderApiKey(state, preset.id, draft.apiKey);
       if (state.client) {
@@ -190,6 +289,8 @@ async function connectProvider(state: AppViewState, preset: ProviderPreset): Pro
       }
     }
     resetDraft();
+    brainSkipped = false;
+    state.modelSetupMissing = false;
     state.firstRunProvider = null;
     state.firstRunStep = 2;
   } catch (err) {
@@ -372,6 +473,13 @@ function renderBrain(state: AppViewState): TemplateResult {
               `,
             )}
           </div>
+          <button
+            class="first-run__skip-link"
+            data-first-run-skip-brain
+            @click=${() => skipBrainForNow(state)}
+          >
+            Skip for now — you can add this later in Settings (chat waits until then)
+          </button>
         `}
   `;
 }
@@ -596,12 +704,14 @@ function renderDone(state: AppViewState): TemplateResult {
         <path d="m11 2 .33.82c.34.86-.2 1.82-1.11 1.98C9.52 4.9 9 5.52 9 6.23V7" stroke="#8B5CF6" />
       </svg>
     </div>
-    <h1 class="first-run__title">You're all set</h1>
+    <h1 class="first-run__title">${brainSkipped ? "Almost there" : "You're all set"}</h1>
     <p class="first-run__lead">
-      Daisy is ready. Say hi, ask for the weather, or just tell it about your day.
+      ${brainSkipped
+        ? "Daisy is installed. Chat stays paused until you add an AI brain — the dashboard shows you where."
+        : "Daisy is ready. Say hi, ask for the weather, or just tell it about your day."}
     </p>
     <button class="btn primary first-run__cta" @click=${() => finishToDashboard(state)}>
-      Start chatting
+      ${brainSkipped ? "Open the dashboard" : "Start chatting"}
     </button>
   `;
 }

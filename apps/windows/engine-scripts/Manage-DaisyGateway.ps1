@@ -240,6 +240,33 @@ function Stop-EngineProcesses {
     }
 }
 
+function Install-PortableGitFromEngine {
+    # Bundled skills run bash on Windows; the gateway looks for it under
+    # %LOCALAPPDATA%\DaisyClaw\deps\portable-git. Copy the engine's MinGit there
+    # when it is missing (first install) or older than the bundled one.
+    $source = Join-Path $EngineRoot 'deps\portable-git'
+    if (-not (Test-Path -LiteralPath (Join-Path $source 'usr\bin\bash.exe'))) {
+        Write-Log 'Engine has no bundled portable Git; skipping.'
+        return
+    }
+    $target = Join-Path $env:LOCALAPPDATA 'DaisyClaw\deps\portable-git'
+    $versionFile = 'DAISYCLAW-VERSION.txt'
+    $sourceVersion = if (Test-Path (Join-Path $source $versionFile)) { (Get-Content (Join-Path $source $versionFile) -Raw).Trim() } else { 'bundled' }
+    $targetVersion = if (Test-Path (Join-Path $target $versionFile)) { (Get-Content (Join-Path $target $versionFile) -Raw).Trim() } else { '' }
+    if ((Test-Path -LiteralPath (Join-Path $target 'usr\bin\bash.exe')) -and $targetVersion -eq $sourceVersion) {
+        Write-Log "Portable Git already present ($targetVersion)."
+        return
+    }
+    Write-Log "Installing portable Git to $target ($sourceVersion)"
+    New-Item -ItemType Directory -Path $target -Force | Out-Null
+    & (Join-Path $env:SystemRoot 'System32\robocopy.exe') $source $target /E /NFL /NDL /NJH /NJS /NC /NS /NP /R:2 /W:1 | Out-Null
+    if ($LASTEXITCODE -ge 8) {
+        Write-Log "Portable Git copy failed (robocopy $LASTEXITCODE); skills needing bash may not work."
+    } else {
+        Write-Log 'Portable Git installed.'
+    }
+}
+
 function Invoke-StopAction {
     $r = Invoke-GatewayCli -CliArguments @('gateway', 'stop') -TimeoutSeconds 60
     if ($r.ExitCode -ne 0) {
@@ -258,6 +285,7 @@ Write-Log "Engine root: $EngineRoot; task: $TaskName; state: $($script:StateDir)
 
 switch ($Action) {
     'install' {
+        try { Install-PortableGitFromEngine } catch { Write-Log "Portable Git step failed: $($_.Exception.Message)" }
         $cliArgs = @('gateway', 'install', '--force')
         if ($Port -gt 0) { $cliArgs += @('--port', "$Port") }
         $r = Invoke-GatewayCli -CliArguments $cliArgs -TimeoutSeconds 180

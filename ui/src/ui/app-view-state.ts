@@ -102,6 +102,8 @@ export type AppViewState = {
   chatSessionMessageSubscriptionKey?: string | null;
   chatSessionMessageSubscriptionRequestedKey?: string | null;
   chatLoading: boolean;
+  /** When the current chat history load began; null when not loading. */
+  chatLoadingStartedAt: number | null;
   chatSending: boolean;
   chatMessage: string;
   chatAttachments: ChatAttachment[];

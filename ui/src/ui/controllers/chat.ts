@@ -395,6 +395,7 @@ export type ChatState = {
   sessionKey: string;
   currentSessionId?: string | null;
   chatLoading: boolean;
+  chatLoadingStartedAt?: number | null;
   chatMessages: unknown[];
   chatThinkingLevel: string | null;
   chatSending: boolean;
@@ -669,6 +670,7 @@ async function loadChatHistoryUncached(
   // Any pending input-history snapshot becomes invalid once we start reloading transcript state.
   state.resetChatInputHistoryNavigation?.();
   state.chatLoading = true;
+  state.chatLoadingStartedAt = Date.now();
   setChatError(state, null);
   try {
     let res: ChatHistoryResult;
@@ -841,6 +843,7 @@ async function loadChatHistoryUncached(
   } finally {
     if (isLatestChatHistoryRequest(state, requestVersion)) {
       state.chatLoading = false;
+      state.chatLoadingStartedAt = null;
     }
   }
   return undefined;

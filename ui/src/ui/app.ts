@@ -262,6 +262,7 @@ export class DaisyClawApp extends LitElement {
   chatSessionMessageSubscriptionRequestedKey: string | null = null;
   currentSessionId: string | null = null;
   @state() chatLoading = false;
+  @state() chatLoadingStartedAt: number | null = null;
   @state() chatSending = false;
   @state() chatMessage = "";
   @state() chatMessages: unknown[] = [];

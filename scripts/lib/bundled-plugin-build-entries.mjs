@@ -14,6 +14,24 @@ const TOP_LEVEL_PUBLIC_SURFACE_EXTENSIONS = new Set([".ts", ".js", ".mts", ".cts
 export const NON_PACKAGED_BUNDLED_PLUGIN_DIRS = new Set(["qa-channel", "qa-lab", "qa-matrix"]);
 const EXCLUDED_CORE_BUNDLED_PLUGIN_DIRS = new Set(["qqbot", "whatsapp"]);
 const BUNDLED_PLUGIN_BUILD_IDS_ENV = "DAISYCLAW_BUNDLED_PLUGIN_BUILD_IDS";
+// Comma-separated plugin dirs that must be built into the core dist even when
+// they are normally externalized (installed on demand from npm/ClawHub). The
+// offline consumer engine (Windows .exe) uses this so WhatsApp/Slack work with
+// no network install step.
+const BUNDLED_PLUGIN_FORCE_INCLUDE_ENV = "DAISYCLAW_BUNDLED_PLUGIN_FORCE_INCLUDE";
+
+function parseBundledPluginForceIncludeSet(env = process.env) {
+  const raw = env[BUNDLED_PLUGIN_FORCE_INCLUDE_ENV];
+  if (typeof raw !== "string" || raw.trim() === "") {
+    return new Set();
+  }
+  return new Set(
+    raw
+      .split(",")
+      .map((entry) => entry.trim())
+      .filter((entry) => entry.length > 0),
+  );
+}
 const TOP_LEVEL_PRIVATE_TEST_SURFACE_RE =
   /(?:^|[._-])(?:test|spec|test-support|test-helpers|test-fixtures|test-harness|mock-setup)(?:[._-]|$)/u;
 const toPosixPath = (value) => value.replaceAll("\\", "/");
@@ -213,13 +231,14 @@ export function collectBundledPluginBuildEntries(params = {}) {
     ) {
       continue;
     }
-    if (!shouldBuildBundledCluster(dirName, env, { packageJson })) {
+    const forceInclude = parseBundledPluginForceIncludeSet(env).has(dirName);
+    if (!forceInclude && !shouldBuildBundledCluster(dirName, env, { packageJson })) {
       continue;
     }
-    if (!shouldBuildBundledDistEntry(packageJson)) {
+    if (!forceInclude && !shouldBuildBundledDistEntry(packageJson)) {
       continue;
     }
-    if (EXCLUDED_CORE_BUNDLED_PLUGIN_DIRS.has(dirName)) {
+    if (!forceInclude && EXCLUDED_CORE_BUNDLED_PLUGIN_DIRS.has(dirName)) {
       continue;
     }
 

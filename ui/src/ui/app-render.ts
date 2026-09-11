@@ -710,11 +710,16 @@ function renderSidebarRecentSession(state: AppViewState, row: GatewaySessionRow)
       existing.remove();
       return;
     }
+    const isMain = isMainSessionKey(row.key);
     const menu = document.createElement("div");
     menu.className = "sidebar-session-menu";
     menu.innerHTML = `
       <button type="button" class="sidebar-session-menu__item" data-action="rename">${icons.penLine.strings.join("")} Rename</button>
-      <button type="button" class="sidebar-session-menu__item sidebar-session-menu__item--danger" data-action="delete">${icons.trash.strings.join("")} Delete</button>
+      ${
+        isMain
+          ? `<button type="button" class="sidebar-session-menu__item sidebar-session-menu__item--danger" data-action="clear">${icons.trash.strings.join("")} Clear chat</button>`
+          : `<button type="button" class="sidebar-session-menu__item sidebar-session-menu__item--danger" data-action="delete">${icons.trash.strings.join("")} Delete</button>`
+      }
     `;
     anchor.appendChild(menu);
     const closeMenu = (ev?: MouseEvent) => {
@@ -732,6 +737,63 @@ function renderSidebarRecentSession(state: AppViewState, row: GatewaySessionRow)
       menu.remove();
       document.removeEventListener("click", closeMenu as EventListener, true);
       startEditing(anchor);
+    });
+    menu.querySelector("[data-action=clear]")?.addEventListener("click", (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      menu.remove();
+      document.removeEventListener("click", closeMenu as EventListener, true);
+      const confirm = document.createElement("div");
+      confirm.className = "sidebar-session-delete-confirm";
+      confirm.innerHTML = `
+        <p class="sidebar-session-delete-confirm__text">Clear all messages in "<strong>${label}</strong>"? The chat stays, its history is removed.</p>
+        <div class="sidebar-session-delete-confirm__actions">
+          <button class="sidebar-session-delete-confirm__cancel" type="button">Cancel</button>
+          <button class="sidebar-session-delete-confirm__yes" type="button">Clear</button>
+        </div>
+      `;
+      anchor.appendChild(confirm);
+      confirm
+        .querySelector(".sidebar-session-delete-confirm__cancel")
+        ?.addEventListener("click", (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          confirm.remove();
+        });
+      confirm
+        .querySelector(".sidebar-session-delete-confirm__yes")
+        ?.addEventListener("click", (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          confirm.remove();
+          void (async () => {
+            if (!state.client || !state.connected) {
+              showToast("Not connected to Daisy yet.", { tone: "error" });
+              return;
+            }
+            try {
+              await state.client.request("sessions.reset", {
+                key: row.key,
+                ...scopedAgentParamsForSession(state, row.key),
+              });
+              if (row.key === state.sessionKey) {
+                state.chatMessages = [];
+                state.chatSideResult = null;
+                void loadChatHistory(state);
+              }
+              showToast("Chat cleared.", { tone: "success" });
+            } catch (err) {
+              showToast(
+                `Could not clear chat: ${err instanceof Error ? err.message : String(err)}`,
+                {
+                  tone: "error",
+                },
+              );
+            } finally {
+              pendingUpdate?.();
+            }
+          })();
+        });
     });
     menu.querySelector("[data-action=delete]")?.addEventListener("click", (ev) => {
       ev.preventDefault();
@@ -766,7 +828,14 @@ function renderSidebarRecentSession(state: AppViewState, row: GatewaySessionRow)
             state as Parameters<typeof deleteSessionsAndRefresh>[0],
             [row.key],
             { skipConfirm: true },
-          ).then(() => pendingUpdate?.());
+          ).then((deleted) => {
+            // The Sessions page shows sessionsError; the sidebar has no
+            // surface for it, so a refused delete must speak up here.
+            if (deleted.length === 0 && state.sessionsError) {
+              showToast(state.sessionsError, { tone: "error" });
+            }
+            pendingUpdate?.();
+          });
         });
     });
   };
@@ -1525,6 +1594,35 @@ function buildWorkspaceFileSidebarContent(name: string, content: string): string
   }
   const language = name.match(/\.([a-z0-9_-]+)$/i)?.[1]?.toLowerCase() ?? "";
   return `# ${name}\n\n\`\`\`${language}\n${content}\n\`\`\``;
+}
+
+// Chat history that has not arrived after this long swaps the skeleton bars
+// for a message with Retry (the gateway may be starting up or busy).
+const CHAT_LOADING_SLOW_MS = 8_000;
+let chatLoadingTick: number | null = null;
+function isChatLoadingSlow(state: AppViewState, requestHostUpdate?: () => void): boolean {
+  if (!state.chatLoading || state.chatLoadingStartedAt == null) {
+    return false;
+  }
+  const elapsed = Date.now() - state.chatLoadingStartedAt;
+  if (elapsed >= CHAT_LOADING_SLOW_MS) {
+    return true;
+  }
+  if (chatLoadingTick === null && typeof window !== "undefined" && requestHostUpdate) {
+    chatLoadingTick = window.setTimeout(
+      () => {
+        chatLoadingTick = null;
+        requestHostUpdate();
+      },
+      CHAT_LOADING_SLOW_MS - elapsed + 50,
+    );
+  }
+  return false;
+}
+
+/** The agent's main session cannot be deleted by design; it can only be cleared. */
+function isMainSessionKey(key: string): boolean {
+  return key === "main" || /^agent:[^:]+:main$/.test(key);
 }
 
 // Re-render once a second while the reconnecting card is shown so the elapsed
@@ -4112,6 +4210,8 @@ export function renderApp(state: AppViewState) {
                   showThinking,
                   showToolCalls,
                   loading: state.chatLoading,
+                  loadingSlow: isChatLoadingSlow(state, requestHostUpdate),
+                  onRetryLoad: () => void loadChatHistory(state),
                   sending: state.chatSending,
                   compactionStatus: state.compactionStatus,
                   fallbackStatus: state.fallbackStatus,

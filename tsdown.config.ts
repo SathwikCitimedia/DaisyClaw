@@ -197,7 +197,10 @@ const bundledPluginFile = (pluginId: string, relativePath: string) =>
 const explicitNeverBundleDependencies = [
   "@anthropic-ai/vertex-sdk",
   "@slack/bolt",
+  "@slack/types",
   "@slack/web-api",
+  "audio-decode",
+  "baileys",
   "@discordjs/voice",
   "@lancedb/lancedb",
   "@larksuiteoapi/node-sdk",

@@ -120,6 +120,9 @@ export type ChatProps = {
   showThinking: boolean;
   showToolCalls: boolean;
   loading: boolean;
+  /** History has been loading for a while; show a notice instead of skeleton bars. */
+  loadingSlow?: boolean;
+  onRetryLoad?: () => void;
   sending: boolean;
   canAbort?: boolean;
   runStatus?: ChatRunUiStatus | null;
@@ -1741,6 +1744,22 @@ function focusChatComposerEnd() {
   });
 }
 
+function renderChatLoadingSlow(props: ChatProps) {
+  return html`
+    <div class="chat-loading-slow" role="status" aria-live="polite">
+      <div class="chat-loading-slow__title">Still loading this chat…</div>
+      <div class="chat-loading-slow__text">
+        Daisy is taking longer than usual to answer. It may be starting up or busy.
+      </div>
+      ${props.onRetryLoad
+        ? html`
+            <button type="button" class="btn" @click=${() => props.onRetryLoad?.()}>Retry</button>
+          `
+        : nothing}
+    </div>
+  `;
+}
+
 export function renderChat(props: ChatProps) {
   const canCompose = props.connected;
   const isBusy = props.sending || props.stream !== null;
@@ -1901,7 +1920,8 @@ export function renderChat(props: ChatProps) {
       @click=${handleCodeBlockCopy}
     >
       <div class="chat-thread-inner">
-        ${showLoadingSkeleton
+        ${showLoadingSkeleton && props.loadingSlow ? renderChatLoadingSlow(props) : nothing}
+        ${showLoadingSkeleton && !props.loadingSlow
           ? html`
               <div class="chat-loading-skeleton" aria-label="Loading chat">
                 <div class="chat-line assistant">

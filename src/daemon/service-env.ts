@@ -434,7 +434,13 @@ export function buildServiceEnvironment(params: {
     DAISYCLAW_GATEWAY_PORT: String(port),
     DAISYCLAW_LAUNCHD_LABEL: resolvedLaunchdLabel,
     DAISYCLAW_SYSTEMD_UNIT: systemdUnit,
-    DAISYCLAW_WINDOWS_TASK_NAME: resolveGatewayWindowsTaskName(profile),
+    // Honour an explicit task name from the installer. Isolated installs (test
+    // engines, side-by-side profiles) otherwise baked the default name into the
+    // service environment, so the isolated gateway's own restart would go and
+    // relaunch the user's real "DaisyClaw Gateway" task instead of itself.
+    DAISYCLAW_WINDOWS_TASK_NAME:
+      normalizeOptionalString(env.DAISYCLAW_WINDOWS_TASK_NAME) ??
+      resolveGatewayWindowsTaskName(profile),
     DAISYCLAW_SERVICE_MARKER: GATEWAY_SERVICE_MARKER,
     DAISYCLAW_SERVICE_KIND: GATEWAY_SERVICE_KIND,
     DAISYCLAW_SERVICE_VERSION: VERSION,

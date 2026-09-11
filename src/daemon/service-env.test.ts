@@ -607,6 +607,16 @@ describe("buildServiceEnvironment", () => {
     }
   });
 
+  it("keeps an isolated install pointed at its own scheduled task", () => {
+    // Without this the isolated engine's own restart relaunches the real
+    // "DaisyClaw Gateway" task instead of itself.
+    const env = buildServiceEnvironment({
+      env: { HOME: "/home/user", DAISYCLAW_WINDOWS_TASK_NAME: "DaisyClaw Gateway Test" },
+      port: 18999,
+    });
+    expect(env.DAISYCLAW_WINDOWS_TASK_NAME).toBe("DaisyClaw Gateway Test");
+  });
+
   it("sets the DaisyClaw-owned launchd marker for macOS gateway services", () => {
     const env = buildServiceEnvironment({
       env: { HOME: "/Users/user" },

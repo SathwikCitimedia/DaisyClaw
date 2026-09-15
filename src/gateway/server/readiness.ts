@@ -30,6 +30,18 @@ function shouldIgnoreReadinessFailure(
   if (health.reason === "unmanaged" || health.reason === "stale-socket") {
     return true;
   }
+  // An account that has never started is not a failure. On a desktop install
+  // every bundled channel is present so its setup can run, and a channel the
+  // user has not set up yet has no reason to be running. Counting those kept a
+  // fresh install permanently unready, and readiness is what the app waits for
+  // before it opens, so the user was left with no window at all.
+  if (
+    health.reason === "not-running" &&
+    accountSnapshot.lastStartAt == null &&
+    accountSnapshot.restartPending !== true
+  ) {
+    return true;
+  }
   // Channel restarts spend time in backoff with running=false before the next
   // lifecycle re-enters startup grace. Keep readiness green during that handoff
   // window, but still surface hard failures once restart attempts are exhausted.

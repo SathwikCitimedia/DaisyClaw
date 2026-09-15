@@ -747,3 +747,56 @@ describe("warnUnregisteredConfiguredMemoryEmbeddingProviders", () => {
     expect(log.warn).not.toHaveBeenCalled();
   });
 });
+
+describe("reportUnloadedChannelSetupPlugins", () => {
+  // The dashboard shows a Configure button for every bundled channel. A channel
+  // whose plugin did not load has a button that dead-ends with "web login
+  // provider is not available", which is exactly what reached users twice with
+  // nothing in the engine log to show for it.
+  function pluginRegistryWith(loadedIds: string[], failedIds: string[] = []) {
+    return {
+      plugins: [
+        ...loadedIds.map((id) => ({ id, status: "loaded" })),
+        ...failedIds.map((id) => ({ id, status: "error" })),
+      ],
+    } as never;
+  }
+
+  it("names every channel whose setup surface is missing", async () => {
+    const { reportUnloadedChannelSetupPlugins } = await import("./server-startup-plugins.js");
+    const log = createLog();
+    const missing = reportUnloadedChannelSetupPlugins({
+      preloadChannelPluginIds: ["whatsapp", "telegram", "signal"],
+      pluginRegistry: pluginRegistryWith(["telegram"], ["signal"]),
+      log,
+    });
+    expect(missing).toEqual(["whatsapp", "signal"]);
+    expect(log.error).toHaveBeenCalledTimes(1);
+    expect(String(log.error.mock.calls[0]?.[0])).toContain("whatsapp");
+  });
+
+  it("stays quiet when every selected channel loaded", async () => {
+    const { reportUnloadedChannelSetupPlugins } = await import("./server-startup-plugins.js");
+    const log = createLog();
+    const missing = reportUnloadedChannelSetupPlugins({
+      preloadChannelPluginIds: ["whatsapp"],
+      pluginRegistry: pluginRegistryWith(["whatsapp"]),
+      log,
+    });
+    expect(missing).toEqual([]);
+    expect(log.error).not.toHaveBeenCalled();
+  });
+
+  it("does nothing outside consumer builds, where nothing is preloaded", async () => {
+    const { reportUnloadedChannelSetupPlugins } = await import("./server-startup-plugins.js");
+    const log = createLog();
+    expect(
+      reportUnloadedChannelSetupPlugins({
+        preloadChannelPluginIds: [],
+        pluginRegistry: pluginRegistryWith([]),
+        log,
+      }),
+    ).toEqual([]);
+    expect(log.error).not.toHaveBeenCalled();
+  });
+});

@@ -124,6 +124,7 @@ import {
 } from "./controllers/exec-approvals.ts";
 import { loadLogs } from "./controllers/logs.ts";
 import { loadModelAuthStatusState } from "./controllers/model-auth-status.ts";
+import { listProviderModelCandidates, type PickedProviderModel } from "./controllers/model-pick.ts";
 import {
   CUSTOM_PROVIDER_LABELS,
   invalidateModelCatalog,
@@ -136,6 +137,7 @@ import {
   setDefaultModel,
   setModelFallbacks,
   testProviderConnection,
+  verifyProviderModelCandidates,
 } from "./controllers/models.ts";
 import { loadNodes } from "./controllers/nodes.ts";
 import { loadPresence } from "./controllers/presence.ts";
@@ -2303,13 +2305,34 @@ export function renderApp(state: AppViewState) {
                       tone: "success",
                     });
                     // Say straight away if the provider will not actually answer,
-                    // rather than letting the first chat message find out.
-                    const verdict = await testProviderConnection(state.client, {
-                      providerId: providerId || "custom",
+                    // rather than letting the first chat message find out. The
+                    // model list can offer entries this engine cannot run, so
+                    // try the provider's models until one answers instead of
+                    // reporting the first one's failure as the provider's.
+                    const provider = providerId || "custom";
+                    let candidates: PickedProviderModel[] = [];
+                    if (state.client) {
+                      try {
+                        candidates = listProviderModelCandidates(
+                          await loadModels(state.client),
+                          provider,
+                        );
+                      } catch {
+                        // No catalog: the gateway resolves a provider default.
+                      }
+                    }
+                    const verified = await verifyProviderModelCandidates({
+                      client: state.client,
+                      providerId: provider,
+                      candidates,
                     });
+                    const verdict = verified.verdict;
                     state.modelStudioTestResult = verdict
                       ? { ok: verdict.ok, message: verdict.message }
                       : null;
+                    if (verdict?.ok && verified.model) {
+                      await setDefaultModel(state, verified.model.ref);
+                    }
                     if (verdict && !verdict.ok) {
                       showToast(verdict.message, { tone: "error" });
                     }

@@ -307,29 +307,15 @@ internal static class NativeGatewaySupervisor
         try
         {
             using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
-            using var response = await client.GetAsync(new Uri($"http://127.0.0.1:{port}/ready"));
-            return InterpretReadinessResponse((int)response.StatusCode);
+            using var response = await client.GetAsync(
+                new Uri($"http://127.0.0.1:{port}{GatewayReadinessPolicy.ReadinessPath}"));
+            return GatewayReadinessPolicy.IsUsable((int)response.StatusCode);
         }
         catch
         {
             return false;
         }
     }
-
-    /// <summary>
-    /// Maps a readiness status code to "usable". Kept separate so the rule is
-    /// covered by tests: 200 is ready, 503 is the still-starting window, and a
-    /// 404 means an older engine without the endpoint, where the fact that
-    /// something answered is the best signal available.
-    /// </summary>
-    internal static bool InterpretReadinessResponse(int statusCode) =>
-        statusCode switch
-        {
-            200 => true,
-            404 => true,
-            405 => true,
-            _ => false,
-        };
 
     /// <summary>
     /// Path of the bundled engine's service script (<c>engine\\Manage-DaisyGateway.ps1</c>

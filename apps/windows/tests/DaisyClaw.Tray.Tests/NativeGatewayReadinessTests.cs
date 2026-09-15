@@ -17,14 +17,14 @@ public sealed class NativeGatewayReadinessTests
     [Fact]
     public void ReadyStatusCountsAsUsable()
     {
-        Assert.True(NativeGatewaySupervisor.InterpretReadinessResponse(200));
+        Assert.True(GatewayReadinessPolicy.IsUsable(200));
     }
 
     [Fact]
     public void StillStartingDoesNotCountAsUsable()
     {
         // 503 is what the engine returns while its startup sidecars load.
-        Assert.False(NativeGatewaySupervisor.InterpretReadinessResponse(503));
+        Assert.False(GatewayReadinessPolicy.IsUsable(503));
     }
 
     [Theory]
@@ -34,7 +34,7 @@ public sealed class NativeGatewayReadinessTests
     {
         // An older engine has no readiness endpoint; something answering is then
         // the strongest signal available, and refusing it would strand the user.
-        Assert.True(NativeGatewaySupervisor.InterpretReadinessResponse(statusCode));
+        Assert.True(GatewayReadinessPolicy.IsUsable(statusCode));
     }
 
     [Theory]
@@ -43,6 +43,6 @@ public sealed class NativeGatewayReadinessTests
     [InlineData(0)]
     public void OtherFailuresAreNotUsable(int statusCode)
     {
-        Assert.False(NativeGatewaySupervisor.InterpretReadinessResponse(statusCode));
+        Assert.False(GatewayReadinessPolicy.IsUsable(statusCode));
     }
 }

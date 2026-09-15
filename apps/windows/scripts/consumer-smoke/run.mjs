@@ -22,8 +22,9 @@ import {
     loadModels,
     saveProviderApiKey,
     testProviderConnection,
+    verifyProviderModelCandidates,
 } from "../../../../ui/src/ui/controllers/models.ts";
-import { pickProviderTestModel } from "../../../../ui/src/ui/controllers/model-pick.ts";
+import { listProviderModelCandidates } from "../../../../ui/src/ui/controllers/model-pick.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, "..", "..", "..", "..");
@@ -117,7 +118,7 @@ async function main() {
         }
         // Pin the port the suite listens on, then restart so it takes effect. This
         // is the only change made to a stock consumer config.
-        engine.pinPort();
+        engine.pinPortAndAllowScriptOperator();
         await engine.runAction("stop", 120_000);
         const restartStartedAt = Date.now();
         await engine.runAction("install");
@@ -137,17 +138,17 @@ async function main() {
             `fresh consumer config seeded in ${stateDir}`,
         );
 
-        // ── readiness ────────────────────────────────────────────────────────
-        if (shouldRun("ready-means-ready")) {
-            await checkReadyMeansReady(engine, token, restartStartedAt);
-        }
-
         const connection = await waitForSmokeClient({
             url: engine.wsUrl,
             token,
         });
         client = connection.client;
         log(`connected after ${Math.round(connection.waitedMs / 1000)}s`);
+
+        // ── readiness ────────────────────────────────────────────────────────
+        if (shouldRun("ready-means-ready")) {
+            await checkReadyMeansReady(engine, token, restartStartedAt, client);
+        }
 
         // ── WhatsApp ─────────────────────────────────────────────────────────
         if (shouldRun("whatsapp-qr-on-fresh-install")) {
@@ -200,15 +201,17 @@ async function main() {
  * runs ahead of the connect handler is what puts a login form in front of the
  * user on a cold start.
  */
-async function checkReadyMeansReady(engine, token, startedAt) {
-    const deadline = Date.now() + 240_000;
+async function checkReadyMeansReady(engine, token, startedAt, client) {
+    const deadline = Date.now() + 150_000;
     let httpAnsweredMs = null;
     let readyAtMs = null;
+    let lastReadiness = null;
     while (Date.now() < deadline) {
         if (httpAnsweredMs === null && (await engine.isHttpAnswering())) {
             httpAnsweredMs = Date.now() - startedAt;
         }
         const readiness = await engine.readReadiness();
+        lastReadiness = readiness;
         if (readiness.status === 200) {
             readyAtMs = Date.now() - startedAt;
             break;
@@ -216,7 +219,25 @@ async function checkReadyMeansReady(engine, token, startedAt) {
         await new Promise((resolve) => setTimeout(resolve, 500));
     }
     if (readyAtMs === null) {
-        record("ready-means-ready", "fail", "gateway never reported ready");
+        const failing = lastReadiness?.body?.failing ?? [];
+        let detail = "";
+        try {
+            const status = await client?.request("channels.status", { probe: false });
+            const snapshots = Object.fromEntries(
+                failing.map((channelId) => [
+                    channelId,
+                    status?.channelAccounts?.[channelId] ?? "no accounts",
+                ]),
+            );
+            detail = ` channel snapshots: ${JSON.stringify(snapshots)}`;
+        } catch (err) {
+            detail = ` (channels.status unavailable: ${err instanceof Error ? err.message : String(err)})`;
+        }
+        record(
+            "ready-means-ready",
+            "fail",
+            `gateway never reported ready; last answer: ${JSON.stringify(lastReadiness?.body)}.${detail}`,
+        );
         return;
     }
     // Ready was just claimed. A connection must succeed right now.
@@ -338,8 +359,8 @@ async function checkOpenAiModels(client) {
         );
         return;
     }
-    const picked = pickProviderTestModel(catalog, "openai");
-    if (!picked) {
+    const candidates = listProviderModelCandidates(catalog, "openai");
+    if (candidates.length === 0) {
         record(
             "openai-key-lists-usable-models",
             "fail",
@@ -347,11 +368,16 @@ async function checkOpenAiModels(client) {
         );
         return;
     }
-    const verdict = await testProviderConnection(client, {
+    // The product's own walk: try models until one reaches the provider. With a
+    // key we know is invalid, reaching the provider means a rejected key.
+    const verified = await verifyProviderModelCandidates({
+        client,
         providerId: "openai",
-        modelId: picked.modelId,
+        candidates,
         apiKey: UNUSABLE_OPENAI_KEY,
     });
+    const verdict = verified.verdict;
+    const tried = verified.attempted.map((entry) => entry.modelId).join(", ");
     if (!verdict) {
         record(
             "openai-key-lists-usable-models",
@@ -364,7 +390,7 @@ async function checkOpenAiModels(client) {
         record(
             "openai-key-lists-usable-models",
             "pass",
-            `product picks ${picked.ref}, provider answered (key rejected, as expected)`,
+            `reached OpenAI after trying ${tried} (key rejected, as expected)`,
         );
         return;
     }
@@ -372,14 +398,14 @@ async function checkOpenAiModels(client) {
         record(
             "openai-key-lists-usable-models",
             ALLOW_OFFLINE ? "warn" : "fail",
-            `could not reach OpenAI to verify ${picked.ref}: ${verdict.message}`,
+            `could not reach OpenAI after trying ${tried}: ${verdict.message}`,
         );
         return;
     }
     record(
         "openai-key-lists-usable-models",
         "fail",
-        `product picks ${picked.ref} but the verdict was ${verdict.reason}: ${verdict.message}`,
+        `setup never reached OpenAI; tried ${tried}; last verdict ${verdict.reason}: ${verdict.message}`,
     );
 }
 

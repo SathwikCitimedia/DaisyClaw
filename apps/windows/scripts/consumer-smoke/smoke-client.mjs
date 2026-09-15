@@ -2,10 +2,12 @@
 // controllers are handed: `request(method, params, opts)` resolves the payload
 // and rejects with an error carrying the gateway's message.
 //
-// The suite deliberately connects as a CLI client rather than as the Control
-// UI: the dashboard signs a device identity that a script cannot produce, and
-// faking it would mean relaxing the gateway's auth config for the test. The
-// request surface under test is identical either way.
+// It connects as the Control UI, because that is who runs these controllers in
+// the product. The dashboard signs a device identity in the browser, which a
+// script cannot produce, so the suite's engine is configured to accept
+// token-only operator auth from localhost. That concession covers how the
+// connection is authorised and nothing else: every request below is the
+// product's own code path.
 import WebSocket from "ws";
 
 const CONNECT_PROTOCOL = 4;
@@ -137,10 +139,10 @@ export function connectSmokeClient(params) {
                         minProtocol: CONNECT_PROTOCOL,
                         maxProtocol: CONNECT_PROTOCOL,
                         client: {
-                            id: "cli",
+                            id: "daisyclaw-control-ui",
                             version: "consumer-smoke",
                             platform: process.platform,
-                            mode: "cli",
+                            mode: "webchat",
                             instanceId,
                         },
                         role: "operator",

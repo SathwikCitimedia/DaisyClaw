@@ -278,8 +278,12 @@ export async function testProviderConnection(
   }
 }
 
-/** How many models to try before giving up on a provider. */
-const MAX_MODEL_VERIFY_ATTEMPTS = 3;
+/**
+ * How many models to try before giving up on a provider. More than a couple,
+ * because the model list can offer entries this engine cannot resolve, and a
+ * run of those must not end setup for a key that works.
+ */
+const MAX_MODEL_VERIFY_ATTEMPTS = 5;
 
 /** Verdicts that say "this model", not "this account". Worth trying another. */
 const MODEL_SPECIFIC_TEST_REASONS = new Set(["model_not_found", "unknown_model"]);

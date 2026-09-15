@@ -163,10 +163,26 @@ export class SmokeEngine {
         return this.readConfig()?.gateway?.auth?.token ?? null;
     }
 
-    /** Pins the port the suite listens on, without any other concession. */
-    pinPort() {
+    /**
+     * Pins the port the suite listens on, and allows token-only operator auth.
+     *
+     * The dashboard signs a device identity in the browser, and the gateway
+     * refuses self-declared scopes without one. A script cannot produce that
+     * signature, so without this the suite connects with no permissions and can
+     * test nothing. The concession is limited to how this connection is
+     * authorised; every request path under test is the product's own.
+     */
+    pinPortAndAllowScriptOperator() {
         const config = this.readConfig();
-        config.gateway = { ...(config.gateway ?? {}), port: this.port };
+        config.gateway = {
+            ...(config.gateway ?? {}),
+            port: this.port,
+            controlUi: {
+                ...(config.gateway?.controlUi ?? {}),
+                allowInsecureAuth: true,
+                allowedOrigins: [this.httpOrigin],
+            },
+        };
         this.writeConfig(config);
     }
 
@@ -183,11 +199,13 @@ export class SmokeEngine {
         }
     }
 
-    /** Readiness as the engine itself reports it. */
+    /** Readiness as the engine itself reports it, with details when allowed. */
     async readReadiness() {
         try {
+            const token = this.token;
             const response = await fetch(`${this.httpOrigin}/ready`, {
                 signal: AbortSignal.timeout(2500),
+                ...(token ? { headers: { Authorization: `Bearer ${token}` } } : {}),
             });
             let body = null;
             try {

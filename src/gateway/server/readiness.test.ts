@@ -330,3 +330,47 @@ describe("createReadinessChecker", () => {
     });
   });
 });
+
+describe("readiness and channels that were never set up", () => {
+  // A desktop install carries every bundled channel so its setup can run in the
+  // app. Those channels are not running, and counting them as failures made a
+  // fresh install permanently unready, which kept the app from opening at all.
+  it("stays ready when a channel has never started", () => {
+    const checker = createReadinessChecker({
+      channelManager: createManager(
+        snapshotWith({
+          whatsapp: {
+            enabled: true,
+            running: false,
+            lastStartAt: null,
+            restartPending: false,
+          },
+        }),
+      ),
+      startedAt: Date.now() - FIVE_MIN_MS,
+    });
+    const result = checker();
+    expect(result.failing).toEqual([]);
+    expect(result.ready).toBe(true);
+  });
+
+  it("still reports a channel that was running and stopped", () => {
+    const checker = createReadinessChecker({
+      channelManager: createManager(
+        snapshotWith({
+          whatsapp: {
+            enabled: true,
+            running: false,
+            lastStartAt: Date.now() - FIVE_MIN_MS,
+            lastStopAt: Date.now() - 1_000,
+            restartPending: false,
+          },
+        }),
+      ),
+      startedAt: Date.now() - FIVE_MIN_MS,
+    });
+    const result = checker();
+    expect(result.failing).toEqual(["whatsapp"]);
+    expect(result.ready).toBe(false);
+  });
+});

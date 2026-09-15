@@ -247,6 +247,7 @@ import {
   renderPreparingGate,
   renderReconnectingGate,
   renderResettingGate,
+  shouldShowConnectingGate,
   shouldShowReconnectingGate,
 } from "./views/login-gate.ts";
 import { renderMcp } from "./views/mcp.ts";
@@ -1771,6 +1772,12 @@ export function renderApp(state: AppViewState) {
   // Gate: require successful gateway connection before showing the dashboard.
   // The gateway URL confirmation overlay is always rendered so URL-param flows still work.
   if (!state.connected) {
+    // The first attempt has not answered yet: nothing is wrong and there is
+    // nothing to ask the user, so hold the quiet card instead of a login form.
+    if (shouldShowConnectingGate(state)) {
+      scheduleReconnectGateTick(requestHostUpdate);
+      return html` ${renderPreparingGate(state)} ${renderGatewayUrlConfirmation(state)} `;
+    }
     // A dropped connection that the client is already retrying (gateway
     // restart after a config save, slow cold start) shows a calm reconnecting
     // card; the login form is for problems that need the user.

@@ -4,6 +4,7 @@ import { normalizeProviderId } from "@daisyclaw/model-catalog-core/provider-id";
 import { normalizeOptionalLowercaseString } from "@daisyclaw/normalization-core/string-coerce";
 import { collectConfiguredAgentHarnessRuntimes } from "../agents/harness-runtimes.js";
 import {
+  listExplicitlyDisabledChannelIdsForConfig,
   listPotentialConfiguredChannelPresenceSignals,
   type ChannelPresenceSignalSource,
 } from "../channels/config-presence.js";
@@ -12,6 +13,7 @@ import {
   listBundledChannelIdsWithConfiguredState,
 } from "../channels/plugins/configured-state.js";
 import { getChatChannelMeta, normalizeChatChannelId } from "../channels/registry.js";
+import { shouldPreloadBundledChannelPlugins } from "../plugins/channel-plugin-preload.js";
 import { normalizePluginsConfig } from "../plugins/config-state.js";
 import { getCurrentPluginMetadataSnapshot } from "../plugins/current-plugin-metadata-snapshot.js";
 import type { PluginDiscoveryResult } from "../plugins/discovery.js";
@@ -228,7 +230,10 @@ function collectPluginIdsForConfiguredChannel(
 ): string[] {
   const normalizedChannelId = normalizeManifestChannelId(channelId);
   const builtInId = normalizeChatChannelId(normalizedChannelId);
-  const claims: Array<{ plugin: PluginManifestRecord; preferOver: readonly string[] }> = [];
+  const claims: Array<{
+    plugin: PluginManifestRecord;
+    preferOver: readonly string[];
+  }> = [];
   for (const record of registry.plugins) {
     if (
       (record.channels ?? []).some((id) => normalizeManifestChannelId(id) === normalizedChannelId)
@@ -491,7 +496,10 @@ function hasPluginAllowlistWithMaterialEntries(cfg: DaisyClawConfig): boolean {
   return Object.values(entries).some(hasMaterialPluginEntryConfig);
 }
 
-function hasConfiguredProviderModelOrHarness(cfg: DaisyClawConfig, env: NodeJS.ProcessEnv): boolean {
+function hasConfiguredProviderModelOrHarness(
+  cfg: DaisyClawConfig,
+  env: NodeJS.ProcessEnv,
+): boolean {
   if (cfg.auth?.profiles && Object.keys(cfg.auth.profiles).length > 0) {
     return true;
   }
@@ -508,7 +516,10 @@ function arePluginsGloballyDisabled(cfg: DaisyClawConfig): boolean {
   return cfg.plugins?.enabled === false;
 }
 
-function configMayNeedPluginManifestRegistry(cfg: DaisyClawConfig, env: NodeJS.ProcessEnv): boolean {
+function configMayNeedPluginManifestRegistry(
+  cfg: DaisyClawConfig,
+  env: NodeJS.ProcessEnv,
+): boolean {
   if (arePluginsGloballyDisabled(cfg)) {
     return false;
   }
@@ -551,6 +562,14 @@ export function resolvePluginAutoEnableReadiness(
 ): { mayNeedAutoEnable: boolean; configuredChannelIds: string[] } {
   if (arePluginsGloballyDisabled(cfg)) {
     return { mayNeedAutoEnable: false, configuredChannelIds: [] };
+  }
+  // Consumer builds always have work to do here: channel setup runs in the app,
+  // so channel plugins must be enabled even when the config is untouched.
+  if (shouldPreloadBundledChannelPlugins(env)) {
+    return {
+      mayNeedAutoEnable: true,
+      configuredChannelIds: collectConfiguredChannelIds(cfg, env, discovery),
+    };
   }
   if (hasPluginAllowlistWithMaterialEntries(cfg)) {
     return { mayNeedAutoEnable: true, configuredChannelIds: [] };
@@ -608,10 +627,60 @@ export function resolvePluginAutoEnableCandidateReason(
       return `${candidate.pluginId} web fetch configured`;
     case "plugin-tool-configured":
       return `${candidate.pluginId} tool configured`;
+    case "channel-setup-available":
+      return `${candidate.channelId} setup runs in the app`;
     case "setup-auto-enable":
       return candidate.reason;
   }
   throw new Error("Unsupported plugin auto-enable candidate");
+}
+
+/**
+ * Channel plugins that must be enabled so their setup can run at all.
+ *
+ * In the desktop app the dashboard is the only way to set a channel up, and the
+ * setup surface itself — WhatsApp's QR login, Telegram's token step — lives on
+ * the channel's own plugin. Requiring the channel to be configured before the
+ * plugin loads is therefore circular: the user can never reach the step that
+ * would configure it, and the gateway answers "web login provider is not
+ * available" forever. Consumer builds enable channel plugins for setup instead.
+ *
+ * This enables the plugin, not the channel: no account is started and no
+ * connection is opened until the user completes setup.
+ */
+export function resolveChannelSetupPluginAutoEnableCandidates(params: {
+  config: DaisyClawConfig;
+  env: NodeJS.ProcessEnv;
+  registry: PluginManifestRegistry;
+}): PluginAutoEnableCandidate[] {
+  if (!shouldPreloadBundledChannelPlugins(params.env)) {
+    return [];
+  }
+  const disabledChannelIds = new Set(
+    listExplicitlyDisabledChannelIdsForConfig(params.config).map(
+      (channelId) => normalizeOptionalLowercaseString(channelId) ?? channelId,
+    ),
+  );
+  const candidates: PluginAutoEnableCandidate[] = [];
+  for (const plugin of params.registry.plugins) {
+    if (plugin.channels.length === 0) {
+      continue;
+    }
+    // A channel the user switched off stays off, setup surface included.
+    const enabledChannelIds = plugin.channels.filter(
+      (channelId) =>
+        !disabledChannelIds.has(normalizeOptionalLowercaseString(channelId) ?? channelId),
+    );
+    if (enabledChannelIds.length === 0) {
+      continue;
+    }
+    candidates.push({
+      pluginId: plugin.id,
+      kind: "channel-setup-available",
+      channelId: enabledChannelIds[0] ?? plugin.channels[0] ?? plugin.id,
+    });
+  }
+  return candidates;
 }
 
 export function resolveConfiguredPluginAutoEnableCandidates(params: {
@@ -620,7 +689,13 @@ export function resolveConfiguredPluginAutoEnableCandidates(params: {
   registry: PluginManifestRegistry;
   configuredChannelIds?: readonly string[];
 }): PluginAutoEnableCandidate[] {
-  const changes: PluginAutoEnableCandidate[] = [];
+  const changes: PluginAutoEnableCandidate[] = [
+    ...resolveChannelSetupPluginAutoEnableCandidates({
+      config: params.config,
+      env: params.env,
+      registry: params.registry,
+    }),
+  ];
   for (const channelId of params.configuredChannelIds ??
     collectConfiguredChannelIds(params.config, params.env)) {
     for (const pluginId of collectPluginIdsForConfiguredChannel(channelId, params.registry)) {
@@ -816,6 +891,14 @@ function resolveAutoEnableChannelId(params: {
   entry: PluginAutoEnableCandidate;
   manifestRegistry: PluginManifestRegistry;
 }): string | null {
+  // Making a channel's setup reachable must not switch the channel on. Enabling
+  // the channel here would have the gateway start an account that has no
+  // credentials yet, which is a connection the user never asked for. This
+  // candidate enables the plugin only; the channel stays off until setup
+  // completes.
+  if (params.entry.kind === "channel-setup-available") {
+    return null;
+  }
   const builtInChannelId = normalizeChatChannelId(params.entry.pluginId);
   if (builtInChannelId) {
     return builtInChannelId;
@@ -840,7 +923,10 @@ function registerPluginEntry(
   entry: PluginAutoEnableCandidate,
   manifestRegistry: PluginManifestRegistry,
 ): DaisyClawConfig {
-  const builtInChannelId = resolveAutoEnableChannelId({ entry, manifestRegistry });
+  const builtInChannelId = resolveAutoEnableChannelId({
+    entry,
+    manifestRegistry,
+  });
   if (builtInChannelId) {
     const channels = cfg.channels as Record<string, unknown> | undefined;
     const existing = channels?.[builtInChannelId];

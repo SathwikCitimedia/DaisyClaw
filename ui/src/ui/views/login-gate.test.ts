@@ -9,8 +9,45 @@ import {
   RECONNECT_GRACE_MS,
   renderLoginGate,
   resolveLoginFailureFeedback,
+  shouldShowConnectingGate,
   shouldShowReconnectingGate,
 } from "./login-gate.ts";
+
+describe("shouldShowConnectingGate", () => {
+  // A consumer install carries its token in the dashboard URL and never logs
+  // in. Showing the login form while the first socket is still opening put an
+  // authentication screen in front of every cold start.
+  const firstPaint = {
+    connected: false,
+    disconnectedAtMs: null as number | null,
+    loginGateRequested: false,
+    lastError: null as string | null,
+    settings: { token: "tok" } as unknown as AppViewState["settings"],
+    password: "",
+  };
+
+  it("holds the quiet card while the first attempt is in flight", () => {
+    expect(shouldShowConnectingGate(firstPaint)).toBe(true);
+  });
+
+  it("steps aside once an attempt has failed, so the reconnecting card decides", () => {
+    expect(shouldShowConnectingGate({ ...firstPaint, disconnectedAtMs: 10_000 })).toBe(false);
+    expect(shouldShowConnectingGate({ ...firstPaint, lastError: "unauthorized" })).toBe(false);
+  });
+
+  it("does not hide the login form from someone who has no credentials", () => {
+    expect(
+      shouldShowConnectingGate({
+        ...firstPaint,
+        settings: { token: "" } as unknown as AppViewState["settings"],
+      }),
+    ).toBe(false);
+  });
+
+  it("respects an explicit request for the login form", () => {
+    expect(shouldShowConnectingGate({ ...firstPaint, loginGateRequested: true })).toBe(false);
+  });
+});
 
 describe("shouldShowReconnectingGate", () => {
   const base = {

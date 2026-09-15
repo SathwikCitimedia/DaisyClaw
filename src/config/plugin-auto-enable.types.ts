@@ -47,6 +47,11 @@ export type PluginAutoEnableCandidate =
     }
   | {
       pluginId: string;
+      kind: "channel-setup-available";
+      channelId: string;
+    }
+  | {
+      pluginId: string;
       kind: "setup-auto-enable";
       reason: string;
     };

@@ -91,6 +91,15 @@ internal static class NativeGatewaySupervisor
 
             if (!healthy)
             {
+                // The engine is installed but still starting. Register the
+                // record anyway: the app used to leave the registry empty here,
+                // and an empty registry made opening the dashboard a silent
+                // no-op, so a user who clicked the tray icon during a cold
+                // start got no window and no message at all. The record carries
+                // the URL and token, which are already known; the dashboard
+                // window shows its own starting screen and reloads itself once
+                // the engine answers.
+                TryRegisterGatewayRecord(dataDir, gatewayUrl, token, logger);
                 return new EnsureResult(
                     false,
                     gatewayUrl,
@@ -98,6 +107,37 @@ internal static class NativeGatewaySupervisor
                     $"The Daisy gateway did not respond on port {port}.");
             }
 
+            var record = TryRegisterGatewayRecord(dataDir, gatewayUrl, token, logger);
+            if (record is null)
+            {
+                return new EnsureResult(
+                    false,
+                    gatewayUrl,
+                    token,
+                    "The Daisy gateway is running but could not be recorded for this PC.");
+            }
+
+            return new EnsureResult(true, gatewayUrl, record.SharedGatewayToken, null);
+        }
+        catch (Exception ex)
+        {
+            return new EnsureResult(false, "ws://127.0.0.1:18789", null, ex.Message);
+        }
+    }
+
+    /// <summary>
+    /// Records this PC's gateway as the active one. Called as soon as the URL
+    /// and token are known, whether or not the engine is answering yet, because
+    /// every path that opens the dashboard needs a record to build its URL.
+    /// </summary>
+    private static GatewayRecord? TryRegisterGatewayRecord(
+        string dataDir,
+        string gatewayUrl,
+        string? token,
+        IDaisyClawLogger? logger)
+    {
+        try
+        {
             var registry = new GatewayRegistry(dataDir);
             registry.Load();
             var existing = registry.FindByUrl(gatewayUrl);
@@ -121,13 +161,24 @@ internal static class NativeGatewaySupervisor
             registry.Save();
             new DeviceIdentity(registry.GetIdentityDirectory(record.Id)).Initialize();
             logger?.Info($"[NativeGateway] active record {record.Id} -> {gatewayUrl}");
-
-            return new EnsureResult(true, gatewayUrl, record.SharedGatewayToken, null);
+            return record;
         }
         catch (Exception ex)
         {
-            return new EnsureResult(false, "ws://127.0.0.1:18789", null, ex.Message);
+            logger?.Warn($"[NativeGateway] could not record gateway {gatewayUrl}: {ex.Message}");
+            return null;
         }
+    }
+
+    /// <summary>
+    /// The gateway URL this PC's engine is configured to serve, whether or not
+    /// it is answering yet. Callers that must open a window use this so a cold
+    /// start never leaves the user with nothing.
+    /// </summary>
+    internal static (string Url, string? Token)? TryResolveConfiguredGateway()
+    {
+        var (port, token, found) = ReadNativeGatewayConfig();
+        return found ? ($"ws://127.0.0.1:{port}", token) : null;
     }
 
     /// <summary>
@@ -242,20 +293,43 @@ internal static class NativeGatewaySupervisor
         });
     }
 
-    /// <summary>HTTP GET against the gateway's HTTP endpoint; any response counts.</summary>
+    /// <summary>
+    /// True when the gateway is ready to be used, not merely listening.
+    ///
+    /// The engine binds its HTTP port several seconds before it finishes
+    /// loading plugins, and it refuses connections during that window. Treating
+    /// any HTTP answer as healthy therefore opened the dashboard too early, and
+    /// the user met a login form until the engine caught up. The readiness
+    /// endpoint reports that window honestly, so it is what we ask.
+    /// </summary>
     internal static async Task<bool> ProbeHealthAsync(int port)
     {
         try
         {
             using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
-            using var response = await client.GetAsync(new Uri($"http://127.0.0.1:{port}/"));
-            return true;
+            using var response = await client.GetAsync(new Uri($"http://127.0.0.1:{port}/ready"));
+            return InterpretReadinessResponse((int)response.StatusCode);
         }
         catch
         {
             return false;
         }
     }
+
+    /// <summary>
+    /// Maps a readiness status code to "usable". Kept separate so the rule is
+    /// covered by tests: 200 is ready, 503 is the still-starting window, and a
+    /// 404 means an older engine without the endpoint, where the fact that
+    /// something answered is the best signal available.
+    /// </summary>
+    internal static bool InterpretReadinessResponse(int statusCode) =>
+        statusCode switch
+        {
+            200 => true,
+            404 => true,
+            405 => true,
+            _ => false,
+        };
 
     /// <summary>
     /// Path of the bundled engine's service script (<c>engine\\Manage-DaisyGateway.ps1</c>

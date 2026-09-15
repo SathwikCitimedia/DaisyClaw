@@ -38,7 +38,13 @@ param(
     # node_modules). Defaults to .\engine-<arch>. Pass -BuildEngine to build it first.
     [string]$EngineDir,
 
-    [switch]$BuildEngine
+    [switch]$BuildEngine,
+
+    # Skips the consumer smoke suite. The suite runs the shipped engine through
+    # the first-run paths a customer takes (channel setup, provider setup) and
+    # is the reason those paths stopped regressing; skip it only for a build
+    # nobody will install.
+    [switch]$SkipConsumerSmoke
 )
 
 Set-StrictMode -Version Latest
@@ -152,6 +158,36 @@ function Assert-PayloadReady {
     return $publishDir
 }
 
+function Invoke-ConsumerSmoke {
+    param([Parameter(Mandatory = $true)][string]$EngineDir)
+
+    if ($SkipConsumerSmoke) {
+        Write-Host "Consumer smoke suite skipped (-SkipConsumerSmoke)." -ForegroundColor Yellow
+        return
+    }
+
+    Write-Step "Consumer smoke suite"
+    # Runs the shipped engine through the paths a new customer takes on their
+    # first launch. Every consumer bug this project shipped twice would have
+    # been caught here, so an installer is not produced unless it passes.
+    $runner = Join-Path $PSScriptRoot "consumer-smoke\run.mjs"
+    if (-not (Test-Path -LiteralPath $runner)) {
+        throw "Consumer smoke runner missing at $runner."
+    }
+    Push-Location (Join-Path $repoRoot "..\..")
+    try {
+        & node --import tsx $runner --engine $EngineDir
+        $smokeExit = $LASTEXITCODE
+    }
+    finally {
+        Pop-Location
+    }
+    if ($smokeExit -ne 0) {
+        throw "Consumer smoke suite failed (exit $smokeExit). The installer was not built. Re-run it on its own with: node --import tsx apps/windows/scripts/consumer-smoke/run.mjs"
+    }
+    Write-Host "Consumer smoke suite passed." -ForegroundColor Green
+}
+
 function Invoke-InnoCompiler {
     param(
         [string]$InnoCompiler,
@@ -223,6 +259,7 @@ foreach ($architecture in $architectures) {
     if (-not (Test-Path -LiteralPath (Join-Path $engine "node.exe"))) {
         throw "Engine bundle missing at $engine. Run .\scripts\Build-EngineBundle.ps1 (or pass -BuildEngine)."
     }
+    Invoke-ConsumerSmoke -EngineDir (Resolve-Path -LiteralPath $engine).Path
     Invoke-InnoCompiler -InnoCompiler $iscc -Architecture $architecture -PublishDir $payload -InstallerVersion $Version -EngineDir (Resolve-Path -LiteralPath $engine).Path
 }
 

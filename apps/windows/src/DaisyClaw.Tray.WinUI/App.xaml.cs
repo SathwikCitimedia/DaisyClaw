@@ -4040,17 +4040,37 @@ public partial class App : Application, DaisyClawTray.Services.IAppCommands, IPe
             // the product's only UI, so build the URL straight from the active
             // record rather than diverting the user to the developer Hub.
             var record = _gatewayRegistry?.GetActive();
-            if (record is null || string.IsNullOrWhiteSpace(record.Url))
+            if (record is not null && !string.IsNullOrWhiteSpace(record.Url))
             {
-                Logger.Warn("[Dashboard] No active gateway record; cannot open dashboard yet.");
+                url = GatewayDashboardUrlBuilder.Build(
+                    record.Url,
+                    path,
+                    record.SharedGatewayToken,
+                    appendSharedGatewayToken: !string.IsNullOrWhiteSpace(record.SharedGatewayToken));
+            }
+            else if (NativeGatewaySupervisor.TryResolveConfiguredGateway() is { } configured)
+            {
+                // No record yet, which happens on a cold start before the engine
+                // answers. The engine's own config already says where it will
+                // listen, so open the window on that: it shows a starting screen
+                // and reloads itself when the engine comes up. Returning here
+                // instead is what made clicking the app do nothing at all.
+                Logger.Info("[Dashboard] No gateway record yet; opening on the configured engine address.");
+                url = GatewayDashboardUrlBuilder.Build(
+                    configured.Url,
+                    path,
+                    configured.Token,
+                    appendSharedGatewayToken: !string.IsNullOrWhiteSpace(configured.Token));
+            }
+            else
+            {
+                // Nothing on disk to open. Say so where the user can see it.
+                Logger.Warn("[Dashboard] No gateway configuration found; cannot open the dashboard.");
+                _toastService?.ShowToast(new ToastContentBuilder()
+                    .AddText("Daisy could not start")
+                    .AddText("Daisy's engine is not set up on this PC yet. Reinstall Daisy Assistant, then open it again."));
                 return;
             }
-
-            url = GatewayDashboardUrlBuilder.Build(
-                record.Url,
-                path,
-                record.SharedGatewayToken,
-                appendSharedGatewayToken: !string.IsNullOrWhiteSpace(record.SharedGatewayToken));
         }
 
         try

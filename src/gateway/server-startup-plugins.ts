@@ -230,6 +230,37 @@ export function warnUnregisteredConfiguredMemoryEmbeddingProviders(params: {
   }
 }
 
+/**
+ * Reports channel plugins that were meant to carry a setup surface but did not
+ * load. The dashboard offers a Configure button for every bundled channel, so a
+ * channel missing here is a button that dead-ends with "web login provider is
+ * not available". That failure was silent in the engine log twice; it is loud
+ * now, and the consumer smoke suite fails on it before a build ships.
+ */
+export function reportUnloadedChannelSetupPlugins(params: {
+  preloadChannelPluginIds: readonly string[];
+  pluginRegistry: Pick<PluginRegistry, "plugins">;
+  log: Pick<GatewayPluginBootstrapLog, "error">;
+}): string[] {
+  if (params.preloadChannelPluginIds.length === 0) {
+    return [];
+  }
+  const loadedPluginIds = new Set(
+    params.pluginRegistry.plugins
+      .filter((plugin) => plugin.status === "loaded")
+      .map((plugin) => plugin.id),
+  );
+  const missing = params.preloadChannelPluginIds.filter(
+    (pluginId) => !loadedPluginIds.has(pluginId),
+  );
+  if (missing.length > 0) {
+    params.log.error(
+      `channel setup is unavailable for: ${missing.join(", ")}. These plugins were selected for setup but did not load, so their setup steps (QR login, token entry) will fail in the app.`,
+    );
+  }
+  return missing;
+}
+
 /** Loads startup plugin runtimes through the deferred bootstrap boundary. */
 export async function loadGatewayStartupPluginRuntime(params: {
   cfg: DaisyClawConfig;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { classifyProviderTestFailure } from "./models-test.js";
+import { classifyLocalModelResolutionFailure, classifyProviderTestFailure } from "./models-test.js";
 
 describe("classifyProviderTestFailure", () => {
   it("names a rejected key", () => {
@@ -65,5 +65,40 @@ describe("classifyProviderTestFailure", () => {
     });
     expect(result.reason).toBe("unknown");
     expect(result.ok).toBe(false);
+  });
+});
+
+describe("classifyLocalModelResolutionFailure", () => {
+  // A model id we do not have in the catalog fails here, before any request is
+  // made. Reporting that as "your account cannot use it" told users their
+  // OpenAI plan was at fault when we had never contacted OpenAI.
+  it("does not blame the user's account for a model Daisy does not know", () => {
+    const result = classifyLocalModelResolutionFailure({
+      message: "Unknown model: openai/gpt-4o",
+      provider: "openai",
+      model: "gpt-4o",
+    });
+    expect(result.reason).toBe("unknown_model");
+    expect(result.message).toContain("gpt-4o");
+    expect(result.message).not.toMatch(/account/i);
+    expect(result.status).toBeUndefined();
+  });
+
+  it("still reports a missing key as a missing key", () => {
+    const result = classifyLocalModelResolutionFailure({
+      message: "No API key configured for openai",
+      provider: "openai",
+    });
+    expect(result.reason).toBe("no_key");
+  });
+
+  it("keeps an unrecognised local failure free of account claims", () => {
+    const result = classifyLocalModelResolutionFailure({
+      message: "workspace is not writable",
+      provider: "openai",
+      model: "gpt-5.4",
+    });
+    expect(result.ok).toBe(false);
+    expect(result.message).not.toMatch(/account/i);
   });
 });

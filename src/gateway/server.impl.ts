@@ -1631,6 +1631,12 @@ export async function startGatewayServer(
               replaceAttachedPluginRuntime(loaded);
               startupPendingReason = "startup-sidecars";
               await refreshAttachedGatewayDiscovery(loaded.pluginRegistry);
+              const { reportUnloadedChannelSetupPlugins } = await loadStartupPluginsModule();
+              reportUnloadedChannelSetupPlugins({
+                preloadChannelPluginIds,
+                pluginRegistry: loaded.pluginRegistry,
+                log,
+              });
             },
             getCronService: () =>
               runtimeState?.cronState.cron as PluginHookGatewayCronService | undefined,

@@ -2,6 +2,7 @@ import { noteConfigWriteRestart, type ConfigWriteResponse } from "../config-rest
 // Control UI controller manages models gateway state.
 import type { GatewayBrowserClient } from "../gateway.ts";
 import type { ModelCatalogEntry } from "../types.ts";
+import type { PickedProviderModel } from "./model-pick.ts";
 
 const MODEL_CATALOG_CACHE_TTL_MS = 60_000;
 
@@ -275,6 +276,65 @@ export async function testProviderConnection(
   } catch {
     return null;
   }
+}
+
+/** How many models to try before giving up on a provider. */
+const MAX_MODEL_VERIFY_ATTEMPTS = 3;
+
+/** Verdicts that say "this model", not "this account". Worth trying another. */
+const MODEL_SPECIFIC_TEST_REASONS = new Set(["model_not_found", "unknown_model"]);
+
+export type VerifiedProviderModel = {
+  /** The model that answered, when one did. */
+  model: PickedProviderModel | null;
+  /** The verdict to show: the success, or the failure worth reporting. */
+  verdict: ProviderTestResult | null;
+  /** Models tried before this verdict, for telling the user what happened. */
+  attempted: PickedProviderModel[];
+};
+
+/**
+ * Finds a model of this provider that actually answers.
+ *
+ * Accounts differ in which models they may call, so the first model in our
+ * catalog is a guess, not a fact. Treating that guess as the account's only
+ * option is what told users their key did not work when a different model would
+ * have worked fine. A verdict about the key, the credit or the network applies
+ * to every model, so it stops the walk immediately.
+ */
+export async function verifyProviderModelCandidates(params: {
+  client: GatewayBrowserClient | null;
+  providerId: string;
+  candidates: readonly PickedProviderModel[];
+  apiKey?: string;
+  maxAttempts?: number;
+}): Promise<VerifiedProviderModel> {
+  const attempted: PickedProviderModel[] = [];
+  let lastVerdict: ProviderTestResult | null = null;
+  const limit = Math.max(1, params.maxAttempts ?? MAX_MODEL_VERIFY_ATTEMPTS);
+  // With no catalog to walk, let the gateway resolve the provider's own default.
+  const candidates = params.candidates.length > 0 ? params.candidates.slice(0, limit) : [null];
+  for (const candidate of candidates) {
+    if (candidate) {
+      attempted.push(candidate);
+    }
+    const verdict = await testProviderConnection(params.client, {
+      providerId: params.providerId,
+      ...(candidate ? { modelId: candidate.modelId } : {}),
+      ...(params.apiKey ? { apiKey: params.apiKey } : {}),
+    });
+    lastVerdict = verdict;
+    if (!verdict) {
+      return { model: null, verdict: null, attempted };
+    }
+    if (verdict.ok) {
+      return { model: candidate, verdict, attempted };
+    }
+    if (!MODEL_SPECIFIC_TEST_REASONS.has(verdict.reason)) {
+      return { model: null, verdict, attempted };
+    }
+  }
+  return { model: null, verdict: lastVerdict, attempted };
 }
 
 /** Most models a probed server may add to the list next to the one the user typed. */

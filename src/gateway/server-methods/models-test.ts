@@ -51,6 +51,50 @@ const MODEL_NOT_FOUND_PATTERN =
 const MISSING_KEY_PATTERN =
   /missing api key|no api key|api key (?:is )?(?:required|not set|missing)|no credentials|not authenticated|set .*_api_key/i;
 
+/**
+ * Turns a failure that happened before any request left this machine into a
+ * verdict.
+ *
+ * This exists because the provider-shaped classifier reads "Unknown model:
+ * openai/gpt-4o" — our own words for "that id is not in our catalog" — as the
+ * provider saying the account has no access, and told users their OpenAI plan
+ * was the problem when nothing had been sent to OpenAI at all. A local failure
+ * must never make a claim about the user's account.
+ */
+export function classifyLocalModelResolutionFailure(params: {
+  message: string;
+  provider: string;
+  model?: string;
+}): ProviderTestResult {
+  const raw = params.message.trim();
+  const base = {
+    ok: false as const,
+    provider: params.provider,
+    ...(params.model ? { model: params.model } : {}),
+  };
+  if (MISSING_KEY_PATTERN.test(raw)) {
+    return {
+      ...base,
+      reason: "no_key",
+      message: `No API key is saved for ${params.provider}. Paste the key and connect again.`,
+    };
+  }
+  if (MODEL_NOT_FOUND_PATTERN.test(raw)) {
+    return {
+      ...base,
+      reason: "unknown_model",
+      message: params.model
+        ? `Daisy does not know a model called "${params.model}" for ${params.provider}. Pick one from the list.`
+        : `Daisy could not work out which ${params.provider} model to use. Pick one from the list.`,
+    };
+  }
+  return {
+    ...base,
+    reason: "unknown_model",
+    message: `Daisy could not set up ${params.model ? `"${params.model}"` : "a model"} for ${params.provider}. Pick a different model.`,
+  };
+}
+
 function extractHttpStatus(message: string): number | undefined {
   const explicit = message.match(/\b(?:http\s*)?(4\d{2}|5\d{2})\b/);
   if (explicit?.[1]) {
@@ -219,7 +263,9 @@ export async function testModelProvider(params: {
     skipAgentDiscovery: true,
   });
   if (!("model" in prepared)) {
-    return classifyProviderTestFailure({
+    // Nothing has been sent anywhere yet, so this is ours to explain, not the
+    // provider's to be blamed for.
+    return classifyLocalModelResolutionFailure({
       message: prepared.error,
       provider: providerId,
       model: modelId,

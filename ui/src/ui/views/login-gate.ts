@@ -314,6 +314,32 @@ export function shouldShowReconnectingGate(
   return failure === null || failure.kind === "network";
 }
 
+/**
+ * True while the very first connection attempt is still in flight.
+ *
+ * The desktop app opens the dashboard as soon as the engine is up, and the page
+ * renders before its socket has finished connecting. With nothing to say yet,
+ * the app used to render the login form for those few seconds, so a consumer
+ * who never has to log in was asked to, on every cold start. There is nothing
+ * for the user to do here, so show the same quiet card the app uses elsewhere
+ * while it waits. A failed attempt sets `disconnectedAtMs`, which hands the
+ * decision on to the reconnecting gate and, eventually, to the login form.
+ */
+export function shouldShowConnectingGate(
+  state: Pick<
+    AppViewState,
+    "connected" | "disconnectedAtMs" | "loginGateRequested" | "lastError" | "settings" | "password"
+  >,
+): boolean {
+  if (state.connected || state.loginGateRequested) {
+    return false;
+  }
+  if (state.disconnectedAtMs != null || state.lastError) {
+    return false;
+  }
+  return Boolean(state.settings.token.trim() || state.password.trim());
+}
+
 export function renderReconnectingGate(state: AppViewState, nowMs: number = Date.now()) {
   const basePath = normalizeBasePath(state.basePath ?? "");
   const faviconSrc = agentLogoUrl(basePath);

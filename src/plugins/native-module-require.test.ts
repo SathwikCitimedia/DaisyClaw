@@ -7,6 +7,7 @@ import { pathToFileURL } from "node:url";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import {
   clearNativeRequireJavaScriptModuleCache,
+  resolveNativeRequireTarget,
   isJavaScriptModulePath,
   tryNativeRequireJavaScriptModule,
 } from "./native-module-require.js";
@@ -229,5 +230,54 @@ describe("isJavaScriptModulePath", () => {
     expect(isJavaScriptModulePath("/plugin/index.mjs")).toBe(true);
     expect(isJavaScriptModulePath("/plugin/index.cjs")).toBe(true);
     expect(isJavaScriptModulePath("/plugin/index.ts")).toBe(false);
+  });
+});
+
+describe("file:// URL targets take the native path", () => {
+  // Plugin loading resolves entries to file:// URLs. require() only understands
+  // filesystem paths, so a URL used to fail instantly with MODULE_NOT_FOUND and
+  // every bundled plugin fell through to the source-transform loader — about
+  // 7 seconds of every start on the shipped Windows engine.
+  it("loads a module given as a file URL", () => {
+    const dir = makeTempDir();
+    const modulePath = path.join(dir, "plugin.cjs");
+    fs.writeFileSync(modulePath, 'module.exports = { marker: "from-url" };\n', "utf8");
+
+    const result = tryNativeRequireJavaScriptModule(pathToFileURL(modulePath).href, {
+      allowWindows: true,
+      fallbackOnMissingDependency: true,
+    });
+
+    expect(result).toEqual({ ok: true, moduleExport: { marker: "from-url" } });
+  });
+
+  it("recognizes JavaScript extensions through a file URL", () => {
+    expect(isJavaScriptModulePath(pathToFileURL("D:/plugins/index.js").href)).toBe(true);
+    expect(isJavaScriptModulePath(pathToFileURL("D:/plugins/index.cjs").href)).toBe(true);
+    expect(isJavaScriptModulePath(pathToFileURL("D:/plugins/readme.md").href)).toBe(false);
+  });
+
+  it("leaves plain paths and bare specifiers untouched", () => {
+    expect(resolveNativeRequireTarget("D:/plugins/index.js")).toBe("D:/plugins/index.js");
+    expect(resolveNativeRequireTarget("daisyclaw/plugin-sdk/llm")).toBe("daisyclaw/plugin-sdk/llm");
+    // A malformed URL must not throw; the caller's normal failure path runs.
+    expect(resolveNativeRequireTarget("file://")).toBe("file://");
+  });
+
+  it("still declines a file URL that needs the source transform", () => {
+    const dir = makeTempDir();
+    const modulePath = path.join(dir, "plugin.mjs");
+    fs.writeFileSync(
+      modulePath,
+      'await Promise.resolve();\nexport const marker = "esm";\n',
+      "utf8",
+    );
+
+    expect(
+      tryNativeRequireJavaScriptModule(pathToFileURL(modulePath).href, {
+        allowWindows: true,
+        fallbackOnMissingDependency: true,
+      }),
+    ).toEqual({ ok: false });
   });
 });

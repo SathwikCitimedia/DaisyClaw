@@ -3,7 +3,7 @@ import fs from "node:fs";
 import { createRequire } from "node:module";
 import Module from "node:module";
 import path from "node:path";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const nodeRequire = createRequire(import.meta.url);
 type ResolveFilename = (
@@ -28,9 +28,34 @@ const moduleWithResolver = Module as typeof Module & {
   }) => { deregister: () => void };
 };
 
+/**
+ * Local filesystem path for a module specifier, or the specifier unchanged.
+ *
+ * Plugin loading hands this module `file://` URLs (that is what
+ * `import.meta.url`-relative resolution produces). `require()` only understands
+ * filesystem paths and bare specifiers, so a URL failed instantly with
+ * MODULE_NOT_FOUND and every bundled plugin fell through to the source-transform
+ * loader — the very path the caller uses this function to avoid. On the shipped
+ * Windows engine that cost about 7 seconds of every start for plugin code that
+ * was already plain compiled JavaScript.
+ */
+export function resolveNativeRequireTarget(modulePath: string): string {
+  if (!/^file:\/\//i.test(modulePath)) {
+    return modulePath;
+  }
+  try {
+    return fileURLToPath(modulePath);
+  } catch {
+    // Malformed URL: leave it alone and let the caller's normal failure path run.
+    return modulePath;
+  }
+}
+
 /** True for file extensions Node can load through the native JS module loader. */
 export function isJavaScriptModulePath(modulePath: string): boolean {
-  return [".js", ".mjs", ".cjs"].includes(path.extname(modulePath).toLowerCase());
+  return [".js", ".mjs", ".cjs"].includes(
+    path.extname(resolveNativeRequireTarget(modulePath)).toLowerCase(),
+  );
 }
 
 function isMissingTargetModuleError(
@@ -73,13 +98,14 @@ export function tryNativeRequireJavaScriptModule(
   if (!isJavaScriptModulePath(modulePath)) {
     return { ok: false };
   }
+  const target = resolveNativeRequireTarget(modulePath);
   try {
-    return { ok: true, moduleExport: requireWithOptionalAliases(modulePath, options.aliasMap) };
+    return { ok: true, moduleExport: requireWithOptionalAliases(target, options.aliasMap) };
   } catch (error) {
     const code =
       error && typeof error === "object" ? (error as { code?: unknown }).code : undefined;
     if (
-      isSourceTransformFallbackError(error, modulePath) ||
+      isSourceTransformFallbackError(error, target) ||
       options.fallbackOnNativeError ||
       (options.fallbackOnMissingDependency === true &&
         (code === "MODULE_NOT_FOUND" || code === "ERR_MODULE_NOT_FOUND"))
@@ -99,7 +125,7 @@ export function clearNativeRequireJavaScriptModuleCache(
     return;
   }
   try {
-    const resolved = nodeRequire.resolve(modulePath);
+    const resolved = nodeRequire.resolve(resolveNativeRequireTarget(modulePath));
     clearRequireCacheSubtree(
       resolved,
       resolveRequireCachePath(options.dependencyRoot ?? path.dirname(resolved)),

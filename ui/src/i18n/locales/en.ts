@@ -1189,6 +1189,24 @@ export const en: TranslationMap = {
       summary: "Erasing your data and starting fresh. The setup guide opens when it's done.",
       slow: "Still resetting. This can take a minute on a slow disk.",
     },
+    consumer: {
+      "sign-in": {
+        title: "Daisy couldn't sign in",
+        summary:
+          "Daisy is repairing its connection. If this screen stays for more than a minute, close Daisy from the tray icon and open it again.",
+      },
+      offline: {
+        title: "Daisy isn't answering",
+        summary: "Daisy's engine may still be starting. Give it a moment, then try again.",
+      },
+      pairing: {
+        title: "Finishing sign-in…",
+        summary: "Daisy is approving this window. This only takes a moment.",
+      },
+      retry: "Try again",
+      showDetails: "Show details",
+      hideDetails: "Hide details",
+    },
     subtitle: "Gateway Dashboard",
     passwordPlaceholder: "optional",
     showToken: "Show token",
@@ -1287,6 +1305,13 @@ export const en: TranslationMap = {
     },
   },
   chat: {
+    inlineEdit: {
+      label: "Edit your message",
+      hint: "Enter to send · Shift+Enter for a new line",
+      saveAndSend: "Save and send",
+      updating: "Updating…",
+      failed: "Couldn't update this message.",
+    },
     disconnected: "Disconnected from gateway.",
     refreshTitle: "Refresh chat data",
     settings: "Chat settings",
@@ -1352,6 +1377,7 @@ export const en: TranslationMap = {
       title: "Daisy needs an AI brain before she can chat",
       body: "Pick a provider and paste your key, or point Daisy at your own server. Everything else already works.",
       action: "Add AI brain",
+      chip: "Add an AI brain",
     },
     composer: {
       placeholder: "Message {name} (Enter to send)",

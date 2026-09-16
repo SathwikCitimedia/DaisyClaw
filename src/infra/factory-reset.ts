@@ -28,6 +28,20 @@ import { resolveRequiredHomeDir } from "./home-dir.js";
 
 export const FACTORY_RESET_MARKER_FILENAME = "factory-reset-pending.json";
 export const FACTORY_RESET_CONFIRM_PHRASE = "erase-everything";
+/** Where the last reset's outcome (including anything it could not remove) is kept. */
+export const FACTORY_RESET_RESULT_FILENAME = "factory-reset-result.json";
+
+/** Persisted outcome of the last applied reset, read back by `system.factoryResetStatus`. */
+export type FactoryResetResultRecord = {
+  kind: "factory-reset-result";
+  appliedAt: string;
+  requestedAt: string;
+  removed: number;
+  /** Paths still on disk after the reset and its retries. Empty means a clean reset. */
+  skipped: Array<{ path: string; error: string }>;
+  /** How many later starts have retried the leftovers. */
+  retries: number;
+};
 
 /** A marker older than this is ignored (and removed) instead of wiping data. */
 const FACTORY_RESET_MARKER_TTL_MS = 30 * 60_000;
@@ -230,14 +244,159 @@ function safeUnlink(target: string): void {
   }
 }
 
-function removeWithRetry(target: string, outcome: FactoryResetOutcome): void {
+/**
+ * Entries that hold files other code keeps open (the shared SQLite store)
+ * get a much longer retry budget: on Windows a handle that was just closed
+ * can take a moment to release the file, and this directory is exactly the
+ * one the Sept 15 laptop reset left behind.
+ */
+const STUBBORN_STATE_ENTRIES: ReadonlySet<string> = new Set(["state"]);
+
+function removeWithRetry(
+  target: string,
+  outcome: Pick<FactoryResetOutcome, "removed" | "skipped">,
+  opts?: { stubborn?: boolean },
+): boolean {
   try {
-    fs.rmSync(target, { recursive: true, force: true, maxRetries: 8, retryDelay: 250 });
+    fs.rmSync(target, {
+      recursive: true,
+      force: true,
+      maxRetries: opts?.stubborn ? 20 : 8,
+      retryDelay: opts?.stubborn ? 500 : 250,
+    });
     outcome.removed.push(target);
+    return true;
   } catch (err) {
     // Windows keeps the gateway's own log file open; skipping it is fine.
     outcome.skipped.push({ path: target, error: err instanceof Error ? err.message : String(err) });
+    return false;
   }
+}
+
+/**
+ * In-process restarts keep this process alive, and with it every file handle
+ * the previous gateway instance opened. The shared state database is the one
+ * that matters: while it is open, `state/daisyclaw.sqlite` cannot be deleted
+ * on Windows (EPERM), and the reset reports "skipped 1" with the old store
+ * still there. Close it before touching the disk.
+ */
+async function closeHandlesHeldAcrossRestart(log?: FactoryResetLogger): Promise<void> {
+  try {
+    const { closeDaisyClawStateDatabase, isDaisyClawStateDatabaseOpen } =
+      await import("../state/daisyclaw-state-db.js");
+    if (isDaisyClawStateDatabaseOpen()) {
+      closeDaisyClawStateDatabase();
+      log?.info("factory reset: closed the shared state database before erasing");
+    }
+  } catch (err) {
+    log?.warn(
+      `factory reset: could not close the shared state database: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+}
+
+function resolveResultPath(env: NodeJS.ProcessEnv): string {
+  return path.join(resolveStateDir(env), FACTORY_RESET_RESULT_FILENAME);
+}
+
+function writeFactoryResetResultSync(
+  env: NodeJS.ProcessEnv,
+  record: FactoryResetResultRecord,
+): void {
+  try {
+    const target = resolveResultPath(env);
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+    fs.writeFileSync(target, `${JSON.stringify(record, null, 2)}\n`, { mode: 0o600 });
+  } catch {
+    // Diagnostics only; never fail the reset over it.
+  }
+}
+
+/** The last reset's outcome, or null when no reset has been applied on this install. */
+export function readFactoryResetResultSync(
+  env: NodeJS.ProcessEnv = process.env,
+): FactoryResetResultRecord | null {
+  let raw: string;
+  try {
+    raw = fs.readFileSync(resolveResultPath(env), "utf8");
+  } catch {
+    return null;
+  }
+  try {
+    const parsed = JSON.parse(raw) as Partial<FactoryResetResultRecord> | null;
+    if (!parsed || parsed.kind !== "factory-reset-result") {
+      return null;
+    }
+    return {
+      kind: "factory-reset-result",
+      appliedAt: typeof parsed.appliedAt === "string" ? parsed.appliedAt : "",
+      requestedAt: typeof parsed.requestedAt === "string" ? parsed.requestedAt : "",
+      removed: typeof parsed.removed === "number" ? parsed.removed : 0,
+      skipped: Array.isArray(parsed.skipped)
+        ? parsed.skipped.filter(
+            (entry): entry is { path: string; error: string } =>
+              typeof entry?.path === "string" && typeof entry?.error === "string",
+          )
+        : [],
+      retries: typeof parsed.retries === "number" ? parsed.retries : 0,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Every gateway start: if the last reset left something behind, try again now
+ * that whatever held it is gone. Keeps the result honest so the app can tell
+ * the user when the reset is finally complete.
+ */
+export async function retryFactoryResetLeftovers(params?: {
+  env?: NodeJS.ProcessEnv;
+  log?: FactoryResetLogger;
+}): Promise<FactoryResetResultRecord | null> {
+  const env = params?.env ?? process.env;
+  const record = readFactoryResetResultSync(env);
+  if (!record || record.skipped.length === 0) {
+    return record;
+  }
+  await closeHandlesHeldAcrossRestart(params?.log);
+  const stateDir = resolveStateDir(env);
+  const home = path.resolve(resolveRequiredHomeDir(env, os.homedir));
+  const progress = {
+    removed: [] as string[],
+    skipped: [] as Array<{ path: string; error: string }>,
+  };
+  for (const leftover of record.skipped) {
+    const resolved = path.resolve(leftover.path);
+    if (!isInside(stateDir, resolved) && !isInside(home, resolved)) {
+      // Never delete outside the same fence the reset itself uses.
+      continue;
+    }
+    if (!fs.existsSync(resolved)) {
+      progress.removed.push(resolved);
+      continue;
+    }
+    removeWithRetry(resolved, progress, {
+      stubborn: STUBBORN_STATE_ENTRIES.has(path.basename(resolved)),
+    });
+  }
+  const next: FactoryResetResultRecord = {
+    ...record,
+    removed: record.removed + progress.removed.length,
+    skipped: progress.skipped,
+    retries: record.retries + 1,
+  };
+  writeFactoryResetResultSync(env, next);
+  if (progress.removed.length > 0) {
+    params?.log?.info(
+      `factory reset: removed ${progress.removed.length} leftover entr${progress.removed.length === 1 ? "y" : "ies"} from the last reset` +
+        (next.skipped.length > 0 ? `; ${next.skipped.length} still remain` : ""),
+    );
+  }
+  for (const skipped of next.skipped) {
+    params?.log?.warn(`factory reset: leftover still present ${skipped.path}: ${skipped.error}`);
+  }
+  return next;
 }
 
 /** Builds the fresh-install config, carrying over only the preserved gateway plumbing. */
@@ -297,6 +456,8 @@ export async function applyPendingFactoryReset(params?: {
     requestedAt: marker.requestedAt,
   };
 
+  await closeHandlesHeldAcrossRestart(log);
+
   let entries: string[] = [];
   try {
     entries = fs.readdirSync(stateDir);
@@ -309,7 +470,9 @@ export async function applyPendingFactoryReset(params?: {
     if (FACTORY_RESET_PRESERVED_ENTRIES.has(entry)) {
       continue;
     }
-    removeWithRetry(path.join(stateDir, entry), outcome);
+    removeWithRetry(path.join(stateDir, entry), outcome, {
+      stubborn: STUBBORN_STATE_ENTRIES.has(entry),
+    });
   }
   const home = path.resolve(resolveRequiredHomeDir(env, os.homedir));
   for (const workspace of marker.workspaces) {
@@ -356,6 +519,14 @@ export async function applyPendingFactoryReset(params?: {
   for (const skipped of outcome.skipped) {
     log?.warn(`factory reset: could not remove ${skipped.path}: ${skipped.error}`);
   }
+  writeFactoryResetResultSync(env, {
+    kind: "factory-reset-result",
+    appliedAt: new Date().toISOString(),
+    requestedAt: new Date(marker.requestedAt).toISOString(),
+    removed: outcome.removed.length,
+    skipped: outcome.skipped,
+    retries: 0,
+  });
   try {
     fs.mkdirSync(path.join(stateDir, "logs"), { recursive: true });
     fs.appendFileSync(

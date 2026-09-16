@@ -137,9 +137,27 @@ const toOptionString = (value: unknown): string | undefined => {
  */
 async function applyPendingFactoryResetForGateway(): Promise<boolean> {
   try {
-    const { applyPendingFactoryReset } = await import("../../infra/factory-reset.js");
+    const { applyPendingFactoryReset, retryFactoryResetLeftovers } =
+      await import("../../infra/factory-reset.js");
     const outcome = await applyPendingFactoryReset({ log: gatewayLog });
-    return outcome !== null;
+    if (outcome === null) {
+      // No reset pending: finish what an earlier reset could not remove while
+      // the previous gateway instance still held the files.
+      await retryFactoryResetLeftovers({ log: gatewayLog });
+      return false;
+    }
+    // The reset wiped the workspace; give the fresh install its files back so
+    // the dashboard never lists them as missing.
+    try {
+      const [{ loadConfig }, { ensureDefaultAgentWorkspaceFiles }] = await Promise.all([
+        import("../../config/config.js"),
+        import("../../gateway/ensure-default-workspace.js"),
+      ]);
+      await ensureDefaultAgentWorkspaceFiles({ cfg: loadConfig(), log: gatewayLog });
+    } catch (err) {
+      gatewayLog.warn(`workspace setup after factory reset failed: ${formatErrorMessage(err)}`);
+    }
+    return true;
   } catch (err) {
     gatewayLog.error(`factory reset failed: ${formatErrorMessage(err)}`);
     return false;
@@ -581,6 +599,13 @@ export async function runGatewayCommand(opts: GatewayRunOpts) {
   gatewayLog.info("loading configuration…");
   const { cfg, snapshot, startupConfigSnapshotRead } = await readGatewayStartupConfig({
     startupTrace,
+  });
+  // Consumer builds: make sure the default agent's workspace files exist before
+  // the dashboard lists them, instead of waiting for the first agent run.
+  await startupTrace.measure("cli.default-workspace", async () => {
+    const { ensureDefaultAgentWorkspaceFiles } =
+      await import("../../gateway/ensure-default-workspace.js");
+    await ensureDefaultAgentWorkspaceFiles({ cfg, log: gatewayLog });
   });
   void maybeLogPendingControlUiBuild(cfg).catch((err: unknown) => {
     gatewayLog.warn(`Control UI asset check failed: ${String(err)}`);

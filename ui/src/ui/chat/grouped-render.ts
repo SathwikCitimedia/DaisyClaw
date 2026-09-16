@@ -3,6 +3,7 @@ import { html, nothing, type TemplateResult } from "lit";
 import { ref } from "lit/directives/ref.js";
 import { unsafeHTML } from "lit/directives/unsafe-html.js";
 import { until } from "lit/directives/until.js";
+import { t } from "../../i18n/index.ts";
 import { getSafeLocalStorage } from "../../local-storage.ts";
 import type { AssistantIdentity } from "../assistant-identity.ts";
 import type { EmbedSandboxMode } from "../embed-sandbox.ts";
@@ -444,6 +445,12 @@ export function renderMessageGroup(
     onQuote?: (text: string) => void;
     /** Key of the user group currently being edited in place (ChatGPT style). */
     editingGroupKey?: string | null;
+    /** Text to show in the editor instead of the message (a failed submit hands it back). */
+    editingDraft?: string | null;
+    /** Why the last submit failed; rendered inside the editor. */
+    editingError?: string | null;
+    /** Key of the user group whose edit is being applied right now. */
+    editingBusyKey?: string | null;
     onEditStart?: (key: string, text: string) => void;
     onEditCancel?: () => void;
     onEditSubmit?: (key: string, text: string) => void;
@@ -655,6 +662,9 @@ export function renderMessageGroup(
             opts.onOpenSidebar,
           ),
         )}
+        ${normalizedRole === "user" && opts.editingBusyKey === group.key
+          ? renderEditUpdating()
+          : nothing}
         <div class="chat-group-footer">
           ${normalizedRole === "user"
             ? html`
@@ -806,11 +816,15 @@ function renderQuoteButton(onQuote: () => void) {
   `;
 }
 
-// ChatGPT-style in-place editor: the user's bubble becomes a textarea with
-// Cancel/Send. Enter sends, Shift+Enter inserts a newline, Escape cancels.
+// ChatGPT-style in-place editor: the user's own bubble turns editable, keeping
+// its place, width and type; the only additions are a soft accent ring, a hint
+// line and two quiet actions. Enter sends, Shift+Enter inserts a newline,
+// Escape cancels. A failed submit reopens this with the text and the reason.
 function renderInlineEdit(
   group: MessageGroup,
   opts: {
+    editingDraft?: string | null;
+    editingError?: string | null;
     onEditCancel?: () => void;
     onEditSubmit?: (key: string, text: string) => void;
   },
@@ -827,12 +841,19 @@ function renderInlineEdit(
     }
     opts.onEditSubmit?.(group.key, text);
   };
+  const initialText = opts.editingDraft ?? groupPlainText(group);
   return html`
-    <div class="chat-inline-edit">
+    <div
+      class="chat-bubble chat-inline-edit ${opts.editingError ? "chat-inline-edit--error" : ""}"
+      role="group"
+      aria-label=${t("chat.inlineEdit.label")}
+    >
       <textarea
         class="chat-inline-edit__input"
         rows="1"
-        .value=${groupPlainText(group)}
+        aria-label=${t("chat.inlineEdit.label")}
+        aria-invalid=${opts.editingError ? "true" : "false"}
+        .value=${initialText}
         ${ref((el) => {
           if (!(el instanceof HTMLTextAreaElement) || textareaEl === el) {
             return;
@@ -858,16 +879,39 @@ function renderInlineEdit(
           }
         }}
       ></textarea>
-      <div class="chat-inline-edit__actions">
-        <button
-          type="button"
-          class="chat-inline-edit__cancel"
-          @click=${() => opts.onEditCancel?.()}
-        >
-          Cancel
-        </button>
-        <button type="button" class="chat-inline-edit__send" @click=${submit}>Send</button>
+      ${opts.editingError
+        ? html`
+            <div class="chat-inline-edit__error" role="alert">
+              <span class="chat-inline-edit__error-title">${t("chat.inlineEdit.failed")}</span>
+              <span class="chat-inline-edit__error-detail">${opts.editingError}</span>
+            </div>
+          `
+        : nothing}
+      <div class="chat-inline-edit__footer">
+        <span class="chat-inline-edit__hint">${t("chat.inlineEdit.hint")}</span>
+        <div class="chat-inline-edit__actions">
+          <button
+            type="button"
+            class="chat-inline-edit__cancel"
+            @click=${() => opts.onEditCancel?.()}
+          >
+            ${t("common.cancel")}
+          </button>
+          <button type="button" class="chat-inline-edit__send" @click=${submit}>
+            ${t("chat.inlineEdit.saveAndSend")}
+          </button>
+        </div>
       </div>
+    </div>
+  `;
+}
+
+// Shown under the user's bubble while an edit is being applied (fork + send).
+function renderEditUpdating() {
+  return html`
+    <div class="chat-inline-edit__updating" role="status" aria-live="polite">
+      <span class="chat-inline-edit__updating-dot" aria-hidden="true"></span>
+      ${t("chat.inlineEdit.updating")}
     </div>
   `;
 }

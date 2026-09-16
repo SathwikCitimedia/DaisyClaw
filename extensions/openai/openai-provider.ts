@@ -29,12 +29,12 @@ import {
   isOpenAICodexBaseUrl,
   resolveOpenAIDefaultBaseUrl,
 } from "./base-url.js";
+import manifest from "./daisyclaw.plugin.json" with { type: "json" };
 import { applyOpenAIConfig, OPENAI_DEFAULT_MODEL } from "./default-models.js";
 import {
   buildOpenAIChatGPTAuthMethods,
   buildOpenAICodexProviderHooks,
 } from "./openai-chatgpt-provider.js";
-import manifest from "./daisyclaw.plugin.json" with { type: "json" };
 import {
   buildOpenAIResponsesProviderHooks,
   buildOpenAISyntheticCatalogEntry,
@@ -608,7 +608,25 @@ function resolveOpenAIGptForwardCompatModel(ctx: ProviderResolveDynamicModelCont
       maxTokens: OPENAI_GPT_54_MAX_TOKENS,
     };
   } else {
-    return undefined;
+    // Anything else this plugin's own manifest advertises must run too. The
+    // dashboard lists models from that manifest, and until now picking one
+    // outside the hand-written cases above (o3, gpt-5.3-codex, o4-mini, ...)
+    // failed with "Unknown model" for a name the plugin itself had offered.
+    // The manifest row carries the transport and limits; the provider
+    // decides whether the account may use it, which is the honest answer.
+    const manifestModel = resolveCodexModelFallback(trimmedModelId);
+    if (!manifestModel) {
+      return undefined;
+    }
+    return normalizeModelCompat({
+      ...manifestModel,
+      provider: PROVIDER_ID,
+      api: manifestModel.api ?? "openai-responses",
+      baseUrl: manifestModel.baseUrl ?? resolveOpenAIDefaultBaseUrl(),
+      cost: manifestModel.cost ?? OPENAI_UNKNOWN_MODEL_COST,
+      contextWindow: manifestModel.contextWindow ?? DEFAULT_CONTEXT_TOKENS,
+      maxTokens: manifestModel.maxTokens ?? DEFAULT_CONTEXT_TOKENS,
+    } as ProviderRuntimeModel);
   }
 
   return (

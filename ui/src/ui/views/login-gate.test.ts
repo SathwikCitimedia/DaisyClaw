@@ -7,9 +7,11 @@ import { i18n } from "../../i18n/index.ts";
 import type { AppViewState } from "../app-view-state.ts";
 import {
   RECONNECT_GRACE_MS,
+  renderConsumerGate,
   renderLoginGate,
   resolveLoginFailureFeedback,
   shouldShowConnectingGate,
+  shouldShowConsumerGate,
   shouldShowReconnectingGate,
 } from "./login-gate.ts";
 
@@ -378,6 +380,88 @@ describe("renderLoginGate", () => {
     expect(docsLink?.textContent?.trim()).toBe("Control UI auth docs");
     expect(docsLink?.getAttribute("href")).toBe(
       "https://docs.daisyclaw.ai/web/control-ui#debuggingtesting-dev-server--remote-gateway",
+    );
+  });
+});
+
+describe("consumer gate", () => {
+  // The packaged product carries its credentials in the desktop app. When that
+  // sign-in fails the user must never meet the developer login form (gateway
+  // address, token field, terminal commands): that is the "Gateway Dashboard /
+  // Auth did not match" screen from the Sept 15 laptop test.
+  beforeEach(async () => {
+    await i18n.setLocale("en");
+  });
+
+  it("only replaces the login form in a consumer build, and only while disconnected", () => {
+    expect(shouldShowConsumerGate({ connected: false }, true)).toBe(true);
+    expect(shouldShowConsumerGate({ connected: true }, true)).toBe(false);
+    expect(shouldShowConsumerGate({ connected: false }, false)).toBe(false);
+  });
+
+  it("renders a plain card with a retry and no credential inputs or terminal steps", async () => {
+    const container = document.createElement("div");
+    let connectCalls = 0;
+    const state = createState({
+      lastError: "unauthorized: token mismatch",
+      settings: { ...createState().settings, token: "stale-token" },
+      connect: () => {
+        connectCalls += 1;
+      },
+    });
+
+    render(renderConsumerGate(state), container);
+    await Promise.resolve();
+
+    const gate = container.querySelector<HTMLElement>(".login-gate");
+    expect(gate?.dataset.consumer).toBe("true");
+    expect(gate?.dataset.tone).toBe("sign-in");
+    expect(container.querySelector(".login-gate__title")?.textContent?.trim()).toBe(
+      "Daisy couldn't sign in",
+    );
+    expect(container.querySelectorAll("input")).toHaveLength(0);
+    expect(container.textContent).not.toContain("daisyclaw");
+    expect(container.textContent).not.toContain("ws://");
+    expect(container.textContent).not.toContain("stale-token");
+
+    const retry = container.querySelector<HTMLButtonElement>(".login-gate__connect");
+    expect(retry?.textContent?.trim()).toBe("Try again");
+    retry?.click();
+    expect(connectCalls).toBe(1);
+  });
+
+  it("keeps the raw error behind a details toggle, redacted", async () => {
+    const container = document.createElement("div");
+    const state = createState({
+      lastError: "failed ws://host#token=secret-token",
+      loginGateRequested: true,
+      settings: { ...createState().settings, token: "tok" },
+    });
+
+    render(renderConsumerGate(state), container);
+    await Promise.resolve();
+
+    const details = container.querySelector(".login-gate__consumer-details");
+    expect(details?.textContent).toContain("[redacted-credential]");
+    expect(details?.textContent).not.toContain("secret-token");
+    expect(container.querySelector(".login-gate__details-btn")?.textContent?.trim()).toBe(
+      "Hide details",
+    );
+  });
+
+  it("reads as 'not answering' when the engine is simply unreachable", async () => {
+    const container = document.createElement("div");
+    const state = createState({
+      lastError: "connection refused",
+      settings: { ...createState().settings, token: "tok" },
+    });
+
+    render(renderConsumerGate(state), container);
+    await Promise.resolve();
+
+    expect(container.querySelector<HTMLElement>(".login-gate")?.dataset.tone).toBe("offline");
+    expect(container.querySelector(".login-gate__title")?.textContent?.trim()).toBe(
+      "Daisy isn't answering",
     );
   });
 });

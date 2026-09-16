@@ -22,6 +22,7 @@ import {
   verifyProviderModelCandidates,
 } from "../controllers/models.ts";
 import { loadSkills, updateSkillEnabled } from "../controllers/skills.ts";
+import { clearFactoryResetLeftovers, readFactoryResetLeftovers } from "../factory-reset.ts";
 import { showToast } from "../toast.ts";
 import type { SkillStatusEntry } from "../types.ts";
 import { renderChannelSetup } from "./channels.setup.ts";
@@ -363,6 +364,9 @@ function renderStepBar(step: number): TemplateResult {
 }
 
 function renderWelcome(state: AppViewState): TemplateResult {
+  // After "Reset Daisy": the gateway may still be removing files the old
+  // engine held open. Say so once rather than claiming a clean slate.
+  const leftovers = readFactoryResetLeftovers();
   return html`
     <h1 class="first-run__title">Hi — I'm Daisy</h1>
 
@@ -370,9 +374,18 @@ function renderWelcome(state: AppViewState): TemplateResult {
       Your personal assistant that lives on this computer. Everything stays local — no accounts, no
       sign-ups. Setup takes about two minutes.
     </p>
+    ${leftovers > 0
+      ? html`
+          <p class="first-run__note" role="status" data-reset-leftovers=${leftovers}>
+            Your reset is almost done: a few old files were still in use and will be removed the
+            next time Daisy starts. Nothing here is affected.
+          </p>
+        `
+      : nothing}
     <button
       class="btn primary first-run__cta"
       @click=${() => {
+        clearFactoryResetLeftovers();
         state.firstRunStep = 1;
       }}
     >

@@ -821,7 +821,13 @@ public partial class App : Application, DaisyClawTray.Services.IAppCommands, IPe
             diagnostics: diagnostics,
             tunnelManager: _sshTunnelService,
             endpointProvenanceProbe: managedLocalPortProvenance.InspectAsync,
-            validationTunnelFactory: () => new SshTunnelService(appLogger));
+            validationTunnelFactory: () => new SshTunnelService(appLogger),
+            // When the engine rejects a credential, retry with the token from
+            // its own config rather than the copy this record took at launch.
+            sharedGatewayTokenRefresher: record =>
+                NativeGatewayCredentialRefresh.ResolveSharedToken(
+                    record,
+                    NativeGatewaySupervisor.TryResolveConfiguredGateway()));
         _connectionManager.OperatorClientChanged += OnOperatorClientChanged;
         _connectionManager.StateChanged += OnManagerStateChanged;
         _gatewayDirectConnectService = new GatewayDirectConnectService(
@@ -2043,12 +2049,13 @@ public partial class App : Application, DaisyClawTray.Services.IAppCommands, IPe
                         // registry instance; re-read before connecting.
                         _gatewayRegistry?.Load();
                         InitializeGatewayClient();
-                        if (openDashboardWhenReady)
+                        // A dashboard opened before the engine was ready is
+                        // sitting on an error page. Rebuild its address rather
+                        // than reloading the old one: the engine may have
+                        // minted a new shared token while it started, and a
+                        // reload would only replay the rejected URL.
+                        if (openDashboardWhenReady || _windowManager?.IsDashboardVisible == true)
                             OpenDashboard();
-                        else
-                            // A dashboard opened before the engine was ready is
-                            // sitting on an error page; bring it back by itself.
-                            _windowManager?.ReloadDashboard();
                     }
                     catch (Exception ex)
                     {
@@ -4021,6 +4028,16 @@ public partial class App : Application, DaisyClawTray.Services.IAppCommands, IPe
                 .AddText("SSH tunnel")
                 .AddText(_sshTunnelService?.LastError ?? "Check SSH tunnel settings and logs."));
             return;
+        }
+
+        // The engine owns the shared token and may have rotated it (reinstall,
+        // reset) since this record last saw it. Carry the current one, or the
+        // dashboard opens on a rejected token and shows a login form.
+        if (NativeGatewayCredentialRefresh.RefreshActiveRecord(
+                _gatewayRegistry,
+                NativeGatewaySupervisor.TryResolveConfiguredGateway()))
+        {
+            Logger.Info("[Dashboard] Shared token refreshed from the engine configuration before opening.");
         }
 
         string url;

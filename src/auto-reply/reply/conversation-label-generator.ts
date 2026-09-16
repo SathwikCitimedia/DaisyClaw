@@ -1,6 +1,6 @@
 // Generates short labels for sessions from conversation context.
 import { resolveModelAsync } from "../../agents/embedded-agent-runner/model.js";
-import { requireApiKey } from "../../agents/model-auth.js";
+import { hasRuntimeAvailableProviderAuth, requireApiKey } from "../../agents/model-auth.js";
 import { resolveDefaultModelForAgent } from "../../agents/model-selection.js";
 import { applyPreparedRuntimeAuthToModel } from "../../agents/provider-request-config.js";
 import { prepareModelForSimpleCompletion } from "../../agents/simple-completion-transport.js";
@@ -57,6 +57,22 @@ export async function generateConversationLabel(
       ? Math.floor(params.maxLength)
       : DEFAULT_MAX_LABEL_LENGTH;
   const modelRef = resolveDefaultModelForAgent({ cfg, agentId });
+  // A fresh install has a default model (the built-in fallback) but no key for
+  // its provider. Labels are a nicety: skip quietly rather than let every chat
+  // title and action-chip refinement log "No API key found" and pretend a model
+  // exists that the user never set up.
+  if (
+    !hasRuntimeAvailableProviderAuth({
+      provider: modelRef.provider,
+      cfg,
+      workspaceDir: agentDir,
+    })
+  ) {
+    logVerbose(
+      `conversation-label-generator: no credentials for ${modelRef.provider}; skipping model label`,
+    );
+    return null;
+  }
   const resolved = await resolveModelAsync(modelRef.provider, modelRef.model, agentDir, cfg);
   if (!resolved.model) {
     logVerbose(

@@ -951,6 +951,19 @@ async function refreshVisibleToolsEffectiveForCurrentSessionLazy(state: AppViewS
   return refreshVisibleToolsEffectiveForCurrentSession(state);
 }
 
+/**
+ * What the composer's model chip says. Until the user adds a provider, the
+ * engine still carries a built-in default model name; showing that name here
+ * told users a model was set up when nothing could answer them. The chip says
+ * what is actually needed instead.
+ */
+export function resolveComposerModelLabel(params: {
+  modelSetupMissing: boolean | null | undefined;
+  selectedLabel: string;
+}): string {
+  return params.modelSetupMissing === true ? t("chat.noModel.chip") : params.selectedLabel;
+}
+
 export function renderChatModelSelect(state: AppViewState) {
   const { currentOverride, defaultLabel, options } = resolveChatModelSelectState(state);
   const thinking = resolveChatThinkingSelectState(state);
@@ -968,10 +981,13 @@ export function renderChatModelSelect(state: AppViewState) {
     busy ||
     !state.client ||
     (thinking.options.length === 0 && thinking.currentOverride === "");
-  const selectedLabel =
-    currentOverride === ""
-      ? defaultLabel
-      : (options.find((entry) => entry.value === currentOverride)?.label ?? currentOverride);
+  const selectedLabel = resolveComposerModelLabel({
+    modelSetupMissing: state.modelSetupMissing,
+    selectedLabel:
+      currentOverride === ""
+        ? defaultLabel
+        : (options.find((entry) => entry.value === currentOverride)?.label ?? currentOverride),
+  });
   const selectedThinkingLabel =
     thinking.currentOverride === ""
       ? thinking.defaultLabel

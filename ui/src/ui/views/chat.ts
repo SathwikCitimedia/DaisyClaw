@@ -25,6 +25,7 @@ import { buildRawSidebarContent } from "../chat/chat-sidebar-raw.ts";
 import { renderWelcomeState, resolveAssistantDisplayAvatar } from "../chat/chat-welcome.ts";
 import { renderContextNotice } from "../chat/context-notice.ts";
 import { DeletedMessages } from "../chat/deleted-messages.ts";
+import { submitEditedTurn, type EditFork, type EditForkTarget } from "../chat/edit-turn.ts";
 import { exportChatMarkdown } from "../chat/export.ts";
 import {
   getAssistantAttachmentAvailabilityRenderVersion,
@@ -210,7 +211,7 @@ export type ChatProps = {
    * `lastUser` targets the most recent user message when the edited bubble is
    * optimistic and its transcript id is not known yet.
    */
-  onEditFork?: (target: { messageId?: string; lastUser?: boolean }, text: string) => void;
+  onEditFork?: EditFork;
   onCompact?: () => void | Promise<void>;
   onOpenSessionCheckpoints?: () => void | Promise<void>;
   onToggleRealtimeTalk?: () => void;
@@ -568,6 +569,12 @@ interface ChatEphemeralState {
   quotedReply: string | null;
   /** Key of the user message group currently being edited in place. */
   editingGroupKey: string | null;
+  /** Text the user typed into the editor, kept when a submit fails so nothing is lost. */
+  editingDraft: string | null;
+  /** Why the last edit submit failed, shown inside the editor. */
+  editingError: string | null;
+  /** Key of the user group whose edit is being applied (fork + send in flight). */
+  editingBusyKey: string | null;
   historyRenderSessionKey: string | null;
   historyRenderMessagesRef: unknown[] | null;
   historyRenderMessageCount: number;
@@ -598,6 +605,9 @@ function createChatEphemeralState(): ChatEphemeralState {
     pinnedExpanded: false,
     quotedReply: null,
     editingGroupKey: null,
+    editingDraft: null,
+    editingError: null,
+    editingBusyKey: null,
     historyRenderSessionKey: null,
     historyRenderMessagesRef: null,
     historyRenderMessageCount: 0,
@@ -2198,12 +2208,19 @@ export function renderChat(props: ChatProps) {
                       requestUpdate();
                     },
                     editingGroupKey: vs.editingGroupKey,
+                    editingDraft: vs.editingGroupKey === item.key ? vs.editingDraft : null,
+                    editingError: vs.editingGroupKey === item.key ? vs.editingError : null,
+                    editingBusyKey: vs.editingBusyKey,
                     onEditStart: (key: string) => {
                       vs.editingGroupKey = key;
+                      vs.editingDraft = null;
+                      vs.editingError = null;
                       requestUpdate();
                     },
                     onEditCancel: () => {
                       vs.editingGroupKey = null;
+                      vs.editingDraft = null;
+                      vs.editingError = null;
                       requestUpdate();
                     },
                     onEditSubmit: (_key: string, text: string) => {
@@ -2212,8 +2229,12 @@ export function renderChat(props: ChatProps) {
                       // fresh query, producing a new answer in its place.
                       // When the message carries its transcript id, the
                       // session is forked server-side too, so the old
-                      // exchange truly leaves the model's context.
+                      // exchange truly leaves the model's context. The turn
+                      // is hidden only once the gateway accepted the fork;
+                      // a rejected fork reopens the editor with the reason.
                       vs.editingGroupKey = null;
+                      vs.editingDraft = null;
+                      vs.editingError = null;
                       const editMessageId = readTranscriptMessageId(item.messages[0]?.message);
                       // Optimistic (just-sent) messages don't carry their
                       // transcript id yet; when the edited bubble is the last
@@ -2224,18 +2245,35 @@ export function renderChat(props: ChatProps) {
                           candidate.kind === "group" &&
                           candidate.role === "user",
                       );
-                      hideTurnCascade(item, itemIndex);
-                      if (props.onEditFork && (editMessageId || isLastUserGroup)) {
-                        props.onEditFork(
-                          editMessageId ? { messageId: editMessageId } : { lastUser: true },
-                          text,
-                        );
-                      } else if (props.onSendText) {
-                        props.onSendText(text);
-                      } else {
-                        props.onDraftChange(text);
-                        focusChatComposerEnd();
-                      }
+                      const target: EditForkTarget | null = editMessageId
+                        ? { messageId: editMessageId }
+                        : isLastUserGroup
+                          ? { lastUser: true }
+                          : null;
+                      void submitEditedTurn({
+                        text,
+                        target,
+                        fork: props.onEditFork,
+                        sendText: props.onSendText,
+                        draftChange: (next) => {
+                          props.onDraftChange(next);
+                          focusChatComposerEnd();
+                        },
+                        hide: () => {
+                          hideTurnCascade(item, itemIndex);
+                          requestUpdate();
+                        },
+                        setBusy: (busy) => {
+                          vs.editingBusyKey = busy ? item.key : null;
+                          requestUpdate();
+                        },
+                        onFailure: (draft, error) => {
+                          vs.editingGroupKey = item.key;
+                          vs.editingDraft = draft;
+                          vs.editingError = error;
+                          requestUpdate();
+                        },
+                      });
                       requestUpdate();
                     },
                     onQuote: (text: string) => {

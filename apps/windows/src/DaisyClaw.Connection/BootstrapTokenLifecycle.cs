@@ -169,6 +169,7 @@ internal sealed class BootstrapTokenLifecycle
     private readonly IV2SignatureRequirementSink _v2SignatureSink;
     private readonly IDaisyClawLogger _logger;
     private readonly ConnectionDiagnostics _diagnostics;
+    private readonly Func<GatewayRecord, string?>? _sharedGatewayTokenRefresher;
     private readonly object _stateLock = new();
 
     private string? _forceBootstrapForGatewayRecordId;
@@ -176,6 +177,7 @@ internal sealed class BootstrapTokenLifecycle
     private bool _activeConnectUsedBootstrapToken;
     private bool _postBootstrapOperatorReconnectScheduled;
     private string? _operatorTokenRecoveryAttemptedGatewayId;
+    private string? _sharedTokenRefreshAttemptedGatewayId;
     private int _stopped;
 
     internal BootstrapTokenLifecycle(
@@ -186,7 +188,8 @@ internal sealed class BootstrapTokenLifecycle
         IOperatorReconnectScheduler reconnectScheduler,
         IV2SignatureRequirementSink v2SignatureSink,
         IDaisyClawLogger logger,
-        ConnectionDiagnostics diagnostics)
+        ConnectionDiagnostics diagnostics,
+        Func<GatewayRecord, string?>? sharedGatewayTokenRefresher = null)
     {
         _registry = registry;
         _identityStore = identityStore;
@@ -196,6 +199,7 @@ internal sealed class BootstrapTokenLifecycle
         _v2SignatureSink = v2SignatureSink;
         _logger = logger;
         _diagnostics = diagnostics;
+        _sharedGatewayTokenRefresher = sharedGatewayTokenRefresher;
     }
 
     internal void ForceBootstrapForNextConnect(string gatewayRecordId)
@@ -266,7 +270,117 @@ internal sealed class BootstrapTokenLifecycle
             {
                 _operatorTokenRecoveryAttemptedGatewayId = null;
             }
+            if (_activeAttempt == attempt &&
+                _sharedTokenRefreshAttemptedGatewayId == attempt.GatewayRecordId)
+            {
+                _sharedTokenRefreshAttemptedGatewayId = null;
+            }
         }
+    }
+
+    /// <summary>
+    /// Re-reads the shared gateway token from the source of truth (for the
+    /// bundled Windows engine, its own config file) and persists it on the
+    /// record when it changed. The record copy goes stale whenever the engine
+    /// is reinstalled or reset, and a stale copy turns every recovery attempt
+    /// into a second rejection.
+    /// </summary>
+    /// <returns>The record to use for the next attempt (refreshed or unchanged).</returns>
+    private GatewayRecord RefreshSharedGatewayToken(GatewayRecord record)
+    {
+        if (_sharedGatewayTokenRefresher is null)
+            return record;
+
+        string? fresh;
+        try
+        {
+            fresh = _sharedGatewayTokenRefresher(record);
+        }
+        catch (Exception ex)
+        {
+            _logger.Warn($"[ConnMgr] Shared gateway token refresh failed: {ex.Message}");
+            return record;
+        }
+
+        if (string.IsNullOrWhiteSpace(fresh) ||
+            string.Equals(fresh, record.SharedGatewayToken, StringComparison.Ordinal))
+        {
+            return record;
+        }
+
+        try
+        {
+            var updated = _registry.UpdateAndSave(
+                record.Id,
+                gateway => gateway with { SharedGatewayToken = fresh });
+            if (updated is null)
+                return record;
+            _diagnostics.Record(
+                "credential",
+                "Refreshed shared gateway token from the engine configuration");
+            return updated;
+        }
+        catch (Exception ex)
+        {
+            _logger.Warn($"[ConnMgr] Failed to persist refreshed shared gateway token: {ex.Message}");
+            return record;
+        }
+    }
+
+    /// <summary>
+    /// The shared token itself was rejected (AUTH_TOKEN_MISMATCH or a generic
+    /// auth failure while no device token is in play). If the engine's own
+    /// configuration now carries a different token, adopt it and retry once per
+    /// gateway; a genuinely wrong token cannot loop.
+    /// </summary>
+    internal async Task<bool> TryScheduleSharedTokenRefreshAsync(
+        GatewayAttemptStamp attempt,
+        CancellationToken cancellationToken)
+    {
+        if (Volatile.Read(ref _stopped) != 0 ||
+            attempt.GatewayRecordId is null ||
+            _sharedGatewayTokenRefresher is null)
+        {
+            return false;
+        }
+
+        using var lease = await _attemptLeases.AcquireCurrentAttemptAsync(
+            attempt,
+            cancellationToken).ConfigureAwait(false);
+        if (lease is null)
+            return false;
+
+        lock (_stateLock)
+        {
+            if (_sharedTokenRefreshAttemptedGatewayId == attempt.GatewayRecordId)
+                return false;
+        }
+
+        var record = _registry.GetById(attempt.GatewayRecordId);
+        if (record is null)
+            return false;
+
+        if (!await _endpointSecurity.IsRecoverySafeEndpointAsync(
+                record,
+                cancellationToken).ConfigureAwait(false))
+        {
+            return false;
+        }
+
+        var refreshed = RefreshSharedGatewayToken(record);
+        if (ReferenceEquals(refreshed, record))
+            return false;
+
+        lock (_stateLock)
+            _sharedTokenRefreshAttemptedGatewayId = attempt.GatewayRecordId;
+        _diagnostics.Record(
+            "credential",
+            "Shared gateway token was rejected; reconnecting with the token from the engine configuration");
+        _reconnectScheduler.ScheduleOperatorReconnect(
+            new OperatorReconnectRequest(
+                attempt,
+                OperatorReconnectReason.OperatorTokenMismatch));
+        return true;
     }
 
     internal async Task<DeviceTokenHandlingResult> HandleDeviceTokenReceivedAsync(
@@ -385,11 +499,6 @@ internal sealed class BootstrapTokenLifecycle
         if (record is null)
             return false;
 
-        var hasSharedToken = !string.IsNullOrWhiteSpace(record.SharedGatewayToken);
-        var hasBootstrapToken = !string.IsNullOrWhiteSpace(record.BootstrapToken);
-        if (!hasSharedToken && !hasBootstrapToken)
-            return false;
-
         if (!await _endpointSecurity.IsRecoverySafeEndpointAsync(
                 record,
                 cancellationToken).ConfigureAwait(false))
@@ -399,6 +508,14 @@ internal sealed class BootstrapTokenLifecycle
                 "Skipped operator token recovery: endpoint not trusted for credential fallback");
             return false;
         }
+
+        // The fallback is only worth taking with a token the engine currently
+        // accepts; pick up a rotated one before deciding whether we have any.
+        record = RefreshSharedGatewayToken(record);
+        var hasSharedToken = !string.IsNullOrWhiteSpace(record.SharedGatewayToken);
+        var hasBootstrapToken = !string.IsNullOrWhiteSpace(record.BootstrapToken);
+        if (!hasSharedToken && !hasBootstrapToken)
+            return false;
 
         if (!DeviceIdentity.TryClearDeviceToken(identityPath, _logger))
             return false;

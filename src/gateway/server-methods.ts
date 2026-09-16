@@ -387,7 +387,7 @@ export const coreGatewayHandlers: GatewayRequestHandlers = {
     loadHandlers: loadModelsTestHandlers,
   }),
   ...createLazyCoreHandlers({
-    methods: ["system.factoryReset"],
+    methods: ["system.factoryReset", "system.factoryResetStatus"],
     loadHandlers: loadFactoryResetHandlers,
   }),
   ...createLazyCoreHandlers({

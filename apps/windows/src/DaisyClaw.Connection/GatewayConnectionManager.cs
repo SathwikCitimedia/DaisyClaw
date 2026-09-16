@@ -130,7 +130,8 @@ public sealed class GatewayConnectionManager :
         Func<ISshTunnelManager>? validationTunnelFactory = null,
         TimeSpan? credentialHandoffTimeout = null,
         TimeSpan? manualSshRestartTimeout = null,
-        TimeSpan? manualSshRestartCleanupTimeout = null)
+        TimeSpan? manualSshRestartCleanupTimeout = null,
+        Func<GatewayRecord, string?>? sharedGatewayTokenRefresher = null)
     {
         _credentialResolver = credentialResolver ?? throw new ArgumentNullException(nameof(credentialResolver));
         _clientFactory = clientFactory ?? throw new ArgumentNullException(nameof(clientFactory));
@@ -165,7 +166,8 @@ public sealed class GatewayConnectionManager :
             this,
             this,
             _logger,
-            _diagnostics);
+            _diagnostics,
+            sharedGatewayTokenRefresher);
         _nodeConnectionCoordinator = new NodeConnectionCoordinator(
             this,
             this,
@@ -2238,6 +2240,17 @@ public sealed class GatewayConnectionManager :
             return;
         }
 
+        // The shared token can go stale too (engine reinstalled or reset while the
+        // record kept the old copy). When the engine's own configuration has a newer
+        // one, adopt it and retry once instead of parking on an auth error.
+        if (failureKind is GatewayErrorKind.Auth or GatewayErrorKind.TokenDrift &&
+            await _bootstrapTokenLifecycle.TryScheduleSharedTokenRefreshAsync(
+                attempt,
+                CancellationToken.None).ConfigureAwait(false))
+        {
+            return;
+        }
+
         await _transitionSemaphore.WaitAsync();
         try
         {
@@ -2350,7 +2363,15 @@ public sealed class GatewayConnectionManager :
     {
         if (GatewayRecordEditing.IsLoopbackEndpoint(record.Url))
         {
-            if (record.IsLocal || GatewayRecordEditing.ResolveManagedDistroName(record) is not null)
+            // Port-ownership proof exists for *managed WSL* gateways only. A native
+            // local gateway (the bundled Windows engine: IsLocal, no managed distro)
+            // has no WSL listener to prove, so the probe answers NotApplicable and
+            // demanding ExpectedManagedGateway from it refused recovery on every
+            // consumer install: a rotated device token was never replaced and the
+            // tray stayed on "Connection error" until the user reinstalled. Treat it
+            // like any other loopback endpoint, exactly as the connect path already
+            // does in AuthorizeCredentialForEndpointAsync.
+            if (GatewayRecordEditing.ResolveManagedDistroName(record) is not null)
             {
                 if (_endpointProvenanceProbe is null)
                     return false;

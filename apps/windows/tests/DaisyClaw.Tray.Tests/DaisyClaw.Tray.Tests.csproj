@@ -35,6 +35,7 @@
 
   <ItemGroup>
     <Compile Include="..\..\src\DaisyClaw.Tray.WinUI\Services\GatewayReadinessPolicy.cs" Link="Services\GatewayReadinessPolicy.cs" />
+    <Compile Include="..\..\src\DaisyClaw.Tray.WinUI\Services\NativeGatewayCredentialRefresh.cs" Link="Services\NativeGatewayCredentialRefresh.cs" />
     <Compile Include="..\..\src\DaisyClaw.Tray.WinUI\Chat\IChatGatewayBridge.cs" Link="Chat\IChatGatewayBridge.cs" />
     <Compile Include="..\..\src\DaisyClaw.Tray.WinUI\Chat\ChatSurfaceResolver.cs" Link="Chat\ChatSurfaceResolver.cs" />
     <Compile Include="..\..\src\DaisyClaw.Tray.WinUI\Chat\DebugChatSurfaceOverrides.cs" Link="Chat\DebugChatSurfaceOverrides.cs" />

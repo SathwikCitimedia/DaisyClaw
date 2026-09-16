@@ -3,6 +3,7 @@ import { html } from "lit";
 import { ConnectErrorDetailCodes } from "../../../../packages/gateway-protocol/src/connect-error-details.js";
 import { t } from "../../i18n/index.ts";
 import type { AppViewState } from "../app-view-state.ts";
+import { isConsumerBuild } from "../consumer-build.ts";
 import { buildExternalLinkRel, EXTERNAL_LINK_TARGET } from "../external-link.ts";
 import { icons } from "../icons.ts";
 import { normalizeBasePath } from "../navigation.ts";
@@ -338,6 +339,87 @@ export function shouldShowConnectingGate(
     return false;
   }
   return Boolean(state.settings.token.trim() || state.password.trim());
+}
+
+/**
+ * In the packaged consumer build the desktop app owns the credentials, so a
+ * connection the app cannot make is never something the user can type their
+ * way out of. Instead of the developer login form (gateway address, token,
+ * terminal commands) the consumer sees a plain card that says what is wrong
+ * in their terms and offers a retry; the app repairs the credentials on its
+ * side and re-opens the window with a fresh address.
+ */
+export function shouldShowConsumerGate(
+  state: Pick<AppViewState, "connected">,
+  consumerBuild: boolean = isConsumerBuild(),
+): boolean {
+  return consumerBuild && !state.connected;
+}
+
+type ConsumerGateTone = "sign-in" | "offline" | "pairing";
+
+function resolveConsumerGateTone(failure: LoginFailureFeedback | null): ConsumerGateTone {
+  if (failure === null || failure.kind === "network") {
+    return "offline";
+  }
+  if (failure.kind === "pairing-required") {
+    return "pairing";
+  }
+  return "sign-in";
+}
+
+export function renderConsumerGate(state: AppViewState) {
+  const basePath = normalizeBasePath(state.basePath ?? "");
+  const faviconSrc = agentLogoUrl(basePath);
+  const failure = resolveLoginFailureFeedback({
+    connected: state.connected,
+    lastError: state.lastError,
+    lastErrorCode: state.lastErrorCode,
+    hasToken: Boolean(state.settings.token.trim()),
+    hasPassword: Boolean(state.password.trim()),
+  });
+  const tone = resolveConsumerGateTone(failure);
+  const showDetails = state.loginGateRequested && failure !== null;
+  return html`
+    <div class="login-gate" data-consumer="true" data-tone=${tone}>
+      <div class="login-gate__card login-gate__card--reconnecting" role="status" aria-live="polite">
+        <div class="login-gate__header">
+          <img class="login-gate__logo" src=${faviconSrc} alt="Daisy" />
+          ${tone === "pairing"
+            ? html`<div class="login-gate__spinner" aria-hidden="true"></div>`
+            : ""}
+          <div class="login-gate__title">${t(`login.consumer.${tone}.title`)}</div>
+          <div class="login-gate__sub">${t(`login.consumer.${tone}.summary`)}</div>
+        </div>
+        <div class="login-gate__consumer-actions">
+          <button
+            type="button"
+            class="btn primary login-gate__connect"
+            @click=${() => state.connect()}
+          >
+            ${t("login.consumer.retry")}
+          </button>
+          ${failure
+            ? html`
+                <button
+                  type="button"
+                  class="btn login-gate__details-btn"
+                  aria-expanded=${showDetails}
+                  @click=${() => {
+                    state.loginGateRequested = !state.loginGateRequested;
+                  }}
+                >
+                  ${showDetails ? t("login.consumer.hideDetails") : t("login.consumer.showDetails")}
+                </button>
+              `
+            : ""}
+        </div>
+        ${showDetails && failure
+          ? html`<pre class="login-gate__consumer-details mono">${failure.rawError}</pre>`
+          : ""}
+      </div>
+    </div>
+  `;
 }
 
 export function renderReconnectingGate(state: AppViewState, nowMs: number = Date.now()) {

@@ -594,69 +594,114 @@ details.msg-meta:not([open]) .msg-meta__details {
 }
 
 /* ── Inline message editing (ChatGPT-style edit-in-place) ── */
-.chat-inline-edit {
+/* In-place editor. It *is* the user's bubble (same class, same gradient, same
+   corners and padding), so the thread does not jump when editing starts; the
+   only signal is a soft accent ring and the footer that slides in below. */
+.chat-group.user .chat-bubble.chat-inline-edit {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  width: min(640px, 100%);
-  margin-left: auto;
-  background: var(--panel-strong, var(--panel));
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg, 10px);
-  padding: 12px 12px 10px;
-  box-shadow: var(--shadow-md, 0 2px 8px rgba(0, 0, 0, 0.07));
+  gap: 8px;
+  width: 100%;
+  cursor: text;
+  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 14%, transparent);
+  transition:
+    border-color var(--duration-fast) ease-out,
+    box-shadow var(--duration-fast) ease-out;
 }
 
-.chat-inline-edit:focus-within {
-  border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
-  box-shadow:
-    var(--shadow-md, 0 2px 8px rgba(0, 0, 0, 0.07)),
-    0 0 0 3px color-mix(in srgb, var(--accent) 12%, transparent);
+.chat-group.user .chat-bubble.chat-inline-edit:hover {
+  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+}
+
+.chat-group.user .chat-bubble.chat-inline-edit--error {
+  border-color: color-mix(in srgb, var(--danger, #c33) 55%, transparent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--danger, #c33) 14%, transparent);
 }
 
 .chat-inline-edit__input {
+  display: block;
   width: 100%;
   resize: none;
   border: none;
   outline: none;
   background: transparent;
-  color: var(--text);
+  color: inherit;
   font: inherit;
-  font-size: 14px;
-  line-height: 1.55;
-  min-height: 24px;
+  line-height: 1.62;
+  min-height: 1.62em;
   max-height: 320px;
   overflow-y: auto;
   padding: 0;
+  margin: 0;
+}
+
+.chat-inline-edit__error {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--danger, #c33);
+}
+
+.chat-inline-edit__error-title {
+  font-weight: 600;
+}
+
+.chat-inline-edit__error-detail {
+  color: color-mix(in srgb, var(--danger, #c33) 80%, var(--text));
+  word-break: break-word;
+}
+
+.chat-inline-edit__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding-top: 8px;
+  border-top: 1px solid color-mix(in srgb, var(--accent) 16%, transparent);
+}
+
+.chat-inline-edit__hint {
+  font-size: 11.5px;
+  line-height: 1.4;
+  color: var(--muted);
+  user-select: none;
 }
 
 .chat-inline-edit__actions {
   display: flex;
   gap: 8px;
   justify-content: flex-end;
+  margin-left: auto;
 }
 
 .chat-inline-edit__cancel,
 .chat-inline-edit__send {
   border-radius: 999px;
-  padding: 6px 16px;
+  padding: 6px 14px;
+  font: inherit;
   font-size: 12.5px;
   font-weight: 500;
+  line-height: 1.3;
   cursor: pointer;
   transition:
-    background 120ms ease-out,
-    border-color 120ms ease-out;
+    background var(--duration-fast) ease-out,
+    border-color var(--duration-fast) ease-out,
+    color var(--duration-fast) ease-out;
 }
 
 .chat-inline-edit__cancel {
-  background: var(--card);
-  border: 1px solid var(--border);
-  color: var(--text);
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--muted);
 }
 
 .chat-inline-edit__cancel:hover {
-  background: var(--panel);
-  border-color: color-mix(in srgb, var(--text) 24%, transparent);
+  color: var(--text);
+  background: color-mix(in srgb, var(--text) 6%, transparent);
 }
 
 .chat-inline-edit__send {
@@ -667,6 +712,47 @@ details.msg-meta:not([open]) .msg-meta__details {
 
 .chat-inline-edit__send:hover {
   background: color-mix(in srgb, var(--accent) 86%, black);
+}
+
+.chat-inline-edit__cancel:focus-visible,
+.chat-inline-edit__send:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 60%, transparent);
+  outline-offset: 2px;
+}
+
+/* Quiet progress line under the bubble while the edit is applied. */
+.chat-inline-edit__updating {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  align-self: flex-end;
+  margin-top: 4px;
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
+.chat-inline-edit__updating-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: chat-inline-edit-pulse 1.1s ease-in-out infinite;
+}
+
+@keyframes chat-inline-edit-pulse {
+  0%,
+  100% {
+    opacity: 0.35;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-inline-edit__updating-dot {
+    animation: none;
+  }
 }
 
 .chat-delete-confirm {

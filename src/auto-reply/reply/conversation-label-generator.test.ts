@@ -5,6 +5,7 @@ const completeSimple = vi.hoisted(() => vi.fn());
 const getRuntimeAuthForModel = vi.hoisted(() => vi.fn());
 const logVerbose = vi.hoisted(() => vi.fn());
 const requireApiKey = vi.hoisted(() => vi.fn());
+const hasRuntimeAvailableProviderAuth = vi.hoisted(() => vi.fn());
 const resolveDefaultModelForAgent = vi.hoisted(() => vi.fn());
 const resolveModelAsync = vi.hoisted(() => vi.fn());
 const prepareModelForSimpleCompletion = vi.hoisted(() => vi.fn());
@@ -18,7 +19,10 @@ vi.mock("../../llm/stream.js", async () => {
   };
 });
 
-vi.mock("../../agents/model-auth.js", () => ({ requireApiKey }));
+vi.mock("../../agents/model-auth.js", () => ({
+  requireApiKey,
+  hasRuntimeAvailableProviderAuth,
+}));
 
 vi.mock("../../globals.js", () => ({ logVerbose }));
 
@@ -54,10 +58,12 @@ describe("generateConversationLabel", () => {
     getRuntimeAuthForModel.mockReset();
     logVerbose.mockReset();
     requireApiKey.mockReset();
+    hasRuntimeAvailableProviderAuth.mockReset();
     resolveDefaultModelForAgent.mockReset();
     resolveModelAsync.mockReset();
     prepareModelForSimpleCompletion.mockReset();
 
+    hasRuntimeAvailableProviderAuth.mockReturnValue(true);
     resolveDefaultModelForAgent.mockReturnValue({ provider: "openai", model: "gpt-test" });
     resolveModelAsync.mockResolvedValue({
       model: { provider: "openai" },
@@ -74,6 +80,30 @@ describe("generateConversationLabel", () => {
 
   afterEach(() => {
     vi.useRealTimers();
+  });
+
+  it("skips the model quietly when the default provider has no credentials", async () => {
+    // Fresh install: the built-in default model names a provider the user never
+    // set up. Titles and action chips must not log "No API key found" for it.
+    hasRuntimeAvailableProviderAuth.mockReturnValue(false);
+
+    const label = await generateConversationLabel({
+      userMessage: "Need help with invoices",
+      prompt: "prompt",
+      cfg: {},
+      agentDir: "/tmp/agents/main/agent",
+    });
+
+    expect(label).toBeNull();
+    expect(hasRuntimeAvailableProviderAuth).toHaveBeenCalledWith({
+      provider: "openai",
+      cfg: {},
+      workspaceDir: "/tmp/agents/main/agent",
+    });
+    expect(resolveModelAsync).not.toHaveBeenCalled();
+    expect(getRuntimeAuthForModel).not.toHaveBeenCalled();
+    expect(requireApiKey).not.toHaveBeenCalled();
+    expect(completeSimple).not.toHaveBeenCalled();
   });
 
   it("uses routed agentDir for model and auth resolution", async () => {

@@ -77,6 +77,7 @@ import {
   clearFactoryResetPending,
   clearLocalStateForFactoryReset,
   isFactoryResetPending,
+  markFactoryResetLeftovers,
 } from "./factory-reset.ts";
 import {
   resolveGatewayErrorDetailCode,
@@ -1495,6 +1496,18 @@ async function finishFactoryResetIfFresh(client: GatewayBrowserClient): Promise<
     }
   } catch {
     return;
+  }
+  // Was the reset actually complete? A file the old engine still held open
+  // (its state database, on Windows) can survive the wipe; the gateway keeps
+  // retrying on later starts and reports what is left. Say so in the wizard
+  // instead of announcing a clean slate.
+  try {
+    const status = (await client.request("system.factoryResetStatus", {})) as {
+      skipped?: unknown[];
+    } | null;
+    markFactoryResetLeftovers(Array.isArray(status?.skipped) ? status.skipped.length : 0);
+  } catch {
+    markFactoryResetLeftovers(0);
   }
   clearFactoryResetPending();
   clearLocalStateForFactoryReset();

@@ -139,6 +139,7 @@ export const CORE_GATEWAY_METHOD_SPECS: readonly CoreGatewayMethodSpec[] = [
   { name: "update.status", scope: "operator.admin" },
   { name: "update.run", scope: "operator.admin", controlPlaneWrite: true },
   { name: "system.factoryReset", scope: "operator.admin", controlPlaneWrite: true },
+  { name: "system.factoryResetStatus", scope: "operator.read" },
   { name: "voicewake.get", scope: "operator.read" },
   { name: "voicewake.set", scope: "operator.write" },
   { name: "secrets.reload", scope: "operator.admin" },

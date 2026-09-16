@@ -296,10 +296,14 @@ public sealed class ManagedLocalGatewayPortProvenanceService
             credential.IsBootstrapToken ||
             string.Equals(credential.Source, CredentialResolver.SourceSharedGatewayToken, StringComparison.Ordinal) ||
             string.Equals(credential.Source, CredentialResolver.SourceBootstrapToken, StringComparison.Ordinal);
+        // Proof is only meaningful for a managed WSL gateway. A native local
+        // gateway (bundled Windows engine: IsLocal without a managed distro) can
+        // never produce ExpectedManagedGateway, so gating its shared token on that
+        // proof made every dashboard URL fall back to a stale record token.
         var needsProof =
             isStrong &&
             record.SshTunnel is null &&
-            (record.IsLocal || GatewayRecordEditing.ResolveManagedDistroName(record) is not null) &&
+            GatewayRecordEditing.ResolveManagedDistroName(record) is not null &&
             GatewayRecordEditing.IsLoopbackEndpoint(record.Url);
         if (!needsProof)
             return true;

@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { withDaisyClawTestState } from "../test-utils/daisyclaw-test-state.js";
@@ -7,7 +8,10 @@ import {
   buildFactoryResetSeedConfig,
   collectFactoryResetWorkspaces,
   FACTORY_RESET_MARKER_FILENAME,
+  FACTORY_RESET_RESULT_FILENAME,
+  readFactoryResetResultSync,
   readPendingFactoryResetMarkerSync,
+  retryFactoryResetLeftovers,
   writeFactoryResetMarkerSync,
 } from "./factory-reset.js";
 
@@ -100,6 +104,97 @@ describe("factory reset", () => {
         expect(await applyPendingFactoryReset({ env: state.env })).toBeNull();
       },
     );
+  });
+
+  it("closes the shared state database before wiping, so the state dir really goes", async () => {
+    // In-process restarts keep the previous gateway's sqlite handle alive; on
+    // Windows that left `state/` behind with EPERM (the Sept 15 laptop reset).
+    await withDaisyClawTestState({ applyEnv: true }, async (state) => {
+      await state.writeConfig({ gateway: { mode: "local" } });
+      const { openDaisyClawStateDatabase, isDaisyClawStateDatabaseOpen } =
+        await import("../state/daisyclaw-state-db.js");
+      openDaisyClawStateDatabase({ env: state.env });
+      expect(isDaisyClawStateDatabaseOpen()).toBe(true);
+      expect(fs.existsSync(state.statePath("state", "daisyclaw.sqlite"))).toBe(true);
+
+      writeFactoryResetMarkerSync({ cfg: {} as never, env: state.env });
+      const outcome = await applyPendingFactoryReset({ env: state.env });
+
+      expect(outcome?.skipped).toEqual([]);
+      expect(isDaisyClawStateDatabaseOpen()).toBe(false);
+      expect(fs.existsSync(state.statePath("state"))).toBe(false);
+
+      // The outcome is persisted for the app to read back.
+      const result = readFactoryResetResultSync(state.env);
+      expect(result?.kind).toBe("factory-reset-result");
+      expect(result?.skipped).toEqual([]);
+      expect(result?.retries).toBe(0);
+    });
+  });
+
+  it("retries leftovers on a later start and keeps the result honest", async () => {
+    await withDaisyClawTestState({ applyEnv: true }, async (state) => {
+      const leftover = state.statePath("state");
+      fs.mkdirSync(leftover, { recursive: true });
+      fs.writeFileSync(path.join(leftover, "daisyclaw.sqlite"), "stale");
+      fs.writeFileSync(
+        state.statePath(FACTORY_RESET_RESULT_FILENAME),
+        JSON.stringify({
+          kind: "factory-reset-result",
+          appliedAt: "2026-09-15T10:00:00.000Z",
+          requestedAt: "2026-09-15T09:59:59.000Z",
+          removed: 7,
+          skipped: [{ path: leftover, error: "EPERM: operation not permitted" }],
+          retries: 0,
+        }),
+      );
+      const infos: string[] = [];
+
+      const next = await retryFactoryResetLeftovers({
+        env: state.env,
+        log: { info: (m) => infos.push(m), warn: () => undefined },
+      });
+
+      expect(fs.existsSync(leftover)).toBe(false);
+      expect(next?.skipped).toEqual([]);
+      expect(next?.removed).toBe(8);
+      expect(next?.retries).toBe(1);
+      expect(readFactoryResetResultSync(state.env)?.skipped).toEqual([]);
+      expect(infos.join("\n")).toContain("removed 1 leftover entry");
+
+      // Nothing left: later starts are a no-op.
+      const again = await retryFactoryResetLeftovers({ env: state.env });
+      expect(again?.retries).toBe(1);
+    });
+  });
+
+  it("never retries leftovers outside the state dir or home", async () => {
+    await withDaisyClawTestState({ applyEnv: true }, async (state) => {
+      // A path under neither the test home nor the state dir: a corrupted or
+      // tampered result file must never be able to point the retry elsewhere.
+      const outside = fs.mkdtempSync(path.join(os.tmpdir(), "daisyclaw-reset-outside-"));
+      fs.writeFileSync(path.join(outside, "keep.txt"), "not ours");
+      fs.writeFileSync(
+        state.statePath(FACTORY_RESET_RESULT_FILENAME),
+        JSON.stringify({
+          kind: "factory-reset-result",
+          appliedAt: "x",
+          requestedAt: "x",
+          removed: 0,
+          skipped: [{ path: outside, error: "EPERM" }],
+          retries: 0,
+        }),
+      );
+
+      try {
+        const next = await retryFactoryResetLeftovers({ env: state.env });
+
+        expect(fs.existsSync(path.join(outside, "keep.txt"))).toBe(true);
+        expect(next?.skipped).toEqual([]);
+      } finally {
+        fs.rmSync(outside, { recursive: true, force: true });
+      }
+    });
   });
 
   it("ignores and removes a stale marker instead of wiping", async () => {

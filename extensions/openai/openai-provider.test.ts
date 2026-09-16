@@ -6,12 +6,12 @@ import {
   type LiveModelCatalogFetchGuard,
 } from "daisyclaw/plugin-sdk/provider-catalog-live-runtime";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import manifest from "./daisyclaw.plugin.json" with { type: "json" };
 import {
   buildOpenAICodexLiveProviderConfig,
   buildOpenAILiveProviderConfig,
   buildOpenAIProvider,
 } from "./openai-provider.js";
-import manifest from "./daisyclaw.plugin.json" with { type: "json" };
 
 const mocks = vi.hoisted(() => ({
   refreshOpenAICodexToken: vi.fn(),
@@ -1488,5 +1488,48 @@ describe("buildOpenAIProvider", () => {
     );
 
     await expect(provider.refreshOAuth?.(credential)).resolves.toEqual(credential);
+  });
+});
+
+describe("manifest models are runnable", () => {
+  // The dashboard lists models from this plugin's manifest. On the Sept 15
+  // laptop test, 12 of the 18 OpenAI entries failed with "Unknown model" the
+  // moment they were picked, because the runtime only knew a hand-written
+  // forward-compat list. Every advertised model must resolve in API-key mode.
+  it("resolves every model the manifest advertises when the registry knows none of them", () => {
+    const provider = buildOpenAIProvider();
+    const emptyRegistry = { find: () => null };
+    const ids = manifest.modelCatalog.providers.openai.models.map((model) => model.id);
+    expect(ids.length).toBeGreaterThan(6);
+
+    const unresolved: string[] = [];
+    for (const id of ids) {
+      const model = provider.resolveDynamicModel?.({
+        provider: "openai",
+        modelId: id,
+        modelRegistry: emptyRegistry as never,
+      });
+      if (!model) {
+        unresolved.push(id);
+        continue;
+      }
+      expectFields(model, { provider: "openai", id });
+      expect(model.api, id).toBe("openai-responses");
+      expect(model.baseUrl, id).toBe("https://api.openai.com/v1");
+      expect(model.contextWindow, id).toBeGreaterThan(0);
+      expect(model.maxTokens, id).toBeGreaterThan(0);
+    }
+    expect(unresolved, "manifest models the runtime cannot run").toEqual([]);
+  });
+
+  it("still says no to a model nobody advertised", () => {
+    const provider = buildOpenAIProvider();
+    expect(
+      provider.resolveDynamicModel?.({
+        provider: "openai",
+        modelId: "totally-not-a-real-model-xyz",
+        modelRegistry: { find: () => null } as never,
+      }),
+    ).toBeUndefined();
   });
 });

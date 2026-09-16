@@ -87,8 +87,13 @@ Write-Host "daisyclaw: $packageVersion"
 
 # --- 1. Build ---------------------------------------------------------------
 if (-not $SkipUiBuild) {
-    Write-Step 'Building Control UI (pnpm ui:build)'
-    Invoke-Checked $pnpm @('ui:build') 'pnpm ui:build'
+    # The same flag that bakes the engine lockdown marks the UI bundle as a
+    # consumer build (no login form, no terminal instructions); see
+    # ui/src/ui/consumer-build.ts.
+    Write-Step 'Building Control UI as a consumer build (pnpm ui:build)'
+    $env:DAISYCLAW_CONSUMER_LOCKDOWN_BAKED = '1'
+    try { Invoke-Checked $pnpm @('ui:build') 'pnpm ui:build' }
+    finally { Remove-Item Env:DAISYCLAW_CONSUMER_LOCKDOWN_BAKED -ErrorAction SilentlyContinue }
 }
 # Channel plugins that upstream ships as separate on-demand npm packages. The
 # consumer engine must work offline, so they are compiled into dist/extensions

@@ -317,6 +317,27 @@ public class ManagedLocalGatewayPortProvenanceServiceTests
     }
 
     [Fact]
+    public void InteractiveCredentialGate_NativeLocalGateway_NeedsNoWslProof()
+    {
+        // The bundled Windows engine: IsLocal, loopback, no managed distro. There is
+        // no WSL listener to prove, so the gate must not demand one; doing so sent the
+        // dashboard a stale record token on every launch.
+        var service = new ManagedLocalGatewayPortProvenanceService(new FakePlatform(), NullLogger.Instance);
+        var native = new GatewayRecord
+        {
+            Id = "gw-native",
+            Url = "ws://127.0.0.1:18789",
+            IsLocal = true,
+            FriendlyName = "Daisy (this PC)",
+        };
+        var credential = new GatewayCredential(
+            "shared-token", false, CredentialResolver.SourceSharedGatewayToken);
+
+        Assert.Equal(GatewayEndpointProvenanceKind.NotApplicable, service.Inspect(native).Kind);
+        Assert.True(service.IsStrongCredentialAllowed(native, credential));
+    }
+
+    [Fact]
     public void InteractiveCredentialGate_BrowserControlInspectDoesNotEvictGatewayProof()
     {
         var platform = new FakePlatform();

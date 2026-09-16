@@ -165,6 +165,9 @@ async function main() {
         if (shouldRun("unknown-model-message-is-honest")) {
             await checkUnknownModelMessage(client);
         }
+        if (shouldRun("no-phantom-model-calls")) {
+            await checkNoPhantomModelCalls(client);
+        }
     } catch (err) {
         record(
             "suite",
@@ -387,10 +390,21 @@ async function checkOpenAiModels(client) {
         return;
     }
     if (verdict.reason === "invalid_key") {
+        // Every model the list offers must be one the engine can run. A walk
+        // that needed a second candidate means the first was a name the engine
+        // did not know: the list promised something it could not deliver.
+        if (verified.attempted.length > 1) {
+            record(
+                "openai-key-lists-usable-models",
+                "fail",
+                `the list offered models the engine cannot run; needed ${verified.attempted.length} tries (${tried}) before reaching OpenAI`,
+            );
+            return;
+        }
         record(
             "openai-key-lists-usable-models",
             "pass",
-            `reached OpenAI after trying ${tried} (key rejected, as expected)`,
+            `first offered model (${tried}) reached OpenAI (key rejected, as expected)`,
         );
         return;
     }
@@ -438,6 +452,53 @@ async function checkUnknownModelMessage(client) {
         "unknown-model-message-is-honest",
         "fail",
         `reason=${verdict.reason}; message blames the account: ${verdict.message}`,
+    );
+}
+
+/**
+ * A fresh install has no AI provider, yet the engine carries a built-in default
+ * model name. Background niceties (chat titles, follow-up chips) used to call
+ * that phantom model and fail with "No API key found" on every message. The
+ * dashboard asks for chip refinement exactly like this; the answer must be the
+ * instant heuristic set, never an error.
+ */
+async function checkNoPhantomModelCalls(client) {
+    const messageText =
+        "Here is a long answer with several steps.\n1. First do this.\n2. Then do that.\n3. Finally check the result. " +
+        "It goes on for a while so the heuristics have something to chew on and suggest a summary.";
+    let result;
+    const startedAt = Date.now();
+    try {
+        result = await client.request(
+            "chat.recommendActions",
+            { sessionKey: "main", messageText, refine: true },
+            { timeoutMs: 20_000 },
+        );
+    } catch (err) {
+        record(
+            "no-phantom-model-calls",
+            "fail",
+            `chat.recommendActions rejected: ${err instanceof Error ? err.message : String(err)}`,
+        );
+        return;
+    }
+    const elapsedMs = Date.now() - startedAt;
+    if (!result || !Array.isArray(result.actions)) {
+        record("no-phantom-model-calls", "fail", `unexpected reply ${JSON.stringify(result)}`);
+        return;
+    }
+    if (result.source !== "heuristic") {
+        record(
+            "no-phantom-model-calls",
+            "fail",
+            `refinement claimed a model answered (source=${result.source}) with no provider configured`,
+        );
+        return;
+    }
+    record(
+        "no-phantom-model-calls",
+        "pass",
+        `heuristic chips only (${result.actions.length}) in ${elapsedMs} ms; no model was asked`,
     );
 }
 

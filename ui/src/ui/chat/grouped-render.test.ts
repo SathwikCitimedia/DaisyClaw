@@ -2484,7 +2484,10 @@ describe("inline message editing", () => {
     const textarea = container.querySelector<HTMLTextAreaElement>(".chat-inline-edit__input");
     expect(textarea).toBeInstanceOf(HTMLTextAreaElement);
     expect(textarea!.value).toBe("original question");
-    expect(container.querySelector(".chat-bubble")).toBeNull();
+    // The editor takes the bubble's place (it is styled as the bubble itself);
+    // the rendered message bubble is gone.
+    expect(container.querySelector(".chat-bubble:not(.chat-inline-edit)")).toBeNull();
+    expect(container.querySelector(".chat-inline-edit.chat-bubble")).not.toBeNull();
   });
 
   it("submits the edited text and supports cancel via Escape", () => {
@@ -2523,5 +2526,55 @@ describe("inline message editing", () => {
       onEditCancel: vi.fn(),
     });
     expect(container.querySelector(".chat-inline-edit")).toBeNull();
+  });
+});
+
+describe("inline message editing: failure and progress", () => {
+  it("hands a failed submit back to the editor with the text and the reason", () => {
+    const container = document.createElement("div");
+    const group = createMessageGroup(
+      { role: "user", content: "original question", timestamp: 4300 },
+      "user",
+    );
+    renderMessageGroups(container, [group], {
+      editingGroupKey: group.key,
+      editingDraft: "my edited question",
+      editingError: "unknown method: sessions.forkFromMessage",
+      onEditSubmit: vi.fn(),
+      onEditCancel: vi.fn(),
+    });
+
+    const editor = container.querySelector<HTMLElement>(".chat-inline-edit")!;
+    // The editor is the user's own bubble, not a box inside it.
+    expect(editor.classList.contains("chat-bubble")).toBe(true);
+    expect(editor.classList.contains("chat-inline-edit--error")).toBe(true);
+    const textarea = container.querySelector<HTMLTextAreaElement>(".chat-inline-edit__input")!;
+    expect(textarea.value).toBe("my edited question");
+    expect(textarea.getAttribute("aria-invalid")).toBe("true");
+    const alert = container.querySelector('[role="alert"]');
+    expect(alert?.textContent).toContain("Couldn't update this message.");
+    expect(alert?.textContent).toContain("unknown method: sessions.forkFromMessage");
+    expect(container.querySelector(".chat-inline-edit__send")?.textContent?.trim()).toBe(
+      "Save and send",
+    );
+    expect(container.querySelector(".chat-inline-edit__hint")?.textContent).toContain("Enter");
+  });
+
+  it("shows a quiet updating line under the bubble while the edit is applied", () => {
+    const container = document.createElement("div");
+    const group = createMessageGroup(
+      { role: "user", content: "original question", timestamp: 4400 },
+      "user",
+    );
+    renderMessageGroups(container, [group], { editingBusyKey: group.key });
+
+    expect(container.querySelector(".chat-bubble")).not.toBeNull();
+    expect(container.querySelector(".chat-inline-edit")).toBeNull();
+    expect(container.querySelector(".chat-inline-edit__updating")?.textContent).toContain(
+      "Updating",
+    );
+
+    renderMessageGroups(container, [group], { editingBusyKey: null });
+    expect(container.querySelector(".chat-inline-edit__updating")).toBeNull();
   });
 });

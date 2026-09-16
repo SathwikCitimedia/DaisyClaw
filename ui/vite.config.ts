@@ -235,6 +235,11 @@ export default function controlUiViteConfig(): UserConfig {
     base,
     define: {
       DAISYCLAW_CONTROL_UI_BUILD_ID: JSON.stringify(controlUiBuildId),
+      // Set by the consumer packaging step (apps/windows/scripts/Build-EngineBundle.ps1)
+      // with the same flag that bakes the engine lockdown; see ui/src/ui/consumer-build.ts.
+      DAISYCLAW_CONTROL_UI_CONSUMER_BUILD: JSON.stringify(
+        process.env.DAISYCLAW_CONSUMER_LOCKDOWN_BAKED?.trim() === "1",
+      ),
     },
     publicDir: path.resolve(here, "public"),
     optimizeDeps: {

@@ -3727,6 +3727,129 @@ public class GatewayConnectionManagerTests : IDisposable
         Assert.Single(factory.CreatedCredentials);
     }
 
+    // The bundled Windows engine registers as IsLocal with no managed distro. The
+    // provenance probe has nothing to prove there and answers NotApplicable; that
+    // must not veto recovery, or a rotated device token strands every consumer
+    // install on "Connection error" (seen on the Sept 15 laptop upgrade).
+    private static GatewayRecord NativeLoopbackRecord(string? sharedToken) => new()
+    {
+        Id = "gw-native",
+        Url = "ws://127.0.0.1:18789",
+        IsLocal = true,
+        FriendlyName = "Daisy (this PC)",
+        SharedGatewayToken = sharedToken,
+    };
+
+    private static Task<GatewayEndpointProvenance> NativeProbe(GatewayRecord _, CancellationToken __) =>
+        Task.FromResult(new GatewayEndpointProvenance(GatewayEndpointProvenanceKind.NotApplicable, 0));
+
+    [Fact]
+    public async Task AuthenticationFailed_DeviceTokenMismatch_NativeLoopback_RecoversWithRecordSharedToken()
+    {
+        _registry.AddOrUpdate(NativeLoopbackRecord("shared-token"));
+        _registry.SetActive("gw-native");
+        var identityDir = _registry.GetIdentityDirectory("gw-native");
+        var identity = new DeviceIdentity(identityDir, NullLogger.Instance);
+        identity.Initialize();
+        identity.StoreDeviceToken("stale-device-token");
+
+        var factory = new MockClientFactory();
+        using var manager = new GatewayConnectionManager(
+            new CredentialResolver(new DeviceIdentityFileReader()), factory, _registry, NullLogger.Instance,
+            reconnectDelay: _ => Task.CompletedTask,
+            endpointProvenanceProbe: NativeProbe);
+
+        await manager.ConnectAsync("gw-native");
+        Assert.Equal(CredentialResolver.SourceDeviceToken, factory.CreatedCredentials[0].Source);
+
+        factory.CreatedClients[0].SimulateAuthFailed("AUTH_DEVICE_TOKEN_MISMATCH");
+        await WaitUntilAsync(() => factory.CreatedCredentials.Count >= 2);
+
+        Assert.Null(DeviceIdentity.TryReadStoredDeviceToken(identityDir));
+        Assert.Equal(CredentialResolver.SourceSharedGatewayToken, factory.CreatedCredentials[1].Source);
+        Assert.Equal("shared-token", factory.CreatedCredentials[1].Token);
+    }
+
+    [Fact]
+    public async Task AuthenticationFailed_DeviceTokenMismatch_NativeLoopback_UsesRefreshedEngineToken()
+    {
+        // Upgrade install: the engine rotated its shared token, the record still has the old one.
+        _registry.AddOrUpdate(NativeLoopbackRecord("stale-shared"));
+        _registry.SetActive("gw-native");
+        var identityDir = _registry.GetIdentityDirectory("gw-native");
+        var identity = new DeviceIdentity(identityDir, NullLogger.Instance);
+        identity.Initialize();
+        identity.StoreDeviceToken("stale-device-token");
+
+        var factory = new MockClientFactory();
+        using var manager = new GatewayConnectionManager(
+            new CredentialResolver(new DeviceIdentityFileReader()), factory, _registry, NullLogger.Instance,
+            reconnectDelay: _ => Task.CompletedTask,
+            endpointProvenanceProbe: NativeProbe,
+            sharedGatewayTokenRefresher: _ => "fresh-shared");
+
+        await manager.ConnectAsync("gw-native");
+        factory.CreatedClients[0].SimulateAuthFailed("AUTH_DEVICE_TOKEN_MISMATCH");
+        await WaitUntilAsync(() => factory.CreatedCredentials.Count >= 2);
+
+        Assert.Null(DeviceIdentity.TryReadStoredDeviceToken(identityDir));
+        Assert.Equal(CredentialResolver.SourceSharedGatewayToken, factory.CreatedCredentials[1].Source);
+        Assert.Equal("fresh-shared", factory.CreatedCredentials[1].Token);
+        Assert.Equal("fresh-shared", _registry.GetById("gw-native")!.SharedGatewayToken);
+    }
+
+    [Fact]
+    public async Task AuthenticationFailed_SharedTokenMismatch_NativeLoopback_RetriesOnceWithEngineToken()
+    {
+        // No device token yet (first connect after install); the record's shared token is stale.
+        _registry.AddOrUpdate(NativeLoopbackRecord("stale-shared"));
+        _registry.SetActive("gw-native");
+        new DeviceIdentity(_registry.GetIdentityDirectory("gw-native"), NullLogger.Instance).Initialize();
+
+        var factory = new MockClientFactory();
+        using var manager = new GatewayConnectionManager(
+            new CredentialResolver(new DeviceIdentityFileReader()), factory, _registry, NullLogger.Instance,
+            reconnectDelay: _ => Task.CompletedTask,
+            endpointProvenanceProbe: NativeProbe,
+            sharedGatewayTokenRefresher: _ => "fresh-shared");
+
+        await manager.ConnectAsync("gw-native");
+        Assert.Equal("stale-shared", factory.CreatedCredentials[0].Token);
+
+        factory.CreatedClients[0].SimulateAuthFailed("AUTH_TOKEN_MISMATCH: gateway token mismatch");
+        await WaitUntilAsync(() => factory.CreatedCredentials.Count >= 2);
+        Assert.Equal("fresh-shared", factory.CreatedCredentials[1].Token);
+        Assert.Equal("fresh-shared", _registry.GetById("gw-native")!.SharedGatewayToken);
+
+        // A wrong token from the engine config itself must not loop.
+        factory.CreatedClients[1].SimulateAuthFailed("AUTH_TOKEN_MISMATCH: gateway token mismatch");
+        await Task.Delay(150);
+        Assert.Equal(2, factory.CreatedCredentials.Count);
+        Assert.Equal(OverallConnectionState.Error, manager.CurrentSnapshot.OverallState);
+    }
+
+    [Fact]
+    public async Task AuthenticationFailed_SharedTokenMismatch_NativeLoopback_NoNewerToken_DoesNotRetry()
+    {
+        _registry.AddOrUpdate(NativeLoopbackRecord("same"));
+        _registry.SetActive("gw-native");
+        new DeviceIdentity(_registry.GetIdentityDirectory("gw-native"), NullLogger.Instance).Initialize();
+
+        var factory = new MockClientFactory();
+        using var manager = new GatewayConnectionManager(
+            new CredentialResolver(new DeviceIdentityFileReader()), factory, _registry, NullLogger.Instance,
+            reconnectDelay: _ => Task.CompletedTask,
+            endpointProvenanceProbe: NativeProbe,
+            sharedGatewayTokenRefresher: _ => "same");
+
+        await manager.ConnectAsync("gw-native");
+        factory.CreatedClients[0].SimulateAuthFailed("AUTH_TOKEN_MISMATCH: gateway token mismatch");
+        await Task.Delay(150);
+
+        Assert.Single(factory.CreatedCredentials);
+        Assert.Equal(OverallConnectionState.Error, manager.CurrentSnapshot.OverallState);
+    }
+
     [Fact]
     public async Task ManagedLoopback_UnknownOwner_StrongCredentialIsBlockedBeforeClientCreation()
     {

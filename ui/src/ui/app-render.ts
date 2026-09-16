@@ -30,6 +30,7 @@ import {
 import { hasOperatorAdminAccess, hasOperatorWriteAccess, warnQueryToken } from "./app-settings.ts";
 import type { AppViewState } from "./app-view-state.ts";
 import { actionPromptFor, resolveAssistantActionChips } from "./chat/action-recommendations.ts";
+import { describeEditFailure } from "./chat/edit-turn.ts";
 import { reconcileChatRunLifecycle } from "./chat/run-lifecycle.ts";
 import {
   renderChatSessionSelect,
@@ -245,11 +246,13 @@ import {
 } from "./views/first-run-wizard.ts";
 import { renderGatewayUrlConfirmation } from "./views/gateway-url-confirmation.ts";
 import {
+  renderConsumerGate,
   renderLoginGate,
   renderPreparingGate,
   renderReconnectingGate,
   renderResettingGate,
   shouldShowConnectingGate,
+  shouldShowConsumerGate,
   shouldShowReconnectingGate,
 } from "./views/login-gate.ts";
 import { renderMcp } from "./views/mcp.ts";
@@ -1786,6 +1789,12 @@ export function renderApp(state: AppViewState) {
     if (shouldShowReconnectingGate(state)) {
       scheduleReconnectGateTick(requestHostUpdate);
       return html` ${renderReconnectingGate(state)} ${renderGatewayUrlConfirmation(state)} `;
+    }
+    // The packaged product never shows the developer login form: the desktop
+    // app owns the credentials and repairs them itself, so the user gets a
+    // plain card with a retry instead of a token field.
+    if (shouldShowConsumerGate(state)) {
+      return html` ${renderConsumerGate(state)} ${renderGatewayUrlConfirmation(state)} `;
     }
     return html` ${renderLoginGate(state)} ${renderGatewayUrlConfirmation(state)} `;
   }
@@ -4661,36 +4670,31 @@ export function renderApp(state: AppViewState) {
                   onSend: () => void state.handleSendChat(),
                   onSendText: (text: string) =>
                     void state.handleSendChat(text, { restoreDraft: true }),
-                  onEditFork: (
-                    target: { messageId?: string; lastUser?: boolean },
-                    text: string,
-                  ) => {
-                    void (async () => {
-                      if (!state.client) {
-                        showToast("Message edit failed: gateway not connected", { tone: "error" });
-                        return;
-                      }
-                      try {
-                        // Fork the session so history ends just before the
-                        // edited message — the old exchange truly leaves the
-                        // model context, like ChatGPT's edit-and-regenerate.
-                        await state.client.request("sessions.forkFromMessage", {
-                          key: state.sessionKey,
-                          ...(target.messageId
-                            ? { messageId: target.messageId }
-                            : { lastUser: true }),
-                          ...scopedAgentParamsForSession(state, state.sessionKey),
-                        });
-                      } catch (err) {
-                        showToast(`Message edit failed: ${String(err)}`, {
-                          tone: "error",
-                        });
-                        return;
-                      }
-                      await state.handleSendChat(text, {
-                        restoreDraft: true,
+                  onEditFork: async (target, text, hooks) => {
+                    if (!state.client) {
+                      return { ok: false, error: "Daisy is not connected right now." };
+                    }
+                    try {
+                      // Fork the session so history ends just before the
+                      // edited message — the old exchange truly leaves the
+                      // model context, like ChatGPT's edit-and-regenerate.
+                      await state.client.request("sessions.forkFromMessage", {
+                        key: state.sessionKey,
+                        ...(target.messageId
+                          ? { messageId: target.messageId }
+                          : { lastUser: true }),
+                        ...scopedAgentParamsForSession(state, state.sessionKey),
                       });
-                    })();
+                    } catch (err) {
+                      // The editor shows this inline; the old turn stays put.
+                      return { ok: false, error: describeEditFailure(err) };
+                    }
+                    // Accepted: only now does the old turn leave the screen.
+                    hooks.onForked();
+                    await state.handleSendChat(text, {
+                      restoreDraft: true,
+                    });
+                    return { ok: true };
                   },
                   onCompact: () =>
                     void state.handleSendChat("/compact", {

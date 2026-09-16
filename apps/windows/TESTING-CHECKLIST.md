@@ -28,6 +28,23 @@ node --import tsx apps/windows/scripts/consumer-smoke/run.mjs
 It uses its own port, scheduled task and state directory, so it never touches
 the gateway on the machine you run it from.
 
+## Upgrading a PC that already has Daisy
+
+Run this on a PC where an earlier build is installed, before the fresh-install
+pass below. Quit Daisy from the tray icon first, then run the new installer over
+the top (do not uninstall).
+
+1. The window opens by itself and shows chat, or the setup wizard if setup was
+   never finished. It must never show a login form, a "Gateway Dashboard" page,
+   a token field, or "Auth did not match".
+2. Within a minute the tray icon is green and its tooltip says connected. The
+   window and the tray must agree: "Connected" on one and "Connection error" on
+   the other is a failure.
+3. Your earlier chats and settings are still there.
+
+If the window ever shows "Daisy couldn't sign in", wait one minute, then press
+**Try again**. If it stays, that is a bug: collect the two logs above.
+
 ## First run
 
 1. Install, then wait for the window. It opens by itself. On a slow or
@@ -73,8 +90,17 @@ the gateway on the machine you run it from.
     notification appears for replies. Close the dashboard, send a message from
     WhatsApp, and a notification does appear; clicking it opens the dashboard,
     not the older-looking tray window.
+11b. Hover a message you sent, click the pencil, change the text and press
+    Enter. The editor is your own bubble (same width and look), with a hint
+    line and "Cancel" / "Save and send". Your old question and its answer
+    disappear only when the new answer starts. If the edit cannot be applied,
+    your text stays in the editor with the reason under it; nothing vanishes.
 12. The Workspace panel lists files with no red "Missing" badge, including
-    `MEMORY.md`.
+    `MEMORY.md`. This holds on a fresh install before the first chat, and again
+    right after a reset.
+12b. In the composer, the model chip says "Add an AI brain" until a provider is
+    set up; it must never show a model name like `openai/gpt-5.5` on an install
+    without a key.
 13. Settings → "Something wrong?" → Create support report writes a zip and shows
     its path.
 
@@ -85,4 +111,7 @@ the gateway on the machine you run it from.
 15. Settings → Start over → **Reset Daisy…** lists what is erased, requires the
     checkbox, then the red button. The app shows "Resetting Daisy…", comes back
     on its own and opens the setup wizard. Chats, keys and channels are gone; no
-    login form appears.
+    login form appears. No command-prompt window flashes up during the restart.
+    If the wizard shows a note that a few old files are still being removed,
+    that is expected once; after the next restart the Workspace panel must show
+    every file and the note must be gone.

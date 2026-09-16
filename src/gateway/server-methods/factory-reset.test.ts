@@ -84,3 +84,44 @@ describe("system.factoryReset", () => {
     });
   });
 });
+
+describe("system.factoryResetStatus", () => {
+  function callStatus(readResult: () => unknown) {
+    const handlers = createFactoryResetHandlers({ readResult: readResult as never });
+    const respond = vi.fn();
+    handlers["system.factoryResetStatus"]({
+      req: { type: "req", id: "req-status", method: "system.factoryResetStatus", params: {} },
+      params: {},
+      respond: respond as RespondFn,
+      client: null,
+      isWebchatConnect: () => false,
+      context: {
+        getRuntimeConfig: () => ({}),
+        logGateway: { warn: vi.fn(), info: vi.fn(), debug: vi.fn(), error: vi.fn() },
+      } as never,
+    });
+    return respond.mock.calls[0] as [boolean, Record<string, unknown>];
+  }
+
+  it("reports no reset on a fresh install", () => {
+    const [ok, payload] = callStatus(() => null);
+    expect(ok).toBe(true);
+    expect(payload).toEqual({ applied: false, skipped: [], complete: true });
+  });
+
+  it("reports leftovers so the app never claims a clean slate it did not get", () => {
+    const [ok, payload] = callStatus(() => ({
+      kind: "factory-reset-result",
+      appliedAt: "2026-09-15T10:00:00.000Z",
+      requestedAt: "2026-09-15T09:59:59.000Z",
+      removed: 7,
+      skipped: [{ path: "C:/Users/x/.daisyclaw/state", error: "EPERM" }],
+      retries: 2,
+    }));
+    expect(ok).toBe(true);
+    expect(payload.applied).toBe(true);
+    expect(payload.complete).toBe(false);
+    expect(payload.retries).toBe(2);
+    expect(payload.skipped).toEqual([{ path: "C:/Users/x/.daisyclaw/state", error: "EPERM" }]);
+  });
+});

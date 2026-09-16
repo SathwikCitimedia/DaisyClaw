@@ -7,6 +7,8 @@
 import { getSafeLocalStorage } from "../local-storage.ts";
 
 export const FACTORY_RESET_PENDING_KEY = "daisyclaw.control.factoryResetPending.v1";
+/** Set when the gateway reports files the reset could not remove yet; shown once in the wizard. */
+export const FACTORY_RESET_LEFTOVERS_KEY = "daisyclaw.control.factoryResetLeftovers.v1";
 /** Confirm phrase the gateway requires; mirrors FACTORY_RESET_CONFIRM_PHRASE server-side. */
 export const FACTORY_RESET_CONFIRM_PHRASE = "erase-everything";
 /** Give the gateway this long to come back before treating the reset as failed. */
@@ -17,7 +19,39 @@ const PRESERVED_LOCAL_KEY_PREFIXES = [
   "daisyclaw.control.settings.v1",
   "daisyclaw.control.token.v1",
   FACTORY_RESET_PENDING_KEY,
+  FACTORY_RESET_LEFTOVERS_KEY,
 ];
+
+/** Remembers how many old files the reset left on disk, for the wizard to mention once. */
+export function markFactoryResetLeftovers(count: number): void {
+  try {
+    if (count > 0) {
+      getSafeLocalStorage()?.setItem(FACTORY_RESET_LEFTOVERS_KEY, String(count));
+    } else {
+      getSafeLocalStorage()?.removeItem(FACTORY_RESET_LEFTOVERS_KEY);
+    }
+  } catch {
+    // Cosmetic only.
+  }
+}
+
+export function readFactoryResetLeftovers(): number {
+  try {
+    const raw = getSafeLocalStorage()?.getItem(FACTORY_RESET_LEFTOVERS_KEY);
+    const value = Number(raw ?? "0");
+    return Number.isFinite(value) && value > 0 ? value : 0;
+  } catch {
+    return 0;
+  }
+}
+
+export function clearFactoryResetLeftovers(): void {
+  try {
+    getSafeLocalStorage()?.removeItem(FACTORY_RESET_LEFTOVERS_KEY);
+  } catch {
+    // ignore
+  }
+}
 
 export function markFactoryResetPending(nowMs: number = Date.now()): void {
   try {

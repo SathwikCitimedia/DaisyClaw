@@ -34,9 +34,14 @@ function buildScheduledTaskRestartScript(params: {
 }): string {
   const { quotedLogPath, setupLines, taskName, taskScriptPath } = params;
   const quotedTaskName = quoteCmdScriptArg(taskName);
-  const queryTaskStateCommand = `(Get-ScheduledTask -TaskName ${quotePowerShellSingleQuotedLiteral(
+  // One PowerShell process that answers through its exit code. The previous
+  // form piped the task state into `findstr /I /C:"Running"`; a pipeline in a
+  // console-less cmd.exe made Windows open a console window for the two
+  // children, titled with that findstr command, in the user's face during
+  // every restart.
+  const queryTaskStateCommand = `if ((Get-ScheduledTask -TaskName ${quotePowerShellSingleQuotedLiteral(
     taskName,
-  )} -ErrorAction SilentlyContinue).State`;
+  )} -ErrorAction SilentlyContinue).State -eq 'Running') { exit 0 }; exit 1`;
   const quotedQueryTaskStateCommand = quoteCmdScriptArg(queryTaskStateCommand);
   const lines = [
     "@echo off",
@@ -50,7 +55,7 @@ function buildScheduledTaskRestartScript(params: {
     `timeout /t ${TASK_RESTART_RETRY_DELAY_SEC} /nobreak >nul`,
     "set /a attempts+=1",
     // Avoid racing with another restart path that already started the scheduled task.
-    `powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command ${quotedQueryTaskStateCommand} 2>nul | findstr /I /C:"Running" >nul 2>&1`,
+    `powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command ${quotedQueryTaskStateCommand} >nul 2>&1`,
     "if not errorlevel 1 goto cleanup",
     `schtasks /Run /TN ${quotedTaskName} >> ${quotedLogPath} 2>&1`,
     "if not errorlevel 1 goto cleanup",
@@ -91,8 +96,15 @@ export function relaunchGatewayScheduledTask(env: NodeJS.ProcessEnv = process.en
       })}\r\n`,
       "utf8",
     );
+    // Hidden, not detached. `detached` maps to DETACHED_PROCESS, which gives
+    // cmd.exe no console at all; every console program the script then runs
+    // (powershell, schtasks) gets a brand-new *visible* console window from
+    // Windows. `windowsHide` alone maps to CREATE_NO_WINDOW: cmd.exe owns a
+    // hidden console and its children inherit it. Outliving the gateway does
+    // not need `detached` on Windows (children are not killed with their
+    // parent, and libuv never used a job breakaway here anyway); `unref` keeps
+    // this process from waiting on the helper.
     const child = spawn("cmd.exe", ["/d", "/s", "/c", quotedScriptPath], {
-      detached: true,
       stdio: "ignore",
       windowsHide: true,
     });

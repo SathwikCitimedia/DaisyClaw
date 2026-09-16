@@ -5,6 +5,7 @@
 import { ErrorCodes, errorShape } from "../../../packages/gateway-protocol/src/index.js";
 import {
   FACTORY_RESET_CONFIRM_PHRASE,
+  readFactoryResetResultSync,
   writeFactoryResetMarkerSync,
 } from "../../infra/factory-reset.js";
 import { scheduleGatewaySigusr1Restart } from "../../infra/restart.js";
@@ -16,6 +17,7 @@ export const FACTORY_RESET_RESTART_DELAY_MS = 750;
 export type FactoryResetHandlerDeps = {
   scheduleRestart: typeof scheduleGatewaySigusr1Restart;
   writeMarker: typeof writeFactoryResetMarkerSync;
+  readResult: typeof readFactoryResetResultSync;
 };
 
 /** Builds the handler map; deps are injectable so tests never touch the real restart plumbing. */
@@ -24,7 +26,29 @@ export function createFactoryResetHandlers(
 ): GatewayRequestHandlers {
   const scheduleRestart = deps.scheduleRestart ?? scheduleGatewaySigusr1Restart;
   const writeMarker = deps.writeMarker ?? writeFactoryResetMarkerSync;
+  const readResult = deps.readResult ?? readFactoryResetResultSync;
   return {
+    // What the last reset actually did. The dashboard asks this when it comes
+    // back after a reset so it can say "some old files are still being removed"
+    // instead of claiming a clean slate it did not verify.
+    "system.factoryResetStatus": ({ respond }) => {
+      const result = readResult();
+      respond(
+        true,
+        result
+          ? {
+              applied: true,
+              appliedAt: result.appliedAt,
+              requestedAt: result.requestedAt,
+              removed: result.removed,
+              skipped: result.skipped,
+              retries: result.retries,
+              complete: result.skipped.length === 0,
+            }
+          : { applied: false, skipped: [], complete: true },
+        undefined,
+      );
+    },
     "system.factoryReset": ({ params, respond, client, context }) => {
       const confirm = typeof params?.confirm === "string" ? params.confirm : "";
       if (confirm !== FACTORY_RESET_CONFIRM_PHRASE) {

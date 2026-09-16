@@ -90,7 +90,7 @@ describe("relaunchGatewayScheduledTask", () => {
     });
   });
 
-  it("writes a detached schtasks relaunch helper", () => {
+  it("writes a hidden schtasks relaunch helper", () => {
     const unref = vi.fn();
     let seenCommandArg = "";
     spawnMock.mockImplementation((_file: string, args: string[]) => {
@@ -108,8 +108,9 @@ describe("relaunchGatewayScheduledTask", () => {
     const spawnCall = requireFirstMockCall(spawnMock, "restart helper spawn");
     expect(spawnCall[0]).toBe("cmd.exe");
     expect(spawnCall[1]).toStrictEqual(["/d", "/s", "/c", seenCommandArg]);
+    // Hidden console, never detached: a console-less cmd.exe makes Windows pop a
+    // visible console for the script's powershell/schtasks children.
     expect(spawnCall[2]).toStrictEqual({
-      detached: true,
       stdio: "ignore",
       windowsHide: true,
     });
@@ -127,8 +128,12 @@ describe("relaunchGatewayScheduledTask", () => {
       'daisyclaw restart attempt source=windows-task-handoff target="DaisyClaw Gateway (work)"',
     );
     expect(script).toContain(
-      `powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "(Get-ScheduledTask -TaskName 'DaisyClaw Gateway (work)' -ErrorAction SilentlyContinue).State" 2>nul | findstr /I /C:"Running" >nul 2>&1`,
+      `powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "if ((Get-ScheduledTask -TaskName 'DaisyClaw Gateway (work)' -ErrorAction SilentlyContinue).State -eq 'Running') { exit 0 }; exit 1" >nul 2>&1`,
     );
+    // No pipeline: the running-task probe must answer through its exit code so
+    // no second console process (findstr) is ever spawned.
+    expect(script).not.toContain("findstr");
+    expect(script).not.toContain("|");
     expect(script).toContain('schtasks /Run /TN "DaisyClaw Gateway (work)" >>');
     expect(script.indexOf("powershell.exe -NoProfile")).toBeLessThan(
       script.indexOf('schtasks /Run /TN "DaisyClaw Gateway (work)"'),
@@ -165,7 +170,7 @@ describe("relaunchGatewayScheduledTask", () => {
     const scriptPath = [...createdScriptPaths][0];
     const script = fs.readFileSync(scriptPath, "utf8");
     expect(script).toContain(
-      "-Command \"(Get-ScheduledTask -TaskName 'DaisyClaw Gateway (Bob''s work)' -ErrorAction SilentlyContinue).State\"",
+      "-Command \"if ((Get-ScheduledTask -TaskName 'DaisyClaw Gateway (Bob''s work)' -ErrorAction SilentlyContinue).State -eq 'Running') { exit 0 }; exit 1\"",
     );
   });
 
@@ -206,7 +211,6 @@ describe("relaunchGatewayScheduledTask", () => {
     expect(commandArg.endsWith('"')).toBe(true);
     expect(commandArg).toContain("&");
     expect(spawnCall[2]).toStrictEqual({
-      detached: true,
       stdio: "ignore",
       windowsHide: true,
     });

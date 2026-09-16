@@ -8,15 +8,16 @@ import { getSafeLocalStorage } from "../../local-storage.ts";
 import type { AppViewState } from "../app-view-state.ts";
 import { loadConfig, updateConfigFormValue } from "../controllers/config.ts";
 import {
+  connectCustomProvider,
+  describeCustomProviderSave,
+} from "../controllers/custom-provider.ts";
+import {
   listProviderModelCandidates,
   type PickedProviderModel,
 } from "../controllers/model-pick.ts";
 import {
-  CUSTOM_PROVIDER_LABELS,
   invalidateModelCatalog,
   loadModels,
-  probeCustomProvider,
-  saveCustomProvider,
   saveProviderApiKey,
   setDefaultModel,
   verifyProviderModelCandidates,
@@ -241,46 +242,14 @@ async function connectProvider(state: AppViewState, preset: ProviderPreset): Pro
       if (!draft.baseUrl.trim() || !draft.modelId.trim()) {
         throw new Error("Enter the server URL and a model name.");
       }
-      // Ask the gateway which product answers at that address so the server
-      // is saved under its real name (LiteLLM, Ollama, …) with its model list.
-      const probe = await probeCustomProvider(state.client, {
+      // Shared with Settings → Model Studio so the two cannot drift.
+      const connected = await connectCustomProvider(state, {
         baseUrl: draft.baseUrl,
         apiKey: draft.apiKey.trim() ? draft.apiKey : undefined,
+        modelId: draft.modelId,
       });
-      const providerId = probe.providerId || "custom";
-      const label = probe.label || CUSTOM_PROVIDER_LABELS[providerId] || "Custom server";
-      const modelId = draft.modelId.trim();
-      await saveCustomProvider(state, {
-        providerId,
-        baseUrl: probe.baseUrl || draft.baseUrl,
-        apiKey: draft.apiKey.trim() ? draft.apiKey : undefined,
-        modelId,
-        extraModelIds: probe.models,
-        modelNameSuffix: providerId === "custom" ? undefined : label,
-      });
-      await setDefaultModel(state, `${providerId}/${modelId}`);
-      if (state.client) {
-        invalidateModelCatalog(state.client);
-      }
-      if (!probe.reachable) {
-        showToast(
-          `Saved. Couldn't reach ${label.toLowerCase() === "custom server" ? "the server" : label} right now — Daisy will connect once it's online (VPN on?).`,
-          { tone: "info" },
-        );
-      } else if (probe.authRejected) {
-        showToast(`${label} rejected the API key. Check it in Settings if chats fail.`, {
-          tone: "info",
-        });
-      } else if (probe.models.length > 0 && !probe.models.includes(modelId)) {
-        showToast(
-          `${label} doesn't list "${modelId}". Saved anyway — double-check the model name.`,
-          {
-            tone: "info",
-          },
-        );
-      } else {
-        showToast(`Connected to ${label}.`, { tone: "success" });
-      }
+      const note = describeCustomProviderSave(connected);
+      showToast(note.message, { tone: note.tone });
     } else {
       if (!draft.apiKey.trim()) {
         throw new Error("Paste your API key first.");

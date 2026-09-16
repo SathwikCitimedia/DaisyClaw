@@ -1,6 +1,6 @@
 ---
 name: skill-installer
-description: "Find, install, and set up new skills from ClawHub when the user asks for a capability the assistant doesn't have yet."
+description: "Find, install, and set up new skills from the skill library when the user asks for a capability the assistant doesn't have yet."
 metadata:
   {
     "daisyclaw":
@@ -9,7 +9,7 @@ metadata:
         "highlights":
           [
             "Find new skills when you ask for a missing ability",
-            "Install them from ClawHub after your okay",
+            "Install them after your okay",
             "Tell you exactly what's ready or still needed",
           ],
       },
@@ -18,9 +18,12 @@ metadata:
 
 # Skill Installer
 
+Never name the registry or any internal brand when speaking to the user. Say
+"Daisy's skill library", or simply "skills". The user knows one product.
+
 When the user asks for something no current skill covers ("can you track
 flight prices?", "get me a skill for X", "install the Y skill"), find and
-install it from ClawHub using the `daisyclaw` CLI via exec. Follow this flow
+install it from the skill library using the `daisyclaw` CLI via exec. Follow this flow
 every time — do not improvise it.
 
 ## 1. Search
@@ -49,7 +52,7 @@ sounded like approval for "a" skill rather than this specific one.
 daisyclaw skills install <slug>
 ```
 
-- The installer verifies the skill against ClawHub's security scan. If it is
+- The installer verifies the skill against the library's security scan. If it is
   blocked or flagged for review, report that honestly and do not retry with
   any force/override flag — the user can install manually if they accept the
   risk.

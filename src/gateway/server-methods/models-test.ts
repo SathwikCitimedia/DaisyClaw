@@ -24,6 +24,7 @@ export type ProviderTestReason =
   | "no_credit"
   | "rate_limited"
   | "model_not_found"
+  | "bad_endpoint"
   | "network"
   | "timeout"
   | "unknown_model"
@@ -50,6 +51,17 @@ const MODEL_NOT_FOUND_PATTERN =
   /model[_\s]?not[_\s]?found|does not exist or you do not have access|unknown model|no such model|model .* not (?:found|available|supported)|unsupported model/i;
 const MISSING_KEY_PATTERN =
   /missing api key|no api key|api key (?:is )?(?:required|not set|missing)|no credentials|not authenticated|set .*_api_key/i;
+/**
+ * The provider SDK's wording when a response carried no body at all
+ * ("404 status code (no body)").
+ *
+ * A server that knows the request but not the model always explains itself in
+ * the body. An empty 404 means nothing is served at that address — usually a
+ * self-hosted server saved without its `/v1` path. Treating it as
+ * "model not found" told users their account could not use a model when
+ * nothing had ever looked at their account.
+ */
+const EMPTY_BODY_PATTERN = /status code \(no body\)/i;
 
 /**
  * Turns a failure that happened before any request left this machine into a
@@ -112,6 +124,8 @@ export function classifyProviderTestFailure(params: {
   message: string;
   provider: string;
   model?: string;
+  /** The address the request went to; named when the address is the problem. */
+  baseUrl?: string;
 }): ProviderTestResult {
   const raw = params.message.trim();
   const status = extractHttpStatus(raw);
@@ -156,6 +170,17 @@ export function classifyProviderTestFailure(params: {
       ...withStatus,
       reason: "rate_limited",
       message: `${params.provider} is rate limiting this key right now. Wait a moment and try again.`,
+    };
+  }
+  // Check this before the model-not-found bucket: an empty 404 is about the
+  // address, never about the model or the account.
+  if (status === 404 && EMPTY_BODY_PATTERN.test(raw) && !MODEL_NOT_FOUND_PATTERN.test(raw)) {
+    return {
+      ...withStatus,
+      reason: "bad_endpoint",
+      message: params.baseUrl
+        ? `Nothing answered at ${params.baseUrl}. Check the server address in Settings — most servers need it to end in /v1.`
+        : `The saved address for ${params.provider} did not answer. Check it in Settings — most servers need it to end in /v1.`,
     };
   }
   if (MODEL_NOT_FOUND_PATTERN.test(raw) || status === 404) {
@@ -272,6 +297,10 @@ export async function testModelProvider(params: {
     });
   }
 
+  const preparedBaseUrl = (prepared.model as { baseUrl?: unknown }).baseUrl;
+  const preparedBaseUrlText =
+    typeof preparedBaseUrl === "string" && preparedBaseUrl.trim() ? preparedBaseUrl.trim() : "";
+
   const controller = new AbortController();
   const timeoutMs = params.timeoutMs ?? PROVIDER_TEST_TIMEOUT_MS;
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -291,7 +320,12 @@ export async function testModelProvider(params: {
       log.warn(
         `models.testProvider provider=${providerId} model=${modelId} failed: ${message.slice(0, 400)}`,
       );
-      return classifyProviderTestFailure({ message, provider: providerId, model: modelId });
+      return classifyProviderTestFailure({
+        message,
+        provider: providerId,
+        model: modelId,
+        ...(preparedBaseUrlText ? { baseUrl: preparedBaseUrlText } : {}),
+      });
     }
     return {
       ok: true,
@@ -305,7 +339,12 @@ export async function testModelProvider(params: {
     log.warn(
       `models.testProvider provider=${providerId} model=${modelId} threw: ${message.slice(0, 400)}`,
     );
-    return classifyProviderTestFailure({ message, provider: providerId, model: modelId });
+    return classifyProviderTestFailure({
+      message,
+      provider: providerId,
+      model: modelId,
+      ...(preparedBaseUrlText ? { baseUrl: preparedBaseUrlText } : {}),
+    });
   } finally {
     clearTimeout(timer);
   }

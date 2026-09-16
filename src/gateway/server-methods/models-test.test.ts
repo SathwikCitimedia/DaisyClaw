@@ -102,3 +102,56 @@ describe("classifyLocalModelResolutionFailure", () => {
     expect(result.message).not.toMatch(/account/i);
   });
 });
+
+describe("an empty 404 is about the address, not the account", () => {
+  // Sept 16 laptop report: a LiteLLM server saved without its /v1 path made
+  // chat fail with "404 status code (no body)", and the connection test told
+  // the user "Your litellm account cannot use claude-sonnet-4-5" — a claim
+  // about their account that nothing had ever checked.
+  it("names the address instead of blaming the account or the model", () => {
+    const verdict = classifyProviderTestFailure({
+      message: "404 status code (no body)",
+      provider: "litellm",
+      model: "claude-sonnet-4-5",
+      baseUrl: "http://10.21.66.8:4000",
+    });
+
+    expect(verdict.reason).toBe("bad_endpoint");
+    expect(verdict.message).toContain("http://10.21.66.8:4000");
+    expect(verdict.message).toContain("/v1");
+    expect(verdict.message).not.toContain("account");
+    expect(verdict.message).not.toContain("claude-sonnet-4-5");
+  });
+
+  it("still says so usefully when the address is unknown", () => {
+    const verdict = classifyProviderTestFailure({
+      message: "404 status code (no body)",
+      provider: "litellm",
+    });
+
+    expect(verdict.reason).toBe("bad_endpoint");
+    expect(verdict.message).toContain("Check it in Settings");
+  });
+
+  it("keeps blaming the model when the server actually said so", () => {
+    const withBody = classifyProviderTestFailure({
+      message: '404 {"error":{"message":"model_not_found","code":404}}',
+      provider: "litellm",
+      model: "claude-sonnet-4-5",
+      baseUrl: "http://10.21.66.8:4000/v1",
+    });
+
+    expect(withBody.reason).toBe("model_not_found");
+    expect(withBody.message).toContain("claude-sonnet-4-5");
+  });
+
+  it("leaves other statuses alone", () => {
+    expect(
+      classifyProviderTestFailure({
+        message: "401 status code (no body)",
+        provider: "litellm",
+        baseUrl: "http://host/v1",
+      }).reason,
+    ).toBe("invalid_key");
+  });
+});

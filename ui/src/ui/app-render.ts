@@ -95,6 +95,10 @@ import {
   updateCronJobsFilter,
   updateCronRunsFilter,
 } from "./controllers/cron.ts";
+import {
+  connectCustomProvider,
+  describeCustomProviderSave,
+} from "./controllers/custom-provider.ts";
 import { loadDebug, callDebugMethod } from "./controllers/debug.ts";
 import {
   approveDevicePairing,
@@ -127,13 +131,10 @@ import { loadLogs } from "./controllers/logs.ts";
 import { loadModelAuthStatusState } from "./controllers/model-auth-status.ts";
 import { listProviderModelCandidates, type PickedProviderModel } from "./controllers/model-pick.ts";
 import {
-  CUSTOM_PROVIDER_LABELS,
   invalidateModelCatalog,
   loadModels,
   loadModelsExpecting,
-  probeCustomProvider,
   resolveDefaultModelSelection,
-  saveCustomProvider,
   saveProviderApiKey,
   setDefaultModel,
   setModelFallbacks,
@@ -2278,31 +2279,23 @@ export function renderApp(state: AppViewState) {
                   state.modelStudioError = null;
                   try {
                     let connectedLabel = providerId;
+                    // The id the provider is actually saved under. A custom
+                    // server saved as "litellm" must be tested as "litellm",
+                    // not as the text left in the name box.
+                    let savedProviderId = providerId;
                     if (input.baseUrl !== undefined || input.modelId !== undefined) {
-                      // Recognise the server (LiteLLM, Ollama, …) so it is saved
-                      // under its real provider id with the models it advertises.
-                      const probe = await probeCustomProvider(state.client, {
+                      // Shared with the setup wizard so the two cannot drift.
+                      const connected = await connectCustomProvider(state, {
+                        typedName: providerId,
                         baseUrl: input.baseUrl ?? "",
                         apiKey: input.apiKey,
-                      });
-                      const userNamed = providerId && providerId !== "custom";
-                      const resolvedId = userNamed ? providerId : probe.providerId || "custom";
-                      connectedLabel = userNamed
-                        ? providerId
-                        : probe.label || CUSTOM_PROVIDER_LABELS[resolvedId] || resolvedId;
-                      await saveCustomProvider(state, {
-                        providerId: resolvedId,
-                        baseUrl: probe.baseUrl || input.baseUrl || "",
-                        apiKey: input.apiKey,
                         modelId: input.modelId ?? "",
-                        extraModelIds: probe.models,
-                        modelNameSuffix: resolvedId === "custom" ? undefined : connectedLabel,
                       });
-                      if (!probe.reachable) {
-                        showToast(
-                          "Saved, but the server didn't answer right now — Daisy will connect once it's online (VPN on?).",
-                          { tone: "info" },
-                        );
+                      savedProviderId = connected.providerId;
+                      connectedLabel = connected.label;
+                      const note = describeCustomProviderSave(connected);
+                      if (note.tone !== "success") {
+                        showToast(note.message, { tone: note.tone });
                       }
                     } else {
                       await saveProviderApiKey(state, providerId, input.apiKey ?? "");
@@ -2318,7 +2311,7 @@ export function renderApp(state: AppViewState) {
                     // model list can offer entries this engine cannot run, so
                     // try the provider's models until one answers instead of
                     // reporting the first one's failure as the provider's.
-                    const provider = providerId || "custom";
+                    const provider = savedProviderId || "custom";
                     let candidates: PickedProviderModel[] = [];
                     if (state.client) {
                       try {

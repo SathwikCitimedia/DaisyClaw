@@ -25,6 +25,7 @@ import {
     verifyProviderModelCandidates,
 } from "../../../../ui/src/ui/controllers/models.ts";
 import { listProviderModelCandidates } from "../../../../ui/src/ui/controllers/model-pick.ts";
+import { connectCustomProvider } from "../../../../ui/src/ui/controllers/custom-provider.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, "..", "..", "..", "..");
@@ -167,6 +168,9 @@ async function main() {
         }
         if (shouldRun("no-phantom-model-calls")) {
             await checkNoPhantomModelCalls(client);
+        }
+        if (shouldRun("custom-server-address-survives-a-dead-probe")) {
+            await checkCustomServerAddress(client);
         }
     } catch (err) {
         record(
@@ -499,6 +503,78 @@ async function checkNoPhantomModelCalls(client) {
         "no-phantom-model-calls",
         "pass",
         `heuristic chips only (${result.actions.length}) in ${elapsedMs} ms; no model was asked`,
+    );
+}
+
+/**
+ * A self-hosted server (LiteLLM, Ollama, ...) must be saved at an address chat
+ * can actually post to, even when the probe cannot reach it — the laptop case
+ * where the VPN was still connecting after a reset, which saved the address
+ * without its /v1 path and made every chat fail with "404 (no body)".
+ *
+ * Uses an address nothing answers on, so the probe is guaranteed to miss.
+ */
+async function checkCustomServerAddress(client) {
+    const state = makeControllerState(client);
+    const typed = "http://127.0.0.1:9";
+    let connected;
+    try {
+        connected = await connectCustomProvider(state, {
+            typedName: "smokeserver",
+            baseUrl: typed,
+            modelId: "some-model",
+        });
+    } catch (err) {
+        record(
+            "custom-server-address-survives-a-dead-probe",
+            "fail",
+            `saving an unreachable server failed: ${err instanceof Error ? err.message : String(err)}`,
+        );
+        return;
+    }
+    if (connected.baseUrl !== `${typed}/v1`) {
+        record(
+            "custom-server-address-survives-a-dead-probe",
+            "fail",
+            `stored ${connected.baseUrl}; chat would post to a path the server does not serve`,
+        );
+        return;
+    }
+    // And the typed model must be the default, which Settings used to skip.
+    let config = null;
+    try {
+        config = await client.request("config.get", {});
+    } catch (err) {
+        record(
+            "custom-server-address-survives-a-dead-probe",
+            "fail",
+            `config.get failed: ${err instanceof Error ? err.message : String(err)}`,
+        );
+        return;
+    }
+    const provider = config?.config?.models?.providers?.smokeserver;
+    const defaultModel = config?.config?.agents?.defaults?.model;
+    const primary = typeof defaultModel === "string" ? defaultModel : defaultModel?.primary;
+    if (provider?.baseUrl !== `${typed}/v1`) {
+        record(
+            "custom-server-address-survives-a-dead-probe",
+            "fail",
+            `config kept ${provider?.baseUrl} instead of ${typed}/v1`,
+        );
+        return;
+    }
+    if (primary !== "smokeserver/some-model") {
+        record(
+            "custom-server-address-survives-a-dead-probe",
+            "fail",
+            `default model is ${primary ?? "unset"}, not the model that was just set up`,
+        );
+        return;
+    }
+    record(
+        "custom-server-address-survives-a-dead-probe",
+        "pass",
+        `unreachable server stored as ${provider.baseUrl} with ${primary} as the default`,
     );
 }
 

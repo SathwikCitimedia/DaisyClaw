@@ -1411,10 +1411,27 @@
   align-items: center;
 }
 
-.qs-reset__confirm-row .btn.danger {
+.qs-reset__confirm-row .btn.danger,
+/* The light theme styles every `.btn` on hover, and that rule outranked the one
+   below, so hovering the reset button swapped its red fill for the pale hover
+   colour while the text stayed white: white on near-white. Matching the theme
+   attribute here keeps this rule ahead of it in both themes. */
+:root[data-theme-mode="light"] .qs-reset__confirm-row .btn.danger {
   background: var(--danger);
   border-color: var(--danger);
   color: #fff;
+}
+
+.qs-reset__confirm-row .btn.danger:hover:not(:disabled),
+:root[data-theme-mode="light"] .qs-reset__confirm-row .btn.danger:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--danger) 85%, black);
+  border-color: color-mix(in srgb, var(--danger) 85%, black);
+  color: #fff;
+}
+
+.qs-reset__confirm-row .btn.danger:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--danger) 60%, transparent);
+  outline-offset: 2px;
 }
 
 .qs-reset__confirm-row .btn.danger:disabled {

@@ -78,7 +78,7 @@ export function invalidateModelCatalog(client: GatewayBrowserClient | null) {
   }
 }
 
-type ModelsMutationState = {
+export type ModelsMutationState = {
   client: GatewayBrowserClient | null;
   connected: boolean;
 };
@@ -234,6 +234,9 @@ export type ProviderTestResult = {
     | "no_credit"
     | "rate_limited"
     | "model_not_found"
+    // Nothing is served at the saved address (an empty 404). Not the model's
+    // fault and not the account's, so trying another model never helps.
+    | "bad_endpoint"
     | "network"
     | "timeout"
     | "unknown_model"

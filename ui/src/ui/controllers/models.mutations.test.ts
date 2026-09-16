@@ -58,12 +58,16 @@ describe("model studio mutations", () => {
       modelId: "claude-sonnet-4-5",
     });
 
-    expect(request).toHaveBeenCalledWith("config.patch", {
+    const patch = request.mock.calls.find(([method]) => method === "config.patch");
+    expect(patch?.[1]).toEqual({
       raw: JSON.stringify({
         models: {
           providers: {
             litellm: {
               baseUrl: "http://127.0.0.1:4000/v1",
+              // Saved explicitly so the gateway never guesses the dialect
+              // from the provider id.
+              api: "openai-completions",
               apiKey: "sk-lite",
               models: [{ id: "claude-sonnet-4-5", name: "claude-sonnet-4-5" }],
             },
@@ -96,7 +100,9 @@ describe("model studio mutations", () => {
     const patchCall = request.mock.calls.find(([method]) => method === "config.patch");
     expect(patchCall?.[1]).toEqual({
       raw: JSON.stringify({
-        models: { providers: { litellm: { baseUrl: "http://new" } } },
+        models: {
+          providers: { litellm: { baseUrl: "http://new", api: "openai-completions" } },
+        },
       }),
       baseHash: "hash-1",
     });

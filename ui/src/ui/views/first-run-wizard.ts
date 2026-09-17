@@ -11,17 +11,7 @@ import {
   connectCustomProvider,
   describeCustomProviderSave,
 } from "../controllers/custom-provider.ts";
-import {
-  listProviderModelCandidates,
-  type PickedProviderModel,
-} from "../controllers/model-pick.ts";
-import {
-  invalidateModelCatalog,
-  loadModels,
-  saveProviderApiKey,
-  setDefaultModel,
-  verifyProviderModelCandidates,
-} from "../controllers/models.ts";
+import { connectApiKeyProvider } from "../controllers/provider-connect.ts";
 import { loadSkills, updateSkillEnabled } from "../controllers/skills.ts";
 import { clearFactoryResetLeftovers, readFactoryResetLeftovers } from "../factory-reset.ts";
 import { showToast } from "../toast.ts";
@@ -254,36 +244,23 @@ async function connectProvider(state: AppViewState, preset: ProviderPreset): Pro
       if (!draft.apiKey.trim()) {
         throw new Error("Paste your API key first.");
       }
-      await saveProviderApiKey(state, preset.id, draft.apiKey);
-      let candidates: PickedProviderModel[] = [];
-      if (state.client) {
-        invalidateModelCatalog(state.client);
-        try {
-          candidates = listProviderModelCandidates(await loadModels(state.client), preset.id);
-        } catch {
-          // Catalog hiccups are fine — the gateway resolves a provider default.
-        }
-      }
-      // Prove the key actually works now, while the user is still on this
-      // screen and the fix is one edit away. Chat hides provider errors, so a
-      // bad key would otherwise only surface as "LLM request failed." later.
-      // Which models an account may call varies, so a model the account cannot
-      // use moves on to the next one instead of ending setup.
-      const verified = await verifyProviderModelCandidates({
-        client: state.client,
+      // Shared with Settings → Model Studio. Saves the key, makes one of this
+      // provider's models the default straight away, then proves the key with
+      // a real test message while the user is still on this screen and the fix
+      // is one edit away. Which models an account may call varies, so a model
+      // the account cannot use moves on to the next one instead of ending setup.
+      const { verified } = await connectApiKeyProvider(state, {
         providerId: preset.id,
-        candidates,
+        apiKey: draft.apiKey,
+        setDefault: "always",
       });
       if (verified.verdict && !verified.verdict.ok) {
         state.firstRunTestFailure = verified.verdict.message;
         state.firstRunError = verified.verdict.message;
         return;
       }
-      if (verified.model) {
-        await setDefaultModel(state, verified.model.ref);
-        if (verified.attempted.length > 1) {
-          showToast(`Connected. Daisy will use ${verified.model.name}.`, { tone: "success" });
-        }
+      if (verified.model && verified.attempted.length > 1) {
+        showToast(`Connected. Daisy will use ${verified.model.name}.`, { tone: "success" });
       }
       state.firstRunTestFailure = null;
     }

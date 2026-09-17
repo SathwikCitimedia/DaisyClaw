@@ -2,7 +2,13 @@
 // caps bucket growth against unique-key memory pressure.
 import type { GatewayClient } from "./server-methods/types.js";
 
-const CONTROL_PLANE_RATE_LIMIT_MAX_REQUESTS = 3;
+// A person setting up the app writes config several times a minute: saving a
+// key and choosing a default model is two writes, a custom server is two more,
+// and a second provider or "Make default" pushed the old limit of three over,
+// so the app itself was told "rate limit exceeded ... retry after 21s". Thirty
+// still bounds a misbehaving client to one write every two seconds while never
+// stopping a human clicking through Settings.
+const CONTROL_PLANE_RATE_LIMIT_MAX_REQUESTS = 30;
 const CONTROL_PLANE_RATE_LIMIT_WINDOW_MS = 60_000;
 const CONTROL_PLANE_BUCKET_MAX_STALE_MS = 5 * 60_000;
 /** Hard cap to prevent memory DoS from rapid unique-key injection (CWE-400). */

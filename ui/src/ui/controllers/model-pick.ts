@@ -18,10 +18,14 @@ function belongsToProvider(entry: ModelCatalogEntry, providerId: string): boolea
 }
 
 function toPicked(entry: ModelCatalogEntry): PickedProviderModel {
-  const hasProviderPrefix = entry.id.includes("/");
-  const modelId = hasProviderPrefix ? entry.id.split("/").slice(1).join("/") : entry.id;
-  const ref = hasProviderPrefix ? entry.id : `${entry.provider}/${entry.id}`;
-  return { ref, modelId, name: entry.name || modelId };
+  // Catalog ids are exactly what the provider calls the model, and a slash is
+  // part of that name for many of them: Groq's `groq/compound` and
+  // `meta-llama/llama-4-scout-17b-16e-instruct`, OpenRouter's
+  // `moonshotai/kimi-k2.6`, Groq's `openai/gpt-oss-120b`. An earlier version
+  // read any slash as a provider prefix and cut it off, so those models were
+  // tested and saved under names the provider has never heard of.
+  const modelId = entry.id;
+  return { ref: `${entry.provider}/${modelId}`, modelId, name: entry.name || modelId };
 }
 
 /**

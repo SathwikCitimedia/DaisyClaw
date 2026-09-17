@@ -15,6 +15,19 @@ describe("classifyProviderTestFailure", () => {
     expect(result.message).not.toContain("sk-abc");
   });
 
+  it("names a rejected Google key even though Google says 400, not 401", () => {
+    // Verbatim shape of Google's answer to a wrong key on 2026-09-17: the smoke
+    // gate reported it as "could not complete a test message (error 400)".
+    const result = classifyProviderTestFailure({
+      message:
+        '{"error":{"message":"{\n  \\"error\\": {\n    \\"code\\": 400,\n    \\"message\\": \\"API key not valid. Please pass a valid API key.\\",\n    \\"status\\": \\"INVALID_ARGUMENT\\",\n    \\"details\\": [{\\"reason\\": \\"API_KEY_INVALID\\"}]}}"}}',
+      provider: "google",
+      model: "gemini-2.5-flash",
+    });
+    expect(result.reason).toBe("invalid_key");
+    expect(result.message).toContain("rejected");
+  });
+
   it("names an empty account rather than blaming the key", () => {
     const result = classifyProviderTestFailure({
       message: "429 You exceeded your current quota, please check your plan and billing details",

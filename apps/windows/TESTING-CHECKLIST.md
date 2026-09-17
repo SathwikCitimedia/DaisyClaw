@@ -64,6 +64,11 @@ If the window ever shows "Daisy couldn't sign in", wait one minute, then press
    internet). It must never be a bare "LLM request failed". If the first model
    is not one your account can call, setup tries the next one and says which
    model it settled on rather than failing.
+4a. The same holds for every provider on the list: Anthropic, Google, Groq and
+   OpenRouter. With any one key alone, the model list is not empty, the
+   composer chip shows one of that provider's models (never `openai/gpt-5.5`),
+   and a chat message reaches that provider. The build gate proves this with
+   invalid keys for all five; this step proves it with a real one.
 4b. Type a model name that does not exist, then test it. The message must say
    Daisy does not know that model, and must not claim your account cannot use
    it.

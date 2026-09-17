@@ -26,6 +26,7 @@ import {
 } from "../../../../ui/src/ui/controllers/models.ts";
 import { listProviderModelCandidates } from "../../../../ui/src/ui/controllers/model-pick.ts";
 import { connectCustomProvider } from "../../../../ui/src/ui/controllers/custom-provider.ts";
+import { connectApiKeyProvider } from "../../../../ui/src/ui/controllers/provider-connect.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, "..", "..", "..", "..");
@@ -162,6 +163,9 @@ async function main() {
         // ── models ───────────────────────────────────────────────────────────
         if (shouldRun("openai-key-lists-usable-models")) {
             await checkOpenAiModels(client);
+        }
+        if (shouldRun("every-provider-key-reaches-its-provider")) {
+            await checkEveryProviderKey(client);
         }
         if (shouldRun("unknown-model-message-is-honest")) {
             await checkUnknownModelMessage(client);
@@ -575,6 +579,103 @@ async function checkCustomServerAddress(client) {
         "custom-server-address-survives-a-dead-probe",
         "pass",
         `unreachable server stored as ${provider.baseUrl} with ${primary} as the default`,
+    );
+}
+
+// Syntactically fine, certainly invalid keys. Reaching the provider with one
+// must end in "key rejected"; that is how we know the whole path works.
+const UNUSABLE_PROVIDER_KEYS = {
+    anthropic: "sk-ant-api03-not-a-real-key-000000000000000000000000",
+    google: "AIzaSyNotARealKey000000000000000000000",
+    groq: "gsk_notarealkey0000000000000000000000000000",
+    openrouter: "sk-or-v1-notarealkey000000000000000000000000000000",
+};
+
+// A developer's machine may carry a real key for one of these providers in its
+// environment, and the engine uses it. The test then really reaches the
+// provider with a working key, so "answered" or "this account cannot use that
+// model" is the honest outcome there, not "key rejected".
+const PROVIDER_ENV_KEYS = {
+    anthropic: ["ANTHROPIC_API_KEY"],
+    google: ["GOOGLE_API_KEY", "GEMINI_API_KEY"],
+    groq: ["GROQ_API_KEY"],
+    openrouter: ["OPENROUTER_API_KEY"],
+};
+
+function machineHasRealKey(provider) {
+    return (PROVIDER_ENV_KEYS[provider] ?? []).some((name) => Boolean(process.env[name]?.trim()));
+}
+
+/**
+ * Every provider the app offers must work the same way OpenAI does: save the
+ * key, get a model list, have a default selected, and reach the provider with
+ * the first model offered. On 2026-09-16 Groq listed nine models the engine
+ * could not run and Google and OpenRouter listed none, so a client with only
+ * one of those keys could not chat at all. This is the check that was missing.
+ */
+async function checkEveryProviderKey(client) {
+    const state = makeControllerState(client);
+    const failures = [];
+    const passes = [];
+    for (const [provider, apiKey] of Object.entries(UNUSABLE_PROVIDER_KEYS)) {
+        let connected;
+        try {
+            connected = await connectApiKeyProvider(state, {
+                providerId: provider,
+                apiKey,
+                setDefault: "always",
+                listRetryDelayMs: 1500,
+            });
+        } catch (err) {
+            failures.push(`${provider}: save threw ${err instanceof Error ? err.message : String(err)}`);
+            continue;
+        }
+        const { candidates, defaultBeforeTest, verified } = connected;
+        if (candidates.length === 0) {
+            failures.push(`${provider}: no models listed after saving a key`);
+            continue;
+        }
+        if (!defaultBeforeTest || !defaultBeforeTest.startsWith(`${provider}/`)) {
+            failures.push(`${provider}: default model is ${defaultBeforeTest ?? "unset"}, not one of its own`);
+            continue;
+        }
+        const verdict = verified.verdict;
+        const tried = verified.attempted.map((entry) => entry.modelId).join(", ");
+        if (!verdict) {
+            failures.push(`${provider}: no verdict from models.testProvider`);
+            continue;
+        }
+        if (verdict.reason === "invalid_key" && verified.attempted.length === 1) {
+            passes.push(`${provider} (${tried})`);
+            continue;
+        }
+        if (
+            machineHasRealKey(provider) &&
+            (verdict.ok || verdict.reason === "invalid_key" || verdict.reason === "model_not_found")
+        ) {
+            passes.push(
+                `${provider} (${tried}; this machine has a real ${provider} key in its environment, verdict ${verdict.reason})`,
+            );
+            continue;
+        }
+        if (verdict.reason === "network" || verdict.reason === "timeout") {
+            if (ALLOW_OFFLINE) {
+                passes.push(`${provider} (offline: ${verdict.reason})`);
+                continue;
+            }
+            failures.push(`${provider}: could not reach it after ${tried}: ${verdict.message}`);
+            continue;
+        }
+        failures.push(`${provider}: ${verdict.reason} after ${verified.attempted.length} tries (${tried}): ${verdict.message}`);
+    }
+    if (failures.length > 0) {
+        record("every-provider-key-reaches-its-provider", "fail", failures.join(" | "));
+        return;
+    }
+    record(
+        "every-provider-key-reaches-its-provider",
+        "pass",
+        `first offered model reached the provider for ${passes.join(", ")}`,
     );
 }
 

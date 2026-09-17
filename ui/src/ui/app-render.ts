@@ -129,13 +129,12 @@ import {
 } from "./controllers/exec-approvals.ts";
 import { loadLogs } from "./controllers/logs.ts";
 import { loadModelAuthStatusState } from "./controllers/model-auth-status.ts";
-import { listProviderModelCandidates, type PickedProviderModel } from "./controllers/model-pick.ts";
+import { listProviderModelCandidates } from "./controllers/model-pick.ts";
 import {
   invalidateModelCatalog,
   loadModels,
   loadModelsExpecting,
   resolveDefaultModelSelection,
-  saveProviderApiKey,
   setDefaultModel,
   setModelFallbacks,
   testProviderConnection,
@@ -143,6 +142,7 @@ import {
 } from "./controllers/models.ts";
 import { loadNodes } from "./controllers/nodes.ts";
 import { loadPresence } from "./controllers/presence.ts";
+import { connectApiKeyProvider } from "./controllers/provider-connect.ts";
 import {
   branchSessionFromCheckpoint,
   createSessionAndRefresh,
@@ -2297,46 +2297,59 @@ export function renderApp(state: AppViewState) {
                       if (note.tone !== "success") {
                         showToast(note.message, { tone: note.tone });
                       }
-                    } else {
-                      await saveProviderApiKey(state, providerId, input.apiKey ?? "");
-                    }
-                    state.modelSetupMissing = false;
-                    await refreshModelStudioData();
-                    state.modelStudioProvider = null;
-                    showToast(`${connectedLabel} connected — its models are now available.`, {
-                      tone: "success",
-                    });
-                    // Say straight away if the provider will not actually answer,
-                    // rather than letting the first chat message find out. The
-                    // model list can offer entries this engine cannot run, so
-                    // try the provider's models until one answers instead of
-                    // reporting the first one's failure as the provider's.
-                    const provider = savedProviderId || "custom";
-                    let candidates: PickedProviderModel[] = [];
-                    if (state.client) {
-                      try {
-                        candidates = listProviderModelCandidates(
-                          await loadModels(state.client),
-                          provider,
-                        );
-                      } catch {
-                        // No catalog: the gateway resolves a provider default.
+                      state.modelSetupMissing = false;
+                      await refreshModelStudioData();
+                      state.modelStudioProvider = null;
+                      showToast(`${connectedLabel} connected — its models are now available.`, {
+                        tone: "success",
+                      });
+                      // Say straight away if the server will actually answer,
+                      // rather than letting the first chat message find out.
+                      const candidates = state.client
+                        ? listProviderModelCandidates(
+                            await loadModels(state.client),
+                            savedProviderId,
+                          )
+                        : [];
+                      const verified = await verifyProviderModelCandidates({
+                        client: state.client,
+                        providerId: savedProviderId,
+                        candidates,
+                      });
+                      const verdict = verified.verdict;
+                      state.modelStudioTestResult = verdict
+                        ? { ok: verdict.ok, message: verdict.message }
+                        : null;
+                      if (verdict?.ok && verified.model) {
+                        await setDefaultModel(state, verified.model.ref);
                       }
-                    }
-                    const verified = await verifyProviderModelCandidates({
-                      client: state.client,
-                      providerId: provider,
-                      candidates,
-                    });
-                    const verdict = verified.verdict;
-                    state.modelStudioTestResult = verdict
-                      ? { ok: verdict.ok, message: verdict.message }
-                      : null;
-                    if (verdict?.ok && verified.model) {
-                      await setDefaultModel(state, verified.model.ref);
-                    }
-                    if (verdict && !verdict.ok) {
-                      showToast(verdict.message, { tone: "error" });
+                      if (verdict && !verdict.ok) {
+                        showToast(verdict.message, { tone: "error" });
+                      }
+                    } else {
+                      // Shared with the setup wizard: save the key, select one of
+                      // the provider's models as default right away (only when
+                      // no working default exists, so adding a second provider
+                      // does not switch chat over), then prove the key.
+                      const { verified } = await connectApiKeyProvider(state, {
+                        providerId,
+                        apiKey: input.apiKey ?? "",
+                        setDefault: "if-missing",
+                      });
+                      state.modelSetupMissing = false;
+                      await refreshModelStudioData();
+                      state.modelStudioProvider = null;
+                      const verdict = verified.verdict;
+                      state.modelStudioTestResult = verdict
+                        ? { ok: verdict.ok, message: verdict.message }
+                        : null;
+                      if (verdict && !verdict.ok) {
+                        showToast(verdict.message, { tone: "error" });
+                      } else {
+                        showToast(`${connectedLabel} connected — its models are now available.`, {
+                          tone: "success",
+                        });
+                      }
                     }
                   } catch (err) {
                     state.modelStudioError = err instanceof Error ? err.message : String(err);

@@ -2,8 +2,8 @@
  * Resolves embedded-agent provider/model selections from config, registry, and catalogs.
  */
 import { finiteSecondsToTimerSafeMilliseconds } from "@daisyclaw/normalization-core/number-coercion";
-import type { ModelCompatConfig, ModelMediaInputConfig } from "../../config/types.models.js";
 import type { DaisyClawConfig } from "../../config/types.daisyclaw.js";
+import type { ModelCompatConfig, ModelMediaInputConfig } from "../../config/types.models.js";
 import type { ModelRegistry as CoreModelRegistry } from "../../llm/model-registry.js";
 import type { Api, Model } from "../../llm/types.js";
 import type { ProviderRuntimeModel } from "../../plugins/provider-runtime-model.types.js";
@@ -1479,8 +1479,8 @@ export async function resolveModelAsync(
   });
   let staticCatalogLookupComplete = false;
   let staticCatalogModel: ReturnType<typeof resolveBundledStaticCatalogModel> | undefined;
-  const resolveStaticCatalogModel = () => {
-    if (!options?.allowBundledStaticCatalogFallback) {
+  const resolveStaticCatalogModel = (opts?: { force?: boolean }) => {
+    if (!options?.allowBundledStaticCatalogFallback && !opts?.force) {
       return undefined;
     }
     if (!staticCatalogLookupComplete) {
@@ -1494,8 +1494,8 @@ export async function resolveModelAsync(
     }
     return staticCatalogModel;
   };
-  const resolveStaticCatalogFallbackModel = () => {
-    const catalogModel = resolveStaticCatalogModel();
+  const resolveStaticCatalogFallbackModel = (opts?: { force?: boolean }) => {
+    const catalogModel = resolveStaticCatalogModel(opts);
     if (!catalogModel) {
       return undefined;
     }
@@ -1579,6 +1579,17 @@ export async function resolveModelAsync(
       workspaceDir,
       runtimeHooks,
     });
+  }
+  if (!model && !explicitModel) {
+    // Last resort, for every provider at once: a model that a bundled plugin's
+    // own manifest advertises is runnable from that manifest row. The list the
+    // app shows comes from those rows, so without this the list could offer
+    // models the engine then refused as "Unknown model" — which it did for
+    // every Groq model and for Google's own default, while OpenAI had grown a
+    // hand-written fallback of its own. Ordering above is unchanged: this runs
+    // only after the registry, provider hooks and configured fallbacks have all
+    // come up empty, so nothing that resolved before resolves differently now.
+    model = resolveStaticCatalogFallbackModel({ force: true });
   }
   if (model && options?.allowBundledStaticCatalogFallback) {
     const staticMediaInput = resolveStaticCatalogModel()?.mediaInput;

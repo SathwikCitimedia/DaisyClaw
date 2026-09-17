@@ -49,6 +49,12 @@ const NETWORK_PATTERN =
 const TIMEOUT_PATTERN = /timed? ?out|timeout|aborted|abortsignal/i;
 const MODEL_NOT_FOUND_PATTERN =
   /model[_\s]?not[_\s]?found|does not exist or you do not have access|unknown model|no such model|model .* not (?:found|available|supported)|unsupported model/i;
+// Providers do not agree on the status code for a bad key. OpenAI, Anthropic,
+// Groq and OpenRouter answer 401 or 403; Google answers 400 INVALID_ARGUMENT
+// with reason API_KEY_INVALID and the text "API key not valid". Read the words
+// as well as the number, or a mistyped Google key is reported as "error 400".
+const INVALID_KEY_PATTERN =
+  /api[_\s-]?key[_\s-]?invalid|api key (?:is )?not valid|invalid (?:api[_\s-]?key|x-api-key|authentication)|incorrect api key|authentication[_\s]error|invalid_api_key/i;
 const MISSING_KEY_PATTERN =
   /missing api key|no api key|api key (?:is )?(?:required|not set|missing)|no credentials|not authenticated|set .*_api_key/i;
 /**
@@ -158,7 +164,7 @@ export function classifyProviderTestFailure(params: {
       message: `${params.provider} accepted the key but the account has no credit left. Add credit or switch to another provider.`,
     };
   }
-  if (status === 401 || status === 403) {
+  if (status === 401 || status === 403 || INVALID_KEY_PATTERN.test(raw)) {
     return {
       ...withStatus,
       reason: "invalid_key",

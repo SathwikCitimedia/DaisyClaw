@@ -898,7 +898,8 @@ describe("resolveModel", () => {
     });
   });
 
-  it("does not use bundled static catalog rows unless the caller opts in", async () => {
+  it("consults bundled static catalog rows only as a last resort when the caller did not opt in", async () => {
+    resolveBundledStaticCatalogModelMock.mockReturnValueOnce(undefined);
     const result = await resolveModelAsync(
       "mistral",
       "mistral-medium-3-5",
@@ -912,9 +913,43 @@ describe("resolveModel", () => {
 
     expect(result.model).toBeUndefined();
     expect(result.error).toBe("Unknown model: mistral/mistral-medium-3-5");
-    expect(resolveBundledStaticCatalogModelMock).not.toHaveBeenCalled();
+    // Without the opt-in the static catalog never takes part in ordering; it is
+    // asked exactly once, at the very end, after everything else came up empty.
+    expect(resolveBundledStaticCatalogModelMock).toHaveBeenCalledTimes(1);
     expect(discoverAuthStorage).not.toHaveBeenCalled();
     expect(discoverModels).not.toHaveBeenCalled();
+  });
+
+  it("runs a model its bundled manifest advertises even when nothing else knows it", async () => {
+    // The app lists models from plugin manifests. Groq advertised nine and the
+    // engine could run none of them; Google's own default failed the same way.
+    // A manifest row is enough to run the model, for every provider at once.
+    resolveBundledStaticCatalogModelMock.mockReturnValueOnce({
+      provider: "groq",
+      id: "llama-3.3-70b-versatile",
+      name: "Llama 3.3 70B",
+      api: "openai-completions",
+      baseUrl: "https://api.groq.com/openai/v1",
+      reasoning: false,
+      input: ["text"],
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      contextWindow: 131_072,
+      maxTokens: 32_768,
+    });
+
+    const result = await resolveModelAsync(
+      "groq",
+      "llama-3.3-70b-versatile",
+      "/tmp/agent",
+      { models: { providers: { groq: { apiKey: "gsk_test" } } } } as unknown as DaisyClawConfig,
+      { runtimeHooks: createRuntimeHooks(), skipAgentDiscovery: true },
+    );
+
+    const model = expectResolvedModel(result);
+    expect(model.provider).toBe("groq");
+    expect(model.id).toBe("llama-3.3-70b-versatile");
+    expect(model.api).toBe("openai-completions");
+    expect(model.baseUrl).toBe("https://api.groq.com/openai/v1");
   });
 
   it("defaults model input to text when discovery omits input", () => {

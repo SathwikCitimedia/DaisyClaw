@@ -5,6 +5,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { isRecord } from "@daisyclaw/normalization-core/record-coerce";
 import { normalizeOptionalString as normalizeTrimmedString } from "@daisyclaw/normalization-core/string-coerce";
+import { resolveDaisyClawPackageRootSync } from "../infra/daisyclaw-root.js";
 import { parseJsonWithJson5Fallback } from "../utils/parse-json-compat.js";
 import { readPersistedInstalledPluginIndexSync } from "./installed-plugin-index-store.js";
 
@@ -21,7 +22,15 @@ type CandidateDir = {
   origin?: string;
 };
 
-const DAISYCLAW_PACKAGE_ROOT = fileURLToPath(new URL("../..", import.meta.url));
+// Walk up to the nearest package.json instead of assuming this file sits two
+// levels below the package root. That assumption holds for src/plugins/ but not
+// for a built bundle, where this module is a chunk directly under dist/ and
+// "../.." lands outside the package: the packaged engine then scanned nothing,
+// so every bundled manifest model row was invisible to model resolution and
+// the app offered models the engine refused as unknown.
+const DAISYCLAW_PACKAGE_ROOT =
+  resolveDaisyClawPackageRootSync({ moduleUrl: import.meta.url }) ??
+  fileURLToPath(new URL("../..", import.meta.url));
 const PLUGIN_MANIFEST_FILENAME = "daisyclaw.plugin.json";
 let manifestMetadataCache:
   | {

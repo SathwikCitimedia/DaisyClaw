@@ -75,11 +75,30 @@ type StaticCatalogPlugin = Parameters<
   typeof planManifestModelCatalogRows
 >[0]["registry"]["plugins"][number];
 
+// Bundled manifests do not change while the process runs, and this lookup now
+// sits on the path of every model resolution that nothing else could answer.
+// Re-parsing ~120 manifests cost about 200 ms per miss. The metadata scan keeps
+// its own fingerprint-checked cache and hands back the same record objects while
+// nothing on disk changed, so comparing those objects by identity is enough to
+// know whether the parsed list is still current.
+let bundledStaticCatalogPluginsCache: {
+  manifests: readonly unknown[];
+  plugins: StaticCatalogPlugin[];
+} | null = null;
+
 function listBundledStaticCatalogPlugins(env: NodeJS.ProcessEnv): StaticCatalogPlugin[] {
-  return listDaisyClawPluginManifestMetadata(env).flatMap((record): StaticCatalogPlugin[] => {
-    if (record.origin !== "bundled") {
-      return [];
-    }
+  const records = listDaisyClawPluginManifestMetadata(env).filter(
+    (record) => record.origin === "bundled",
+  );
+  const cached = bundledStaticCatalogPluginsCache;
+  if (
+    cached &&
+    cached.manifests.length === records.length &&
+    records.every((record, index) => record.manifest === cached.manifests[index])
+  ) {
+    return cached.plugins;
+  }
+  const plugins = records.flatMap((record): StaticCatalogPlugin[] => {
     const loaded = loadPluginManifest(record.pluginDir);
     if (!loaded.ok || !loaded.manifest.modelCatalog) {
       return [];
@@ -92,6 +111,16 @@ function listBundledStaticCatalogPlugins(env: NodeJS.ProcessEnv): StaticCatalogP
       },
     ];
   });
+  bundledStaticCatalogPluginsCache = {
+    manifests: records.map((record) => record.manifest),
+    plugins,
+  };
+  return plugins;
+}
+
+/** Test seam: forget the cached bundled manifest list. */
+export function resetBundledStaticCatalogPluginsCacheForTest(): void {
+  bundledStaticCatalogPluginsCache = null;
 }
 
 function resolveManifestModelCatalogProviderAlias(params: {

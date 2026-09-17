@@ -115,3 +115,33 @@ If the window ever shows "Daisy couldn't sign in", wait one minute, then press
     If the wizard shows a note that a few old files are still being removed,
     that is expected once; after the next restart the Workspace panel must show
     every file and the note must be gone.
+
+## Uninstalling
+
+Run this last, on a PC you are willing to wipe Daisy from. Do it twice: once
+keeping your data, once deleting it.
+
+16. With Daisy still running, start the uninstall from Windows Settings → Apps.
+    The message must name Daisy and tell you to quit it from the icon near the
+    clock. It must not say "Setup" or "DaisyClaw".
+17. Quit Daisy, continue. The data question appears **first**, before anything
+    is removed, and the highlighted button is **No** (keep). Nothing else
+    interrupts after that.
+18. Progress says what it is doing in plain words and never sits on one line
+    for more than about a minute.
+19. At the end a message says what happened. Keeping data must name the folder
+    your conversations and keys were kept in.
+20. Now check the machine is actually clean:
+    - Task Manager → no `DaisyClaw.Tray.WinUI.exe` and no engine `node.exe`.
+    - Task Scheduler → no **DaisyClaw Gateway** and no **Daisy Assistant** task.
+    - `%LOCALAPPDATA%\DaisyAssistant` is gone.
+    - Startup apps → no Daisy entry.
+    - `%USERPROFILE%\.daisyclaw` is still there if you kept data, gone if you
+      did not.
+21. Reinstall after a "keep data" uninstall. Daisy opens with your chats, keys
+    and channels intact, and no login form.
+22. Failure drill, once per release: before uninstalling, rename
+    `%LOCALAPPDATA%\DaisyAssistant\engine\Manage-DaisyGateway.ps1`, then
+    uninstall. The **DaisyClaw Gateway** task must still be gone afterwards,
+    and if anything could not be removed the final message names it and points
+    at `%LOCALAPPDATA%\DaisyAssistant-uninstall.log`.

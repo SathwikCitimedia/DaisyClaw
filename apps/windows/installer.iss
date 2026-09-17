@@ -26,6 +26,12 @@
 #define MyAppPublisher "Citimedia"
 #define MyAppURL "https://github.com/daisyclaw/daisyclaw"
 #define MyAppExeName "DaisyClaw.Tray.WinUI.exe"
+; The engine registers its background service under this exact name. The
+; installer never sets DAISYCLAW_PROFILE, so it is the same for dev and release
+; (a profile would make it "DaisyClaw Gateway (<profile>)"). Uninstall removes
+; it directly as well as through the engine, so a damaged engine folder cannot
+; leave a task behind that tries to start a deleted program at every logon.
+#define MyGatewayTaskName "DaisyClaw Gateway"
 
 ; MyAppArch should be passed via /DMyAppArch=x64 or /DMyAppArch=arm64
 #ifndef MyAppArch
@@ -131,6 +137,12 @@ Root: HKCU; Subkey: "Software\Classes\{#MyProtocol}"; ValueType: string; ValueNa
 Root: HKCU; Subkey: "Software\Classes\{#MyProtocol}"; ValueType: string; ValueName: "URL Protocol"; ValueData: ""
 Root: HKCU; Subkey: "Software\Classes\{#MyProtocol}\DefaultIcon"; ValueType: string; ValueName: ""; ValueData: """{app}\{#MyAppExeName}"",0"
 Root: HKCU; Subkey: "Software\Classes\{#MyProtocol}\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\{#MyAppExeName}"" ""%1"""
+
+[Messages]
+; Inno's default text says "Setup" and uses the internal name, which reads as a
+; different product to someone who clicked Uninstall on "Daisy Assistant".
+SetupAppRunningError=Daisy is currently running.%n%nPlease quit Daisy first: right-click the Daisy icon near the clock and choose Quit. Then click OK to continue, or Cancel to exit.
+UninstallAppRunningError=Daisy is currently running.%n%nPlease quit Daisy first: right-click the Daisy icon near the clock and choose Quit. Then click OK to continue, or Cancel to exit.
 
 [Icons]
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; AppUserModelID: "{#MyAppAumid}"
@@ -332,12 +344,112 @@ begin
   end;
 end;
 
+// Quotes a value for use inside a single-quoted PowerShell string, so paths
+// containing an apostrophe (C:\Users\O'Brien\...) cannot break the command.
+function PSQuote(const Value: string): string;
+var
+  Escaped: string;
+begin
+  Escaped := Value;
+  // Inno's StringChange edits in place and returns a count, so it cannot be
+  // used inline here.
+  StringChange(Escaped, '''', '''''');
+  Result := '''' + Escaped + '''';
+end;
+
+// Same as RunEngineAction, but the uninstaller never waits forever. The engine
+// script has its own internal limits; this guards the case where PowerShell
+// itself never returns, which would leave the user staring at a progress
+// window with no way forward. Returns 124 when the deadline passed.
+function RunEngineActionBounded(const Action: string; TimeoutMs: Integer; var ResultCode: Integer): Boolean;
+var
+  ChildArgs: string;
+  Params: string;
+begin
+  if not FileExists(EngineScriptPath) then
+  begin
+    ResultCode := 4;
+    Log('Engine script missing, skipping gateway ' + Action + ': ' + EngineScriptPath);
+    Result := False;
+    Exit;
+  end;
+
+  ChildArgs :=
+    '@(''-NoProfile'',''-NonInteractive'',''-ExecutionPolicy'',''Bypass'',''-File'',' +
+    PSQuote(EngineScriptPath) +
+    ',''-Action'',' + PSQuote(Action) +
+    ',''-EngineRoot'',' + PSQuote(ExpandConstant('{app}\engine')) +
+    ',''-LogPath'',' + PSQuote(ExpandConstant('{app}\gateway-setup.log')) + ')';
+
+  // Built without ExpandConstant so the braces below stay literal.
+  Params :=
+    '-NoProfile -NonInteractive -ExecutionPolicy Bypass -Command ' +
+    '"$p = Start-Process -FilePath ''powershell.exe'' -ArgumentList ' + ChildArgs +
+    ' -PassThru -WindowStyle Hidden; ' +
+    'if ($p.WaitForExit(' + IntToStr(TimeoutMs) + ')) { exit $p.ExitCode } ' +
+    'else { try { $p.Kill() } catch {}; exit 124 }"';
+
+  Log('Gateway ' + Action + ' (waiting at most ' + IntToStr(TimeoutMs) + 'ms).');
+  Result :=
+    Exec(
+      ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'),
+      Params,
+      ExpandConstant('{app}\engine'),
+      SW_HIDE,
+      ewWaitUntilTerminated,
+      ResultCode);
+
+  if not Result then
+    Log('Failed to start gateway ' + Action + '. System error: ' + IntToStr(ResultCode) + '.')
+  else if ResultCode = 124 then
+    Log('Gateway ' + Action + ' did not finish in time; continuing with direct cleanup.')
+  else
+    Log('Gateway ' + Action + ' exited with code ' + IntToStr(ResultCode) + '.');
+end;
+
+// Belt and braces. The engine normally unregisters its own task; this runs
+// afterwards regardless, because the engine folder is the very thing being
+// deleted and a missing or blocked script must not strand the task.
+procedure RemoveGatewayScheduledTask;
+var
+  ResultCode: Integer;
+  Started: Boolean;
+begin
+  Started :=
+    Exec(
+      ExpandConstant('{sys}\schtasks.exe'),
+      '/Delete /TN ' + AddQuotes('{#MyGatewayTaskName}') + ' /F',
+      '',
+      SW_HIDE,
+      ewWaitUntilTerminated,
+      ResultCode);
+  if Started and (ResultCode = 0) then
+    Log('Removed {#MyGatewayTaskName} scheduled task directly.')
+  else
+    Log('{#MyGatewayTaskName} scheduled task already absent.');
+end;
+
+function GatewayScheduledTaskPresent: Boolean;
+var
+  ResultCode: Integer;
+begin
+  Result :=
+    Exec(
+      ExpandConstant('{sys}\schtasks.exe'),
+      '/Query /TN ' + AddQuotes('{#MyGatewayTaskName}'),
+      '',
+      SW_HIDE,
+      ewWaitUntilTerminated,
+      ResultCode) and (ResultCode = 0);
+end;
+
 procedure RemoveGatewayService;
 var
   ResultCode: Integer;
 begin
-  UninstallProgressForm.StatusLabel.Caption := 'Stopping the Daisy service...';
-  RunEngineAction('uninstall', ResultCode);
+  UninstallProgressForm.StatusLabel.Caption := 'Stopping Daisy''s background service...';
+  RunEngineActionBounded('uninstall', 90000, ResultCode);
+  RemoveGatewayScheduledTask;
 end;
 
 procedure DeleteUserData;
@@ -501,20 +613,74 @@ begin
     Log('{#MyStartupTaskName} startup task already absent or unavailable.');
 end;
 
+// Checks what is actually left, then says so. Silence after a failed cleanup is
+// how a stranded background task goes unnoticed for months, and how someone who
+// meant to erase their keys never learns they are still on disk.
+procedure ReportUninstallOutcome;
+var
+  DataDir: string;
+  Leftovers: string;
+  Summary: string;
+  EvidencePath: string;
+begin
+  Leftovers := '';
+  DataDir := ExpandConstant('{%USERPROFILE}\.daisyclaw');
+
+  if GatewayScheduledTaskPresent then
+    Leftovers := Leftovers + '- The background service "{#MyGatewayTaskName}" could not be removed.' + #13#10;
+  if RegValueExists(HKCU, 'SOFTWARE\Microsoft\Windows\CurrentVersion\Run', '{#MyAutoStartName}') then
+    Leftovers := Leftovers + '- Daisy is still set to start with Windows.' + #13#10;
+  if DirExists(ExpandConstant('{app}')) then
+    Leftovers := Leftovers + '- Some files remain in ' + ExpandConstant('{app}') + #13#10;
+  if UserDataRemovalRequested and DirExists(DataDir) then
+    Leftovers := Leftovers + '- Your Daisy data could not be fully deleted from ' + DataDir + #13#10;
+
+  if Leftovers <> '' then
+  begin
+    Summary :=
+      'Daisy was removed, but some parts could not be cleaned up:' + #13#10#13#10 +
+      Leftovers + #13#10 +
+      'Restarting this PC and running the uninstall again usually clears them.';
+    // Written outside the install folder, which no longer exists, so the
+    // evidence survives for support.
+    EvidencePath := ExpandConstant('{localappdata}\{#MyInstallDir}-uninstall.log');
+    SaveStringToFile(EvidencePath, Summary + #13#10, False);
+    Summary := Summary + #13#10#13#10 + 'Details saved to:' + #13#10 + EvidencePath;
+  end
+  else if UserDataRemovalRequested then
+    Summary := 'Daisy and all of its data have been removed from this PC.'
+  else
+    Summary :=
+      'Daisy has been removed.' + #13#10#13#10 +
+      'Your conversations, memory, settings and API keys were kept at:' + #13#10 +
+      DataDir + #13#10#13#10 +
+      'Reinstalling Daisy picks up where you left off. Delete that folder by hand if you want them gone.';
+
+  Log('Uninstall summary: ' + Summary);
+  if not UninstallSilent() then
+    MsgBox(Summary, mbInformation, MB_OK);
+end;
+
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 begin
   if CurUninstallStep = usUninstall then
   begin
+    // Ask everything first. This question used to appear midway through, after
+    // the service had already been stopped, which interrupted a removal that
+    // looked like it was already running.
+    EnsureLocalGatewayCleanupChoice;
+    UninstallProgressForm.StatusLabel.Caption := 'Removing Daisy''s startup entry...';
     RemoveAppAutoStart;
     // Engine files are still on disk here, so the gateway's own CLI can stop
     // and unregister its scheduled task before Inno deletes {app}.
     RemoveGatewayService;
-    EnsureLocalGatewayCleanupChoice;
     RunLocalGatewayCleanup;
+    UninstallProgressForm.StatusLabel.Caption := 'Removing Daisy''s files...';
   end
   else if CurUninstallStep = usPostUninstall then
   begin
     DeleteUserData;
     DeleteGeneratedAppState;
+    ReportUninstallOutcome;
   end;
 end;

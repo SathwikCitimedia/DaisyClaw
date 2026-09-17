@@ -597,26 +597,29 @@ details.msg-meta:not([open]) .msg-meta__details {
 /* In-place editor. It *is* the user's bubble (same class, same gradient, same
    corners and padding), so the thread does not jump when editing starts; the
    only signal is a soft accent ring and the footer that slides in below. */
+/* Editing keeps the bubble's own colours, corners and border weight. An earlier
+   version added an accent border plus a 3px outer glow, which read as two blue
+   boxes stacked around the text and looked nothing like the rest of the chat.
+   What signals edit mode is the caret, the hint line and the two actions, so
+   the frame itself stays quiet. */
 .chat-group.user .chat-bubble.chat-inline-edit {
   display: flex;
   flex-direction: column;
   gap: 8px;
   width: 100%;
   cursor: text;
-  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 14%, transparent);
-  transition:
-    border-color var(--duration-fast) ease-out,
-    box-shadow var(--duration-fast) ease-out;
+  box-shadow: none;
+  transition: border-color var(--duration-fast) ease-out;
 }
 
+/* The bubble already lifts its border on hover; while editing that would flicker
+   as the pointer crosses the text, so hold it steady. */
 .chat-group.user .chat-bubble.chat-inline-edit:hover {
-  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 22%, transparent);
 }
 
 .chat-group.user .chat-bubble.chat-inline-edit--error {
-  border-color: color-mix(in srgb, var(--danger, #c33) 55%, transparent);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--danger, #c33) 14%, transparent);
+  border-color: color-mix(in srgb, var(--danger, #c33) 45%, transparent);
 }
 
 .chat-inline-edit__input {
@@ -661,7 +664,9 @@ details.msg-meta:not([open]) .msg-meta__details {
   gap: 12px;
   flex-wrap: wrap;
   padding-top: 8px;
-  border-top: 1px solid color-mix(in srgb, var(--accent) 16%, transparent);
+  /* A hairline drawn from the text colour, not the accent, so the editor has no
+     blue furniture beyond the one primary button. */
+  border-top: 1px solid color-mix(in srgb, var(--text) 10%, transparent);
 }
 
 .chat-inline-edit__hint {

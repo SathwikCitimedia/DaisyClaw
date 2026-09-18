@@ -1467,6 +1467,26 @@
   fill: currentColor;
 }
 
+/* Real brand mark: no tint, the logo brings its own colours. A hairline keeps
+   the row rhythm of the tinted tiles beside it. */
+.ch-brand--logo {
+  background: color-mix(in srgb, var(--text) 4%, transparent);
+  border-color: color-mix(in srgb, var(--text) 10%, transparent);
+  color: inherit;
+  overflow: hidden;
+}
+
+.ch-brand--logo svg {
+  width: 22px;
+  height: 22px;
+  display: block;
+}
+
+.ch-brand--sm.ch-brand--logo svg {
+  width: 16px;
+  height: 16px;
+}
+
 /* Compact tile for dense contexts (e.g. Quick Settings channel rows). */
 .ch-brand--sm {
   width: 24px;

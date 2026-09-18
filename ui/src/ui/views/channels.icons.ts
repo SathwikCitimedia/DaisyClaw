@@ -1,8 +1,9 @@
-// Brand icons for channel rows. Each channel renders as a filled glyph in its
-// brand color inside a subtly tinted rounded tile — the standard look for an
-// integrations list. Well-known marks use their official single-path glyph;
-// the rest use a clean brand-colored chat glyph.
+// Brand icons for channel rows. A channel shows its real logo, the same mark
+// the setup wizard shows, so the product does not present WhatsApp one way
+// during setup and another way in Settings. Anything with no mark of its own
+// falls back to a tinted glyph tile.
 import { html, svg, type TemplateResult } from "lit";
+import { CHANNEL_LOGOS } from "./channel-logos.ts";
 
 type ChannelBrand = {
   color: string;
@@ -54,10 +55,16 @@ export function renderChannelBrandIcon(
   key: string,
   options?: { compact?: boolean },
 ): TemplateResult {
+  const size = options?.compact ? " ch-brand--sm" : "";
+  const logo = CHANNEL_LOGOS[key];
+  if (logo) {
+    // The logo carries its own colours, so the tile stays neutral rather than
+    // tinting itself and fighting the mark.
+    return html`<span class="ch-brand ch-brand--logo${size}">${logo}</span>`;
+  }
   const brand = BRANDS[key] ?? FALLBACK;
-  const cls = options?.compact ? "ch-brand ch-brand--sm" : "ch-brand";
   return html`
-    <span class="${cls}" style="--ch-brand-color: ${brand.color};">
+    <span class="ch-brand${size}" style="--ch-brand-color: ${brand.color};">
       <svg class="ch-brand__glyph" viewBox="0 0 24 24" aria-hidden="true">${brand.glyph}</svg>
     </span>
   `;

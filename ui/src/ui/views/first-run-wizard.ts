@@ -213,6 +213,7 @@ let brainSkipped = false;
 function skipBrainForNow(state: AppViewState): void {
   brainSkipped = true;
   state.firstRunError = null;
+  state.firstRunTestFailure = null;
   state.firstRunProvider = null;
   resetDraft();
   state.firstRunStep = 2;
@@ -249,11 +250,20 @@ async function connectProvider(state: AppViewState, preset: ProviderPreset): Pro
       // a real test message while the user is still on this screen and the fix
       // is one edit away. Which models an account may call varies, so a model
       // the account cannot use moves on to the next one instead of ending setup.
-      const { verified } = await connectApiKeyProvider(state, {
+      const { verified, listedNothing } = await connectApiKeyProvider(state, {
         providerId: preset.id,
         apiKey: draft.apiKey,
         setDefault: "always",
       });
+      if (listedNothing) {
+        // The key is saved but nothing could be selected, so chat would fall
+        // back to a provider the user has no key for. Say so here rather than
+        // letting the first message fail with a confusing complaint.
+        const message = `${preset.label} accepted the key, but Daisy could not load its list of models. Check the internet connection and press Connect again.`;
+        state.firstRunTestFailure = message;
+        state.firstRunError = message;
+        return;
+      }
       if (verified.verdict && !verified.verdict.ok) {
         state.firstRunTestFailure = verified.verdict.message;
         state.firstRunError = verified.verdict.message;
@@ -361,6 +371,10 @@ function renderBrain(state: AppViewState): TemplateResult {
                 @click=${() => {
                   state.firstRunProvider = null;
                   state.firstRunError = null;
+                  // Without this, the previous provider's failure and its
+                  // "Continue anyway" link were still on screen above an empty
+                  // key box for the newly chosen provider.
+                  state.firstRunTestFailure = null;
                   resetDraft();
                 }}
               >
@@ -549,12 +563,22 @@ function renderSkills(state: AppViewState): TemplateResult {
                           wizardSkillsOff.add(meta.key);
                         }
                         wizardSkillErrors.delete(meta.key);
+                        // updateSkillEnabled reports failure by returning false,
+                        // not by rejecting, so the old .catch here never ran and
+                        // a switch that did not take stayed showing the user's
+                        // intention.
                         void updateSkillEnabled(state, meta.key, on)
-                          .then(() => {
-                            wizardSkillErrors.delete(meta.key);
-                          })
-                          .catch(() => {
+                          .then((applied) => {
+                            if (applied) {
+                              wizardSkillErrors.delete(meta.key);
+                              return;
+                            }
                             wizardSkillErrors.add(meta.key);
+                            if (on) {
+                              wizardSkillsOff.add(meta.key);
+                            } else {
+                              wizardSkillsOff.delete(meta.key);
+                            }
                             showToast(`${meta.title} could not be turned ${on ? "on" : "off"}.`, {
                               tone: "error",
                             });
@@ -590,7 +614,17 @@ async function wizardConnectChannel(state: AppViewState, key: string): Promise<v
     if (state.configFormDirty) {
       await state.handleChannelConfigSave();
     }
-    await state.handleChannelEnable(key);
+    // The connect result used to be thrown away, so a wrong token or a dropped
+    // connection still landed on "You're all set" and the user waited for
+    // messages that were never coming.
+    const connected = await state.handleChannelEnable(key);
+    if (!connected) {
+      state.firstRunError =
+        state.channelsError ??
+        state.lastError ??
+        "That did not connect. Check the details above and try again.";
+      return;
+    }
     state.firstRunChannel = null;
     state.firstRunStep = 4;
   } catch (err) {
@@ -756,6 +790,7 @@ export function renderFirstRunWizard(state: AppViewState): TemplateResult {
   const showBack = step > 0 && step < 4;
   const goBack = () => {
     state.firstRunError = null;
+    state.firstRunTestFailure = null;
     if (state.firstRunChannel) {
       state.firstRunChannel = null;
       return;

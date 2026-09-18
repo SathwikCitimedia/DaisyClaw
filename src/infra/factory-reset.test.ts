@@ -42,6 +42,8 @@ describe("factory reset", () => {
         await state.writeText("memory/main.sqlite", "x");
         await state.writeText(".env", "OPENAI_API_KEY=secret");
         await state.writeText("gateway.cmd", "@echo off");
+        // The packaged app's scheduled task launches this one, not the .cmd.
+        await state.writeText("gateway.vbs", 'CreateObject("Wscript.Shell").Run');
         await state.writeText("identity/device.json", "{}");
         await state.writeText("devices/paired.json", "{}");
         // Default workspace lives under the home dir and is erased; a workspace
@@ -80,7 +82,12 @@ describe("factory reset", () => {
         expect(fs.existsSync(path.join(state.workspaceDir, "OUTSIDE.md"))).toBe(true);
 
         // Plumbing survives.
-        for (const kept of ["gateway.cmd", "identity/device.json", "devices/paired.json"]) {
+        for (const kept of [
+          "gateway.cmd",
+          "gateway.vbs",
+          "identity/device.json",
+          "devices/paired.json",
+        ]) {
           expect(fs.existsSync(state.statePath(kept)), kept).toBe(true);
         }
 

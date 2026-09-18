@@ -35,6 +35,12 @@ export type SubmitEditedTurnParams = {
   draftChange: (text: string) => void;
   /** Hide the edited turn and everything it produced. */
   hide: () => void;
+  /**
+   * Undo a hide. Needed because the turn is hidden the moment the server
+   * accepts the fork, but the send that follows can still fail; without this
+   * the editor lives inside the hidden turn and can never show the reason.
+   */
+  unhide?: () => void;
   /** Show progress on the bubble while the fork and send run. */
   setBusy: (busy: boolean) => void;
   /** Reopen the editor with the text and an explanation. */
@@ -73,7 +79,13 @@ export async function submitEditedTurn(params: SubmitEditedTurnParams): Promise<
     if (result.ok) {
       return true;
     }
-    // Nothing was hidden, nothing was sent: give the words back.
+    // Give the words back. If the fork was already accepted the turn is hidden,
+    // so put it back on screen first: the editor is part of that turn, and a
+    // hidden turn is not rendered, which used to swallow the text and the
+    // reason together.
+    if (hidden) {
+      params.unhide?.();
+    }
     params.onFailure(text, result.error);
     return false;
   }

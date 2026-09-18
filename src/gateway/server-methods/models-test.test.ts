@@ -146,6 +146,21 @@ describe("an empty 404 is about the address, not the account", () => {
     expect(verdict.message).toContain("Check it in Settings");
   });
 
+  it("names the address when a self-hosted server answers a plain 404", () => {
+    // Ollama and LiteLLM answer a wrong path with a 404 that has a body but
+    // never names the model. Those used to be reported as an account problem.
+    for (const message of ["404 page not found", '404 {"detail":"Not Found"}', "404 Not Found"]) {
+      const verdict = classifyProviderTestFailure({
+        message,
+        provider: "litellm",
+        model: "claude-sonnet-4-5",
+        baseUrl: "http://10.0.0.5:4000",
+      });
+      expect(verdict.reason, message).toBe("bad_endpoint");
+      expect(verdict.message, message).toContain("10.0.0.5:4000");
+    }
+  });
+
   it("keeps blaming the model when the server actually said so", () => {
     const withBody = classifyProviderTestFailure({
       message: '404 {"error":{"message":"model_not_found","code":404}}',

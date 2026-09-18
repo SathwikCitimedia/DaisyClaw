@@ -40,9 +40,21 @@ export type ConnectApiKeyProviderResult = {
   /** The default model set before any test ran, or null when none could be. */
   defaultBeforeTest: string | null;
   verified: VerifiedProviderModel;
+  /**
+   * True when the provider's model list stayed empty after every retry. The key
+   * is saved, but nothing could be selected, so callers must say so instead of
+   * reporting a finished setup.
+   */
+  listedNothing: boolean;
 };
 
-async function readDefaultNeedsSetting(
+/**
+ * Whether the default model is free to be taken over: there is none, it already
+ * belongs to this provider, or it names a provider with no key saved (the
+ * engine's built-in placeholder). Shared so Settings never steals a default
+ * that is working for the user.
+ */
+export async function readDefaultNeedsSetting(
   client: GatewayBrowserClient | null,
   providerId: string,
 ): Promise<boolean> {
@@ -98,14 +110,21 @@ export async function connectApiKeyProvider(
     invalidateModelCatalog(state.client);
     try {
       candidates = listProviderModelCandidates(await loadModels(state.client), providerId);
-      if (candidates.length === 0) {
-        // The gateway rebuilds its catalog on the config change; give it a beat.
-        await new Promise((resolve) => setTimeout(resolve, input.listRetryDelayMs ?? 1200));
+      // The gateway rebuilds its catalog after the config change, and it
+      // answers with an empty list rather than waiting. On a cold machine one
+      // retry was not always enough, and an empty list here used to mean no
+      // default model was chosen at all.
+      const retryDelayMs = input.listRetryDelayMs ?? 1200;
+      for (let attempt = 0; attempt < 2 && candidates.length === 0; attempt += 1) {
+        await new Promise<void>((resolve) => {
+          setTimeout(resolve, retryDelayMs * (attempt + 1));
+        });
         invalidateModelCatalog(state.client);
         candidates = listProviderModelCandidates(await loadModels(state.client), providerId);
       }
     } catch {
-      // Catalog hiccups are fine — the gateway resolves a provider default.
+      // Handled below, by reporting it rather than pretending the provider is
+      // ready.
     }
   }
 
@@ -131,5 +150,11 @@ export async function connectApiKeyProvider(
       await setDefaultModel(state, verified.model.ref);
     }
   }
-  return { providerId, candidates, defaultBeforeTest, verified };
+  return {
+    providerId,
+    candidates,
+    defaultBeforeTest,
+    verified,
+    listedNothing: candidates.length === 0,
+  };
 }

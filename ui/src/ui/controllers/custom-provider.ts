@@ -15,6 +15,7 @@ import {
   type CustomProviderProbe,
   type ModelsMutationState,
 } from "./models.ts";
+import { readDefaultNeedsSetting } from "./provider-connect.ts";
 
 /**
  * The address to store for a typed server.
@@ -68,6 +69,11 @@ export function resolveCustomProviderBaseUrl(params: {
 }
 
 export type ConnectCustomProviderInput = {
+  /**
+   * "always" for the setup wizard, "if-missing" for Settings. See the comment
+   * where it is used.
+   */
+  setDefault?: "always" | "if-missing";
   /** Provider id the user typed, if any. Blank means "use what the server is". */
   typedName?: string;
   baseUrl: string;
@@ -124,10 +130,17 @@ export async function connectCustomProvider(
     ...(providerId === "custom" ? {} : { modelNameSuffix: label }),
   });
   const modelRef = `${providerId}/${modelId}`;
-  // Always. The wizard did this and worked; Settings made it conditional on a
-  // test passing, so a user whose test failed was left with their model saved
-  // but not selected.
-  await setDefaultModel(state, modelRef);
+  // The wizard always selects it: it is the user's first and only provider, and
+  // making this conditional on a passing test once left people with a model
+  // saved but not selected. Settings only takes the default when nothing is
+  // working yet, so adding a local server to experiment does not silently move
+  // every chat onto it.
+  const shouldSetDefault =
+    (input.setDefault ?? "always") === "always" ||
+    (await readDefaultNeedsSetting(state.client, providerId));
+  if (shouldSetDefault) {
+    await setDefaultModel(state, modelRef);
+  }
   if (state.client) {
     invalidateModelCatalog(state.client);
   }

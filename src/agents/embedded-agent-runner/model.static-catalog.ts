@@ -123,29 +123,85 @@ export function resetBundledStaticCatalogPluginsCacheForTest(): void {
   bundledStaticCatalogPluginsCache = null;
 }
 
-function resolveManifestModelCatalogProviderAlias(params: {
-  provider: string;
-  plugins: readonly Pick<PluginManifestRecord, "providers" | "modelCatalog">[];
-}): string | undefined {
-  const provider = normalizeProviderId(params.provider);
-  if (!provider) {
-    return undefined;
-  }
-  const targets = new Set<string>();
-  for (const plugin of params.plugins) {
+function buildManifestModelCatalogProviderAliasTargets(
+  plugins: readonly Pick<PluginManifestRecord, "providers" | "modelCatalog">[],
+): Map<string, string> {
+  const targetsByAlias = new Map<string, Set<string>>();
+  for (const plugin of plugins) {
     for (const [rawAlias, alias] of Object.entries(plugin.modelCatalog?.aliases ?? {})) {
       const normalizedAlias = normalizeProviderId(rawAlias);
       const normalizedTarget = normalizeProviderId(alias.provider);
       if (
-        normalizedAlias === provider &&
-        normalizedTarget &&
-        plugin.providers.some((providerId) => normalizeProviderId(providerId) === normalizedTarget)
+        !normalizedAlias ||
+        !normalizedTarget ||
+        !plugin.providers.some((providerId) => normalizeProviderId(providerId) === normalizedTarget)
       ) {
-        targets.add(normalizedTarget);
+        continue;
       }
+      const targets = targetsByAlias.get(normalizedAlias) ?? new Set<string>();
+      targets.add(normalizedTarget);
+      targetsByAlias.set(normalizedAlias, targets);
     }
   }
-  return targets.size === 1 ? [...targets][0] : undefined;
+  const resolved = new Map<string, string>();
+  for (const [alias, targets] of targetsByAlias) {
+    // An alias two plugins disagree about is left alone, exactly as before.
+    if (targets.size === 1) {
+      resolved.set(alias, [...targets][0] as string);
+    }
+  }
+  return resolved;
+}
+
+// Every model resolution starts by canonicalizing the provider, and this used to
+// load the whole plugin manifest registry each time: a filesystem walk plus a
+// parse of every manifest, measured at ~300 ms, two or three times per chat
+// message. The answer only changes when plugins change, so it is held for a
+// short window instead. The window is deliberately short so a plugin installed
+// while the gateway runs is picked up within seconds without a restart.
+const ALIAS_TARGETS_REVALIDATE_MS = 5_000;
+
+let aliasTargetsCache: {
+  checkedAt: number;
+  cacheKey: string;
+  targets: Map<string, string>;
+} | null = null;
+
+/** Test seam: forget the cached provider-alias map. */
+export function resetManifestModelCatalogProviderAliasCacheForTest(): void {
+  aliasTargetsCache = null;
+}
+
+function resolveAliasTargets(params: {
+  cfg?: DaisyClawConfig;
+  workspaceDir?: string;
+  env: NodeJS.ProcessEnv;
+  now: number;
+}): Map<string, string> {
+  const cacheKey = JSON.stringify([
+    params.workspaceDir ?? "",
+    params.cfg?.plugins ?? null,
+    params.env.DAISYCLAW_STATE_DIR ?? "",
+    params.env.DAISYCLAW_BUNDLED_PLUGINS_DIR ?? "",
+    params.env.DAISYCLAW_DISABLE_BUNDLED_PLUGINS ?? "",
+  ]);
+  const cached = aliasTargetsCache;
+  if (
+    cached &&
+    cached.cacheKey === cacheKey &&
+    params.now - cached.checkedAt < ALIAS_TARGETS_REVALIDATE_MS
+  ) {
+    return cached.targets;
+  }
+  const targets = buildManifestModelCatalogProviderAliasTargets(
+    loadPluginManifestRegistry({
+      config: params.cfg,
+      workspaceDir: params.workspaceDir,
+      env: params.env,
+    }).plugins,
+  );
+  aliasTargetsCache = { checkedAt: params.now, cacheKey, targets };
+  return targets;
 }
 
 /** Resolves a provider alias from plugin model-catalog metadata when the alias is unambiguous. */
@@ -159,16 +215,13 @@ export function canonicalizeManifestModelCatalogProviderAlias(params: {
   if (!provider) {
     return params.provider;
   }
-  return (
-    resolveManifestModelCatalogProviderAlias({
-      provider,
-      plugins: loadPluginManifestRegistry({
-        config: params.cfg,
-        workspaceDir: params.workspaceDir,
-        env: params.env ?? process.env,
-      }).plugins,
-    }) ?? params.provider
-  );
+  const targets = resolveAliasTargets({
+    cfg: params.cfg,
+    workspaceDir: params.workspaceDir,
+    env: params.env ?? process.env,
+    now: Date.now(),
+  });
+  return targets.get(provider) ?? params.provider;
 }
 
 /** Returns whether a bundled static catalog asks runtime discovery to augment its rows. */

@@ -7,6 +7,7 @@ function harness() {
     calls,
     hide: vi.fn(() => calls.push("hide")),
     setBusy: vi.fn((busy: boolean) => calls.push(busy ? "busy" : "idle")),
+    unhide: vi.fn(() => calls.push("unhide")),
     onFailure: vi.fn((_text: string, _error: string) => calls.push("failure")),
     draftChange: vi.fn((_text: string) => calls.push("draft")),
     sendText: vi.fn((_text: string) => calls.push("send")),
@@ -75,6 +76,33 @@ describe("submitEditedTurn", () => {
     expect(h.hide).toHaveBeenCalledTimes(1);
     expect(h.onFailure).not.toHaveBeenCalled();
     expect(h.calls).toEqual(["busy", "fork", "hide", "send:edited question", "idle"]);
+  });
+
+  it("puts the turn back when the send fails after the fork was accepted", async () => {
+    // The fork truncates the transcript and the turn is hidden the moment the
+    // server accepts it. If the send then fails, the editor lives inside that
+    // hidden turn, so without putting it back the user's words and the reason
+    // both disappeared.
+    const h = harness();
+    const fork: EditFork = vi.fn(async (_target, _text, hooks) => {
+      hooks?.onForked?.();
+      return { ok: false as const, error: "network unreachable" };
+    });
+
+    const ok = await submitEditedTurn({
+      text: "edited question",
+      target: { messageId: "m1" },
+      fork,
+      ...h,
+    });
+
+    expect(ok).toBe(false);
+    expect(h.hide).toHaveBeenCalledTimes(1);
+    expect(h.unhide).toHaveBeenCalledTimes(1);
+    expect(h.onFailure).toHaveBeenCalledWith("edited question", "network unreachable");
+    // Put back before the editor is reopened, or the editor has nothing to
+    // render into.
+    expect(h.calls).toEqual(["busy", "hide", "idle", "unhide", "failure"]);
   });
 
   it("falls back to a plain resend when the message cannot be forked", async () => {

@@ -52,6 +52,11 @@ const FACTORY_RESET_MARKER_TTL_MS = 30 * 60_000;
  */
 export const FACTORY_RESET_PRESERVED_ENTRIES: ReadonlySet<string> = new Set([
   "gateway.cmd",
+  // The packaged app starts through the silent .vbs launcher, not the .cmd:
+  // the installer sets DAISYCLAW_WINDOWS_TASK_HIDDEN_LAUNCHER, so the scheduled
+  // task's command is gateway.vbs. Deleting it left the task pointing at a file
+  // that no longer existed, and Daisy never came back after the next restart.
+  "gateway.vbs",
   "identity",
   "devices",
   FACTORY_RESET_MARKER_FILENAME,

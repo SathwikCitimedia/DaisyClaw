@@ -2094,8 +2094,12 @@ export function renderChat(props: ChatProps) {
             // Hiding a user turn also hides everything it produced (assistant
             // replies, activity) up to the next user message, so the thread
             // never shows an orphaned answer.
-            const hideTurnCascade = (turn: { key: string; role?: string }, fromIndex: number) => {
-              deleted.delete(turn.key);
+            const eachTurnInCascade = (
+              turn: { key: string; role?: string },
+              fromIndex: number,
+              apply: (key: string) => void,
+            ) => {
+              apply(turn.key);
               if (turn.role !== "user") {
                 return;
               }
@@ -2107,8 +2111,21 @@ export function renderChat(props: ChatProps) {
                 if (next.role === "user") {
                   break;
                 }
-                deleted.delete(next.key);
+                apply(next.key);
               }
+            };
+            const hideTurnCascade = (turn: { key: string; role?: string }, fromIndex: number) => {
+              eachTurnInCascade(turn, fromIndex, (key) => deleted.delete(key));
+            };
+            // Undo of the above, for an edit that was accepted by the server and
+            // then failed to send. Without it the turn stays hidden and the
+            // editor inside it is never rendered, so the user's words and the
+            // reason both disappear.
+            const restoreTurnCascade = (
+              turn: { key: string; role?: string },
+              fromIndex: number,
+            ) => {
+              eachTurnInCascade(turn, fromIndex, (key) => deleted.restore(key));
             };
             return repeat(
               chatItems,
@@ -2261,6 +2278,10 @@ export function renderChat(props: ChatProps) {
                         },
                         hide: () => {
                           hideTurnCascade(item, itemIndex);
+                          requestUpdate();
+                        },
+                        unhide: () => {
+                          restoreTurnCascade(item, itemIndex);
                           requestUpdate();
                         },
                         setBusy: (busy) => {

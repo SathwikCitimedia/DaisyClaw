@@ -67,7 +67,6 @@ const MISSING_KEY_PATTERN =
  * "model not found" told users their account could not use a model when
  * nothing had ever looked at their account.
  */
-const EMPTY_BODY_PATTERN = /status code \(no body\)/i;
 
 /**
  * Turns a failure that happened before any request left this machine into a
@@ -111,6 +110,18 @@ export function classifyLocalModelResolutionFailure(params: {
     reason: "unknown_model",
     message: `Daisy could not set up ${params.model ? `"${params.model}"` : "a model"} for ${params.provider}. Pick a different model.`,
   };
+}
+
+/**
+ * Whether a provider's error text actually names the model that was asked for.
+ * A 404 that never mentions the model is about the address, not the account.
+ */
+function messageNamesModel(message: string, model: string | undefined): boolean {
+  const modelId = model?.trim();
+  if (!modelId) {
+    return false;
+  }
+  return message.toLowerCase().includes(modelId.toLowerCase());
 }
 
 function extractHttpStatus(message: string): number | undefined {
@@ -178,9 +189,18 @@ export function classifyProviderTestFailure(params: {
       message: `${params.provider} is rate limiting this key right now. Wait a moment and try again.`,
     };
   }
-  // Check this before the model-not-found bucket: an empty 404 is about the
-  // address, never about the model or the account.
-  if (status === 404 && EMPTY_BODY_PATTERN.test(raw) && !MODEL_NOT_FOUND_PATTERN.test(raw)) {
+  // Check this before the model-not-found bucket. A 404 only means "your
+  // account cannot use that model" when the server actually says so, or at
+  // least names the model. A self-hosted server answers a wrong path with a
+  // plain 404 that mentions neither: OpenAI's SDK reports an empty one as
+  // "(no body)", Ollama says "404 page not found", and LiteLLM and other
+  // FastAPI proxies say {"detail":"Not Found"}. Blaming the account for those
+  // sent people hunting for a billing problem when the address was wrong.
+  if (
+    status === 404 &&
+    !MODEL_NOT_FOUND_PATTERN.test(raw) &&
+    !messageNamesModel(raw, params.model)
+  ) {
     return {
       ...withStatus,
       reason: "bad_endpoint",

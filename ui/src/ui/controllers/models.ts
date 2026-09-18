@@ -255,6 +255,16 @@ export type ProviderTestResult = {
  * Returns null when the gateway is too old to know the method, so callers can
  * carry on rather than block a working setup.
  */
+const TIMEOUT_TEXT_PATTERN = /timed out|timeout|aborted/i;
+const UNKNOWN_METHOD_PATTERN =
+  /unknown method|method not found|unsupported method|no such method|-32601/i;
+
+/** Whether the gateway simply does not know this method, which is not a failure. */
+function isUnknownGatewayMethodError(err: unknown): boolean {
+  const text = err instanceof Error ? err.message : String(err);
+  return UNKNOWN_METHOD_PATTERN.test(text);
+}
+
 export async function testProviderConnection(
   client: GatewayBrowserClient | null,
   input: { providerId: string; modelId?: string; apiKey?: string },
@@ -276,8 +286,23 @@ export async function testProviderConnection(
       return null;
     }
     return result;
-  } catch {
-    return null;
+  } catch (err) {
+    // Only an engine that has never heard of the method is a "carry on"; every
+    // other failure is a real one. Swallowing them all meant a timed-out or
+    // refused test was read as a pass, and setup congratulated the user on a
+    // key that had never reached the provider.
+    if (isUnknownGatewayMethodError(err)) {
+      return null;
+    }
+    const text = err instanceof Error ? err.message : String(err);
+    return {
+      ok: false,
+      reason: TIMEOUT_TEXT_PATTERN.test(text) ? "timeout" : "network",
+      provider: input.providerId,
+      ...(input.modelId?.trim() ? { model: input.modelId.trim() } : {}),
+      message:
+        "Daisy could not finish checking that key. Check this computer's internet connection and try again.",
+    } as ProviderTestResult;
   }
 }
 

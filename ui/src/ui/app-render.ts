@@ -2224,12 +2224,14 @@ export function renderApp(state: AppViewState) {
           const agentsDefaults = ((configObj.agents as Record<string, unknown> | undefined)
             ?.defaults ?? {}) as Record<string, unknown>;
           const activeSession = resolveQuickSettingsSessionRow(state);
+          // The saved default becomes an object the moment a backup model
+          // exists, and reading only the string form made the Settings row fall
+          // back to the word "default", which looked like the choice was lost.
           const currentModel =
             typeof activeSession?.model === "string"
               ? activeSession.model
-              : typeof agentsDefaults.model === "string"
-                ? agentsDefaults.model
-                : "default";
+              : (resolveDefaultModelSelection(state.configForm ?? state.configSnapshot?.config)
+                  .primary ?? "default");
           const thinkingLevel =
             typeof activeSession?.thinkingLevel === "string"
               ? activeSession.thinkingLevel
@@ -2286,6 +2288,7 @@ export function renderApp(state: AppViewState) {
                     if (input.baseUrl !== undefined || input.modelId !== undefined) {
                       // Shared with the setup wizard so the two cannot drift.
                       const connected = await connectCustomProvider(state, {
+                        setDefault: "if-missing",
                         typedName: providerId,
                         baseUrl: input.baseUrl ?? "",
                         apiKey: input.apiKey,
@@ -2331,13 +2334,22 @@ export function renderApp(state: AppViewState) {
                       // the provider's models as default right away (only when
                       // no working default exists, so adding a second provider
                       // does not switch chat over), then prove the key.
-                      const { verified } = await connectApiKeyProvider(state, {
+                      const { verified, listedNothing } = await connectApiKeyProvider(state, {
                         providerId,
                         apiKey: input.apiKey ?? "",
                         setDefault: "if-missing",
                       });
-                      state.modelSetupMissing = false;
                       await refreshModelStudioData();
+                      if (listedNothing) {
+                        // Key saved, but nothing could be selected. Saying
+                        // "connected" here left chat pointing at a provider the
+                        // user has no key for.
+                        const message = `${connectedLabel} accepted the key, but Daisy could not load its list of models. Check the internet connection and connect again.`;
+                        state.modelStudioTestResult = { ok: false, message };
+                        showToast(message, { tone: "error" });
+                        return;
+                      }
+                      state.modelSetupMissing = false;
                       state.modelStudioProvider = null;
                       const verdict = verified.verdict;
                       state.modelStudioTestResult = verdict

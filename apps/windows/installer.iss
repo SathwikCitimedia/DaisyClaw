@@ -374,17 +374,25 @@ begin
     Exit;
   end;
 
+  // One argument STRING, not an array. Windows PowerShell 5.1 joins an
+  // -ArgumentList array with spaces and does not re-quote the parts, so a path
+  // like C:\Users\John Smith\... reached the child split at the space and it
+  // died with "the file does not have a .ps1 extension". The uninstall then
+  // never stopped the engine. Quotes come from [char]34 so that not one double
+  // quote has to survive inside the outer -Command string.
   ChildArgs :=
-    '@(''-NoProfile'',''-NonInteractive'',''-ExecutionPolicy'',''Bypass'',''-File'',' +
+    '''-NoProfile -NonInteractive -ExecutionPolicy Bypass -File ''+$q+' +
     PSQuote(EngineScriptPath) +
-    ',''-Action'',' + PSQuote(Action) +
-    ',''-EngineRoot'',' + PSQuote(ExpandConstant('{app}\engine')) +
-    ',''-LogPath'',' + PSQuote(ExpandConstant('{app}\gateway-setup.log')) + ')';
+    '+$q+'' -Action ' + Action + ' -EngineRoot ''+$q+' +
+    PSQuote(ExpandConstant('{app}\engine')) +
+    '+$q+'' -LogPath ''+$q+' +
+    PSQuote(ExpandConstant('{app}\gateway-setup.log')) + '+$q';
 
   // Built without ExpandConstant so the braces below stay literal.
   Params :=
     '-NoProfile -NonInteractive -ExecutionPolicy Bypass -Command ' +
-    '"$p = Start-Process -FilePath ''powershell.exe'' -ArgumentList ' + ChildArgs +
+    '"$q = [char]34; $a = ' + ChildArgs + '; ' +
+    '$p = Start-Process -FilePath ''powershell.exe'' -ArgumentList $a' +
     ' -PassThru -WindowStyle Hidden; ' +
     'if ($p.WaitForExit(' + IntToStr(TimeoutMs) + ')) { exit $p.ExitCode } ' +
     'else { try { $p.Kill() } catch {}; exit 124 }"';

@@ -311,14 +311,19 @@ export function updateSkillEdit(state: SkillsState, skillKey: string, value: str
   state.skillEdits = { ...state.skillEdits, [skillKey]: value };
 }
 
+/**
+ * Runs one skill change. Returns whether it actually took effect, so a caller
+ * showing a switch can put it back rather than leaving it showing the user's
+ * intention as if it were the truth.
+ */
 async function runSkillMutation(
   state: SkillsState,
   skillKey: string,
   run: (client: GatewayBrowserClient) => Promise<SkillMessage>,
-) {
+): Promise<boolean> {
   const client = state.client;
   if (!client || !state.connected) {
-    return;
+    return false;
   }
   state.skillsBusyKey = skillKey;
   state.skillsError = null;
@@ -326,6 +331,7 @@ async function runSkillMutation(
     const message = await run(client);
     await loadSkills(state);
     setSkillMessage(state, skillKey, message);
+    return true;
   } catch (err) {
     const message = getErrorMessage(err);
     state.skillsError = message;
@@ -333,13 +339,18 @@ async function runSkillMutation(
       kind: "error",
       message,
     });
+    return false;
   } finally {
     state.skillsBusyKey = null;
   }
 }
 
-export async function updateSkillEnabled(state: SkillsState, skillKey: string, enabled: boolean) {
-  await runSkillMutation(state, skillKey, async (client) => {
+export async function updateSkillEnabled(
+  state: SkillsState,
+  skillKey: string,
+  enabled: boolean,
+): Promise<boolean> {
+  return await runSkillMutation(state, skillKey, async (client) => {
     await client.request("skills.update", { skillKey, enabled });
     return {
       kind: "success",

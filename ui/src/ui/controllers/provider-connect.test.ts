@@ -150,6 +150,48 @@ describe("connectApiKeyProvider", () => {
     expect(result.defaultBeforeTest).toBe("groq/llama-3.3-70b-versatile");
   });
 
+  it("reports an empty list instead of pretending the provider is ready", async () => {
+    // Sept 18: a slow first launch made two model lists come back empty, no
+    // default was chosen, and setup still said "You're all set".
+    const gw = fakeGateway({ catalog: [] });
+
+    const result = await connectApiKeyProvider(
+      { client: gw.client, connected: true },
+      { providerId: "groq", apiKey: "gsk_x", setDefault: "always", listRetryDelayMs: 0 },
+    );
+
+    expect(result.listedNothing).toBe(true);
+    expect(result.defaultBeforeTest).toBeNull();
+    // The key is still saved, so the user does not have to type it again.
+    expect(gw.patches()[0]).toEqual({ models: { providers: { groq: { apiKey: "gsk_x" } } } });
+  });
+
+  it("says nothing was listed only after it has tried more than once", async () => {
+    let listCalls = 0;
+    const gw = fakeGateway({ catalog: groqCatalog });
+    const original = gw.client.request.bind(gw.client);
+    (gw.client as { request: unknown }).request = vi.fn(
+      async (method: string, params?: Record<string, unknown>) => {
+        if (method === "models.list") {
+          listCalls += 1;
+          if (listCalls <= 2) {
+            return { models: [] };
+          }
+        }
+        return original(method, params ?? {});
+      },
+    );
+
+    const result = await connectApiKeyProvider(
+      { client: gw.client, connected: true },
+      { providerId: "groq", apiKey: "gsk_x", setDefault: "always", listRetryDelayMs: 0 },
+    );
+
+    expect(listCalls).toBe(3);
+    expect(result.listedNothing).toBe(false);
+    expect(result.defaultBeforeTest).toBe("groq/llama-3.3-70b-versatile");
+  });
+
   it("retries the list once when it arrives empty", async () => {
     let listCalls = 0;
     const gw = fakeGateway({ catalog: groqCatalog });

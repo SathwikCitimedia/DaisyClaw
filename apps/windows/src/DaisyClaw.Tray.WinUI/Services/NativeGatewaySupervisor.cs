@@ -14,6 +14,13 @@ namespace DaisyClawTray.Services;
 /// </summary>
 internal static class NativeGatewaySupervisor
 {
+    // The repair script budgets up to 180s for the engine CLI, then waits up to
+    // 150s for the gateway to answer, then up to another 90s. Killing it at 150s
+    // cut a healthy first install off partway through registering its scheduled
+    // task, which is how a machine ended up with no config at all. Allow more
+    // than the script can spend, so only a genuinely stuck run is killed.
+    private static readonly TimeSpan EngineRepairTimeout = TimeSpan.FromSeconds(480);
+
     /// <summary>Scheduled task the native DaisyClaw gateway installs under.</summary>
     public const string GatewayTaskName = "DaisyClaw Gateway";
 
@@ -65,7 +72,7 @@ internal static class NativeGatewaySupervisor
                     && TryLocateBundledEngineScript() is { } engineScript)
                 {
                     logger?.Info($"[NativeGateway] repairing gateway service with bundled engine ({engineScript})");
-                    var repaired = await RunEngineActionAsync(engineScript, "install", TimeSpan.FromSeconds(150), logger);
+                    var repaired = await RunEngineActionAsync(engineScript, "install", EngineRepairTimeout, logger);
                     (port, token, found) = ReadNativeGatewayConfig();
                     gatewayUrl = $"ws://127.0.0.1:{port}";
                     healthy = found && await ProbeHealthAsync(port);
@@ -282,7 +289,7 @@ internal static class NativeGatewaySupervisor
                         lastEngineRepair = DateTime.UtcNow;
                         restartsWithoutRecovery = 0;
                         logger?.Warn("[NativeGateway] watchdog: repairing gateway service with bundled engine");
-                        await RunEngineActionAsync(engineScript, "install", TimeSpan.FromSeconds(150), logger);
+                        await RunEngineActionAsync(engineScript, "install", EngineRepairTimeout, logger);
                     }
                 }
                 catch

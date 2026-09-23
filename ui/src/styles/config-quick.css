@@ -875,7 +875,6 @@
   color: var(--muted);
 }
 
-
 /* ── Presets Grid ── */
 
 .qs-presets-grid {
@@ -1441,6 +1440,192 @@
 
 .qs-card--diagnostics {
   grid-column: 1 / -1;
+}
+
+/* Connections: one row per account, each telling the truth about its state. */
+.qs-card--connections {
+  grid-column: 1 / -1;
+}
+
+.qs-connections {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.qs-connections__intro {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.qs-connection {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 0;
+  border-top: 1px solid color-mix(in srgb, var(--text) 8%, transparent);
+}
+
+.qs-connection__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.qs-connection__name {
+  font-weight: 600;
+}
+
+.qs-connection__status {
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.qs-connection__status[data-status="connected"] {
+  color: var(--success, #1a7f5a);
+}
+
+.qs-connection__blurb,
+.qs-connection__note,
+.qs-connection__help {
+  margin: 0;
+  font-size: 0.83rem;
+  color: var(--muted);
+}
+
+.qs-connection__fields {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.qs-connection__field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.qs-connection__label {
+  font-size: 0.82rem;
+  font-weight: 500;
+}
+
+.qs-connection__field input {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm, 8px);
+  padding: 7px 10px;
+  background: var(--surface);
+  color: inherit;
+  font: inherit;
+}
+
+.qs-connection__field input:focus {
+  outline: none;
+  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+}
+
+.qs-connection__fields .btn {
+  align-self: flex-start;
+}
+
+.qs-connection__notice {
+  margin: 0;
+  font-size: 0.83rem;
+}
+
+.qs-connection__notice[data-tone="error"] {
+  color: var(--danger);
+}
+
+.qs-connection__notice[data-tone="success"] {
+  color: var(--success, #1a7f5a);
+}
+
+/* Spending: the only price the user pays, so the figure leads and the control
+   sits directly under it. */
+.qs-spending {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.qs-spending__figure {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.qs-spending__amount {
+  font-size: 1.85rem;
+  font-weight: 600;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+.qs-spending__caption {
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+.qs-spending__notice {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--muted);
+  border-left: 2px solid color-mix(in srgb, var(--text) 25%, transparent);
+  padding-left: 10px;
+}
+
+.qs-spending__notice--stop {
+  color: var(--danger);
+  border-left-color: color-mix(in srgb, var(--danger) 55%, transparent);
+}
+
+.qs-spending__limit {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: 0.9rem;
+}
+
+.qs-spending__input {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm, 8px);
+  padding: 4px 8px;
+  background: var(--surface);
+}
+
+.qs-spending__input input {
+  width: 6ch;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  padding: 0;
+}
+
+.qs-spending__input input:focus {
+  outline: none;
+}
+
+.qs-spending__input:focus-within {
+  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+}
+
+.qs-spending__hint {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--muted);
 }
 
 /* Label plus a small clarifier, e.g. a setting that only affects one chat. */

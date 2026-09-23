@@ -34,6 +34,7 @@ import {
   type DiscoveredSession,
   type UsageCacheStatus,
 } from "../../infra/session-cost-usage.js";
+import { evaluateSpending } from "../../infra/spending-limit.js";
 import { normalizeAgentId, parseAgentSessionKey } from "../../routing/session-key.js";
 import { resolvePreferredSessionKeyForSessionIdMatches } from "../../sessions/session-id-resolution.js";
 import {
@@ -919,6 +920,15 @@ export const usageHandlers: GatewayRequestHandlers = {
   "usage.status": async ({ respond }) => {
     const summary = await loadProviderUsageSummary();
     respond(true, summary, undefined);
+  },
+  /**
+   * What the user has spent this month and the ceiling they set, in one call.
+   * The Usage tab is a token analytics console; this is the number a person
+   * actually wants, in dollars, for the Settings card.
+   */
+  "usage.spending": async ({ respond, context }) => {
+    const status = await evaluateSpending({ cfg: context.getRuntimeConfig() });
+    respond(true, status, undefined);
   },
   "usage.cost": async ({ respond, params, context }) => {
     const config = context.getRuntimeConfig();

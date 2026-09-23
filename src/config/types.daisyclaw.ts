@@ -84,6 +84,22 @@ export type SurfaceConfigEntry = {
 };
 
 /** Top-level DaisyClaw config as read from user/project config files. */
+/**
+ * Spending guard.
+ *
+ * The user pays their AI provider directly, so this is not billing: it is the
+ * ceiling they set on their own bill. Without one, a stuck conversation or a
+ * scheduled job could run all night on their card, and the first they would
+ * know of it is a statement weeks later.
+ */
+export type SpendingConfig = {
+  /**
+   * Stop making paid requests once this much has been spent in the current
+   * calendar month. Omitted or zero means no limit.
+   */
+  monthlyLimitUsd?: number;
+};
+
 export type DaisyClawConfig = {
   /** JSON schema URL used by editors and generated config files. */
   $schema?: string;
@@ -127,6 +143,8 @@ export type DaisyClawConfig = {
     /** Whether the last wizard run configured a local or remote install. */
     lastRunMode?: "local" | "remote";
   };
+  /** What the user is willing to spend with their AI provider. */
+  spending?: SpendingConfig;
   /** Diagnostics, tracing, and stability debugging settings. */
   diagnostics?: DiagnosticsConfig;
   /** Log sink, level, rotation, and redaction settings. */

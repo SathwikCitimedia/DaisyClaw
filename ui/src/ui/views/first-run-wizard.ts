@@ -327,8 +327,8 @@ function renderWelcome(state: AppViewState): TemplateResult {
     <h1 class="first-run__title">Hi — I'm Daisy</h1>
 
     <p class="first-run__lead">
-      Your personal assistant that lives on this computer. Everything stays local — no accounts, no
-      sign-ups. Setup takes about two minutes.
+      Your personal assistant, running on this computer. No accounts, no sign-ups. You bring your
+      own AI provider, and setup takes about two minutes.
     </p>
     ${leftovers > 0
       ? html`
@@ -348,7 +348,7 @@ function renderWelcome(state: AppViewState): TemplateResult {
       Get started
     </button>
     <button class="first-run__skip-link" @click=${() => finishToDashboard(state)}>
-      I've already set up DaisyClaw — skip
+      I've already set up Daisy — skip
     </button>
   `;
 }
@@ -508,11 +508,17 @@ function renderBrain(state: AppViewState): TemplateResult {
 
 function renderSkills(state: AppViewState): TemplateResult {
   const rows = wizardSkillRows(state);
-  // All starter skills default ON; enable any that are currently off so the
-  // shown state matches the config (runs once per wizard session).
+  // Starter skills default ON, so the shown state matches the config (runs once
+  // per wizard session). Skills that need an account are the exception: they
+  // were switched on here and then could not be connected anywhere, so the
+  // user's first real request failed and looked like the assistant was broken.
+  // They stay off until the user connects the account in Settings.
   if (rows.length > 0 && !wizardSkillsEnabledOnce) {
     wizardSkillsEnabledOnce = true;
-    for (const { skill } of rows) {
+    for (const { skill, meta } of rows) {
+      if (meta.account) {
+        continue;
+      }
       if (skill.disabled && !wizardSkillsOff.has(skill.skillKey)) {
         void updateSkillEnabled(state, skill.skillKey, true).catch(() => undefined);
       }
@@ -545,7 +551,7 @@ function renderSkills(state: AppViewState): TemplateResult {
                     <span class="first-run__skill-title">
                       ${meta.title}
                       ${meta.account
-                        ? html`<span class="first-run__skill-chip">needs account</span>`
+                        ? html`<span class="first-run__skill-chip">connect in Settings</span>`
                         : nothing}
                     </span>
                     <span class="first-run__skill-desc">${meta.desc}</span>
@@ -776,8 +782,12 @@ function renderDone(state: AppViewState): TemplateResult {
 
 /** A short, warm "about Daisy" line shown at the foot of each wizard screen. */
 const WIZARD_ABOUT_LINES: readonly string[] = [
-  "Daisy runs entirely on your computer. Your conversations never leave this device.",
-  "Your API key is stored locally and only ever talks to the provider you choose.",
+  // Never claim conversations stay on the device: they are sent to the AI
+  // provider the user chooses, which is the whole point of the key they paste.
+  // The true version is still a good line, and a false one is the fastest way
+  // to lose a careful customer.
+  "Daisy runs on this computer. Your messages go to the AI provider you choose, and nothing else.",
+  "Your API key, your chats and your files stay on this computer.",
   "Daisy learns new skills over time — you can add more whenever you like.",
   "Wherever you message Daisy, it's the same assistant with the same memory.",
   "Daisy is here to help, day to day — just talk to it like a friend.",

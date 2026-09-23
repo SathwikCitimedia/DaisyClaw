@@ -58,6 +58,7 @@ import {
   type SkillWorkshopState,
 } from "./controllers/skill-workshop.ts";
 import { loadSkills, type SkillsState } from "./controllers/skills.ts";
+import { loadSpending, type SpendingState } from "./controllers/spending.ts";
 import { loadUsage, type UsageState } from "./controllers/usage.ts";
 import { loadWorkboard } from "./controllers/workboard.ts";
 import { resolveCronJobLastRunStatus } from "./cron-status.ts";
@@ -159,6 +160,7 @@ type SettingsAppHost = SettingsHost &
   SkillsState &
   SkillWorkshopState &
   ModelAuthStatusState &
+  SpendingState &
   UsageState & {
     overviewLogCursor: number | null;
     overviewLogLines: string[];
@@ -781,6 +783,8 @@ export async function loadOverview(host: SettingsHost, opts?: { refresh?: boolea
   void Promise.allSettled([
     loadDebug(app),
     loadSkills(app),
+    // Cheap, and it is the only place the user ever sees what Daisy costs them.
+    loadSpending(app),
     // The primary overview loaders can finish after the user has navigated away.
     // Avoid starting the expensive usage RPC for stale overview refreshes.
     isCurrentOverviewRefresh() ? loadUsage(app) : Promise.resolve(),

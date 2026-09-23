@@ -1176,6 +1176,11 @@ export const en: TranslationMap = {
     preparing: {
       title: "Getting Daisy ready…",
       summary: "Just a moment.",
+      startingTitle: "Starting Daisy…",
+      startingSummary: "Waking the engine on this computer.",
+      loadingTitle: "Almost ready…",
+      loadingSummary: "Loading your assistant and your conversations.",
+      slow: "Still starting. The first run on a new computer takes a few minutes while Windows checks the files.",
     },
     reconnecting: {
       title: "Reconnecting to Daisy…",

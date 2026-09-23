@@ -77,6 +77,7 @@ import {
   removeConfigFormValue,
   updateMcpServerEnabled,
 } from "./controllers/config.ts";
+import { connectAccount } from "./controllers/connections.ts";
 import {
   loadCronJobsPage,
   loadCronRuns,
@@ -176,6 +177,7 @@ import {
   updateSkillEdit,
   updateSkillEnabled,
 } from "./controllers/skills.ts";
+import { saveSpendingLimit } from "./controllers/spending.ts";
 import { captureSessionToWorkboard, getWorkboardState } from "./controllers/workboard.ts";
 import { getCronJobPayload } from "./cron-payload.ts";
 import {
@@ -184,9 +186,9 @@ import {
   markFactoryResetPending,
   readFactoryResetPendingAt,
 } from "./factory-reset.ts";
+import "./components/dashboard-header.ts";
 import { formatTimeMs } from "./format.ts";
 import { formatRelativeTimestamp } from "./format.ts";
-import "./components/dashboard-header.ts";
 import { icons } from "./icons.ts";
 import { createLazyView, renderLazyView } from "./lazy-view.ts";
 import {
@@ -662,6 +664,24 @@ function resolveSidebarRecentSessions(state: AppViewState): GatewaySessionRow[] 
     )
     .toSorted((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0))
     .slice(0, 5);
+}
+
+/**
+ * Whether live voice has somewhere to go. Talk is carried by a realtime voice
+ * provider named under `talk`, which is separate from the chat model: a user on
+ * Claude through a custom server has no voice provider at all.
+ */
+function hasVoiceProviderConfigured(state: AppViewState): boolean {
+  const config = state.configForm ?? state.configSnapshot?.config;
+  const talk = (config as { talk?: { provider?: unknown; providers?: unknown } } | undefined)?.talk;
+  if (!talk) {
+    return false;
+  }
+  if (typeof talk.provider === "string" && talk.provider.trim()) {
+    return true;
+  }
+  const providers = talk.providers;
+  return Boolean(providers && typeof providers === "object" && Object.keys(providers).length > 0);
 }
 
 /** Plugin ids (from the sidebar's plugin-gated tabs) enabled in the current config. */
@@ -1782,7 +1802,9 @@ export function renderApp(state: AppViewState) {
     // nothing to ask the user, so hold the quiet card instead of a login form.
     if (shouldShowConnectingGate(state)) {
       scheduleReconnectGateTick(requestHostUpdate);
-      return html` ${renderPreparingGate(state)} ${renderGatewayUrlConfirmation(state)} `;
+      return html`
+        ${renderPreparingGate(state, { stage: "starting" })} ${renderGatewayUrlConfirmation(state)}
+      `;
     }
     // A dropped connection that the client is already retrying (gateway
     // restart after a config save, slow cold start) shows a calm reconnecting
@@ -1805,7 +1827,7 @@ export function renderApp(state: AppViewState) {
   // is still pending (one config.get after connect) hold a neutral card so
   // the dashboard does not flash and then get replaced by the wizard.
   if (state.firstRunActive === null && !isFirstRunDismissed()) {
-    return html`${renderPreparingGate(state)}`;
+    return html`${renderPreparingGate(state, { stage: "loading" })}`;
   }
   if (state.firstRunActive) {
     return html`${renderFirstRunWizard(state)}`;
@@ -2653,6 +2675,26 @@ export function renderApp(state: AppViewState) {
             onApplyConfig: () => void applyConfig(state),
             supportBundleBusy: state.supportBundleBusy,
             supportBundleResult: state.supportBundleResult,
+            connectionSkills: state.skillsReport?.skills,
+            connectionDrafts: state.connectionDrafts,
+            connectionBusyKey: state.connectionBusyKey,
+            connectionNotice: state.connectionNotice,
+            onConnectionDraftChange: (env, value) => {
+              state.connectionDrafts = { ...state.connectionDrafts, [env]: value };
+              requestHostUpdate?.();
+            },
+            onConnectAccount: (definition) => {
+              void connectAccount(state, definition).then(() => {
+                void loadSkills(state).catch(() => undefined);
+                requestHostUpdate?.();
+              });
+            },
+            spendingThisMonthUsd: state.spendingThisMonthUsd,
+            spendingLimitUsd: state.spendingLimitUsd,
+            spendingExceeded: state.spendingExceeded,
+            onSpendingLimitChange: (limitUsd) => {
+              void saveSpendingLimit(state, limitUsd).then(() => requestHostUpdate?.());
+            },
             onCreateSupportBundle: () => {
               if (state.supportBundleBusy || !state.client) {
                 return;
@@ -4542,6 +4584,10 @@ export function renderApp(state: AppViewState) {
               },
               () =>
                 renderChat({
+                  skills: state.skillsReport?.skills,
+                  // A new rotation each day, so the ideas on screen change
+                  // without changing while someone is reading them.
+                  suggestionSeed: Math.floor(Date.now() / 86_400_000),
                   sessionKey: state.sessionKey,
                   onSessionKeyChange: (next) => {
                     switchChatSession(state, next);
@@ -4726,7 +4772,13 @@ export function renderApp(state: AppViewState) {
                       ...scopedAgentListParamsForSession(state, state.sessionKey),
                     });
                   },
-                  onToggleRealtimeTalk: () => void state.toggleRealtimeTalk(),
+                  // Voice needs a provider that can carry a live conversation,
+                  // which is configured separately from chat. Offering the
+                  // microphone without one gave people an engine error for
+                  // pressing a button the product put in front of them.
+                  ...(hasVoiceProviderConfigured(state)
+                    ? { onToggleRealtimeTalk: () => void state.toggleRealtimeTalk() }
+                    : {}),
                   onToggleRealtimeTalkOptions: () => {
                     state.realtimeTalkOptionsOpen = !state.realtimeTalkOptionsOpen;
                   },

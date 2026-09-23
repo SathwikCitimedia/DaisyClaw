@@ -7,11 +7,13 @@
 
 import { html, nothing, type TemplateResult } from "lit";
 import { t } from "../../i18n/index.ts";
+import { isConsumerBuild } from "../consumer-build.ts";
 import { icons } from "../icons.ts";
 import type { BorderRadiusStop, TextScaleStop } from "../storage.ts";
 import { normalizeOptionalString } from "../string-coerce.ts";
 import type { ThemeTransitionContext } from "../theme-transition.ts";
 import type { ThemeMode } from "../theme.ts";
+import type { SkillStatusEntry } from "../types.ts";
 import {
   normalizeLocalUserIdentity,
   resolveLocalUserAvatarText,
@@ -29,6 +31,7 @@ import {
   getPresetById,
   type ConfigPresetId,
 } from "./config-presets.ts";
+import { renderConnectionsCard, type ConnectionDefinition } from "./connections.ts";
 
 // Outline icons for the context-profile preset cards (replaces the emoji
 // stored on each preset definition).
@@ -139,6 +142,23 @@ export type QuickSettingsProps = {
   /** Writes a redacted support bundle and reports where it landed. */
   onCreateSupportBundle?: () => void;
   supportBundleBusy?: boolean;
+
+  // Connections
+  connectionSkills?: readonly SkillStatusEntry[];
+  connectionDrafts?: Readonly<Record<string, string>>;
+  connectionBusyKey?: string | null;
+  connectionNotice?: { skillKey: string; kind: "success" | "error"; message: string } | null;
+  onConnectionDraftChange?: (env: string, value: string) => void;
+  onConnectAccount?: (definition: ConnectionDefinition) => void;
+
+  // Spending
+  /** Spent so far this calendar month, in dollars. */
+  spendingThisMonthUsd?: number | null;
+  /** The ceiling the user set, or null for none. */
+  spendingLimitUsd?: number | null;
+  /** True once the ceiling stopped Daisy making paid requests. */
+  spendingExceeded?: boolean;
+  onSpendingLimitChange?: (limitUsd: number | null) => void;
   supportBundleResult?: { ok: boolean; message: string } | null;
 
   // Connection
@@ -983,7 +1003,7 @@ function renderPresetsCard(props: QuickSettingsProps) {
         <div class="qs-profiles__copy">
           <div class="qs-profiles__eyebrow">Bootstrap Context</div>
           <p class="qs-profiles__intro">
-            Choose how much workspace context DaisyClaw injects into each run. These profiles do not
+            Choose how much workspace context Daisy injects into each run. These profiles do not
             change your model, tools, channels, or theme.
           </p>
           ${stateBanner}
@@ -1202,6 +1222,79 @@ function renderResetCard(props: QuickSettingsProps) {
   `;
 }
 
+function formatSpend(value: number | null | undefined): string {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return "—";
+  }
+  return `$${value.toFixed(2)}`;
+}
+
+/**
+ * What Daisy has cost this month, and the ceiling on it.
+ *
+ * The money goes straight to the user's own AI provider, so this is not a bill
+ * from us: it is the only price they pay, and it used to be invisible until a
+ * statement arrived weeks later.
+ */
+function renderSpendingCard(props: QuickSettingsProps) {
+  if (!props.onSpendingLimitChange) {
+    return nothing;
+  }
+  const limit = props.spendingLimitUsd ?? null;
+  const spent = props.spendingThisMonthUsd ?? null;
+  const overLimit = props.spendingExceeded === true;
+  const nearLimit =
+    !overLimit && limit != null && typeof spent === "number" && spent >= limit * 0.8;
+  return html`
+    <div class="qs-card qs-card--spending" data-qs-spending>
+      ${renderCardHeader(icons.activity, "Spending")}
+      <div class="qs-card__body qs-spending">
+        <div class="qs-spending__figure">
+          <span class="qs-spending__amount" data-qs-spent>${formatSpend(spent)}</span>
+          <span class="qs-spending__caption">this month, paid to your AI provider</span>
+        </div>
+        ${overLimit
+          ? html`<p class="qs-spending__notice qs-spending__notice--stop">
+              Daisy has stopped making paid requests until you raise the limit or next month starts.
+            </p>`
+          : nearLimit
+            ? html`<p class="qs-spending__notice">
+                Close to your limit. Follow-up suggestions are paused to save what is left.
+              </p>`
+            : nothing}
+        <label class="qs-spending__limit">
+          <span>Stop after</span>
+          <span class="qs-spending__input">
+            <span aria-hidden="true">$</span>
+            <input
+              type="number"
+              min="0"
+              step="1"
+              inputmode="decimal"
+              data-qs-spending-limit
+              .value=${limit == null ? "" : String(limit)}
+              placeholder="no limit"
+              aria-label="Monthly spending limit in dollars"
+              @change=${(event: Event) => {
+                const raw = (event.target as HTMLInputElement).value.trim();
+                const parsed = raw === "" ? null : Number(raw);
+                props.onSpendingLimitChange?.(
+                  parsed != null && Number.isFinite(parsed) && parsed > 0 ? parsed : null,
+                );
+              }}
+            />
+          </span>
+          <span>a month</span>
+        </label>
+        <p class="qs-spending__hint">
+          Leave it empty for no limit. Daisy warns you before it stops, and the count starts again
+          each month.
+        </p>
+      </div>
+    </div>
+  `;
+}
+
 function renderDiagnosticsCard(props: QuickSettingsProps) {
   if (!props.onCreateSupportBundle) {
     return nothing;
@@ -1256,6 +1349,10 @@ function renderConnectionFooter(props: QuickSettingsProps) {
 // ── Main render ──
 
 export function renderQuickSettings(props: QuickSettingsProps) {
+  // Gateway auth, exec policy, tool profiles and bootstrap-context budgets are
+  // operator controls. They stay for a developer install and leave the Settings
+  // a customer sees, where they only taught people they were in the wrong product.
+  const operatorCards = !isConsumerBuild();
   return html`
     <div class="qs-container">
       <div class="qs-header">
@@ -1266,12 +1363,23 @@ export function renderQuickSettings(props: QuickSettingsProps) {
       </div>
 
       <div class="qs-grid">
-        ${renderModelCard(props)} ${renderChannelsCard(props)} ${renderSecurityCard(props)}
-        ${renderPersonalCard(props)}
+        ${renderModelCard(props)} ${renderChannelsCard(props)}
+        ${operatorCards ? renderSecurityCard(props) : nothing} ${renderPersonalCard(props)}
         <div class="qs-side-stack">
           ${renderAppearanceCard(props)} ${renderAutomationsCard(props)}
         </div>
-        ${renderPresetsCard(props)} ${renderDiagnosticsCard(props)} ${renderResetCard(props)}
+        ${props.onConnectAccount
+          ? renderConnectionsCard({
+              skills: props.connectionSkills,
+              drafts: props.connectionDrafts ?? {},
+              busyKey: props.connectionBusyKey,
+              notice: props.connectionNotice,
+              onDraftChange: (env, value) => props.onConnectionDraftChange?.(env, value),
+              onConnect: (definition) => props.onConnectAccount?.(definition),
+            })
+          : nothing}
+        ${renderSpendingCard(props)} ${operatorCards ? renderPresetsCard(props) : nothing}
+        ${renderDiagnosticsCard(props)} ${renderResetCard(props)}
       </div>
 
       ${renderConnectionFooter(props)}

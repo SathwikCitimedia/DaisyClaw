@@ -13,7 +13,11 @@ import {
   listBundledChannelIdsWithConfiguredState,
 } from "../channels/plugins/configured-state.js";
 import { getChatChannelMeta, normalizeChatChannelId } from "../channels/registry.js";
-import { shouldPreloadBundledChannelPlugins } from "../plugins/channel-plugin-preload.js";
+import {
+  isSupportedConsumerChannel,
+  shouldCurateConsumerChannels,
+  shouldPreloadBundledChannelPlugins,
+} from "../plugins/channel-plugin-preload.js";
 import { normalizePluginsConfig } from "../plugins/config-state.js";
 import { getCurrentPluginMetadataSnapshot } from "../plugins/current-plugin-metadata-snapshot.js";
 import type { PluginDiscoveryResult } from "../plugins/discovery.js";
@@ -661,16 +665,21 @@ export function resolveChannelSetupPluginAutoEnableCandidates(params: {
       (channelId) => normalizeOptionalLowercaseString(channelId) ?? channelId,
     ),
   );
+  const curateChannels = shouldCurateConsumerChannels(params.env);
   const candidates: PluginAutoEnableCandidate[] = [];
   for (const plugin of params.registry.plugins) {
     if (plugin.channels.length === 0) {
       continue;
     }
-    // A channel the user switched off stays off, setup surface included.
-    const enabledChannelIds = plugin.channels.filter(
-      (channelId) =>
-        !disabledChannelIds.has(normalizeOptionalLowercaseString(channelId) ?? channelId),
-    );
+    // A channel the user switched off stays off, setup surface included, and in
+    // the shipped product a channel it does not support is never offered.
+    const enabledChannelIds = plugin.channels.filter((channelId) => {
+      const normalized = normalizeOptionalLowercaseString(channelId) ?? channelId;
+      if (disabledChannelIds.has(normalized)) {
+        return false;
+      }
+      return !curateChannels || isSupportedConsumerChannel(normalized);
+    });
     if (enabledChannelIds.length === 0) {
       continue;
     }

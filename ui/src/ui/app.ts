@@ -669,6 +669,18 @@ export class DaisyClawApp extends LitElement {
   @state() overviewLogLines: string[] = [];
   @state() overviewLogCursor = 0;
 
+  /** Pending Connections input, keyed by environment variable name. */
+  @state() connectionDrafts: Record<string, string> = {};
+  @state() connectionBusyKey: string | null = null;
+  @state() connectionNotice: {
+    skillKey: string;
+    kind: "success" | "error";
+    message: string;
+  } | null = null;
+  /** Month-to-date provider spend and the user's ceiling, from usage.spending. */
+  @state() spendingThisMonthUsd: number | null = null;
+  @state() spendingLimitUsd: number | null = null;
+  @state() spendingExceeded = false;
   @state() skillsLoading = false;
   @state() skillsReport: SkillStatusReport | null = null;
   @state() skillsError: string | null = null;

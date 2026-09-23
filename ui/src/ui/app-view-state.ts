@@ -244,6 +244,12 @@ export type AppViewState = {
   factoryResetBusy: boolean;
   updateRunning: boolean;
   applySessionKey: string;
+  connectionDrafts: Record<string, string>;
+  connectionBusyKey: string | null;
+  connectionNotice: { skillKey: string; kind: "success" | "error"; message: string } | null;
+  spendingThisMonthUsd: number | null;
+  spendingLimitUsd: number | null;
+  spendingExceeded: boolean;
   configSnapshot: ConfigSnapshot | null;
   configSchema: unknown;
   configSchemaVersion: string | null;

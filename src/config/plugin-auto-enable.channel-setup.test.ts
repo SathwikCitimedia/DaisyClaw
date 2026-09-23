@@ -20,6 +20,14 @@ const CHANNEL_REGISTRY = makeRegistry([
   { id: "memory-core", channels: [] },
 ]);
 
+// The bundle carries far more channels than the product supports.
+const WIDE_CHANNEL_REGISTRY = makeRegistry([
+  { id: "whatsapp", channels: ["whatsapp"] },
+  { id: "imessage", channels: ["imessage"] },
+  { id: "nostr", channels: ["nostr"] },
+  { id: "msteams", channels: ["msteams"] },
+]);
+
 function applyInConsumerBuild(config: DaisyClawConfig, envOverrides: NodeJS.ProcessEnv = {}) {
   return applyPluginAutoEnable({
     config,
@@ -87,5 +95,35 @@ describe("channel setup auto-enable in consumer builds", () => {
       manifestRegistry: CHANNEL_REGISTRY,
     });
     expect(enabledEntries(result).whatsapp).not.toBe(true);
+  });
+});
+
+describe("channels the shipped product offers", () => {
+  // Customers were shown Nostr, Microsoft Teams and iMessage, the last of which
+  // cannot run on Windows at all. Preloading them also cost startup time on
+  // every launch.
+  it("preloads only the channels the product supports", () => {
+    const result = applyPluginAutoEnable({
+      config: {} as DaisyClawConfig,
+      env: makeIsolatedEnv({
+        DAISYCLAW_PRELOAD_CHANNEL_PLUGINS: "1",
+        DAISYCLAW_CONSUMER_LOCKDOWN: "1",
+      }),
+      manifestRegistry: WIDE_CHANNEL_REGISTRY,
+    });
+    const enabled = enabledEntries(result);
+    expect(enabled.whatsapp).toBe(true);
+    for (const unsupported of ["imessage", "nostr", "msteams"]) {
+      expect(enabled[unsupported], unsupported).not.toBe(true);
+    }
+  });
+
+  it("leaves a development install loading everything", () => {
+    const result = applyPluginAutoEnable({
+      config: {} as DaisyClawConfig,
+      env: makeIsolatedEnv({ DAISYCLAW_PRELOAD_CHANNEL_PLUGINS: "1" }),
+      manifestRegistry: WIDE_CHANNEL_REGISTRY,
+    });
+    expect(enabledEntries(result).nostr).toBe(true);
   });
 });

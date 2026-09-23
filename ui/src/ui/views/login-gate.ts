@@ -459,21 +459,75 @@ export function renderReconnectingGate(state: AppViewState, nowMs: number = Date
 }
 
 /**
- * Shown right after the first connect while the app decides whether this is
- * a fresh install (one config.get). Keeps the dashboard from flashing for a
- * few seconds before the wizard replaces it on slow machines.
+ * What the app is genuinely waiting for. Each stage is driven by a real signal,
+ * not a timer: "starting" means the socket is not open yet, "loading" means it
+ * is open and the first-run decision is still in flight.
  */
-export function renderPreparingGate(state: AppViewState) {
+export type PreparingStage = "starting" | "loading";
+
+/** After this long, say why it is taking so long instead of just spinning. */
+const PREPARING_SLOW_AFTER_MS = 20_000;
+
+let preparingSinceMs: number | null = null;
+
+/** Test seam: forget when waiting started. */
+export function resetPreparingClockForTest(): void {
+  preparingSinceMs = null;
+}
+
+/**
+ * The words for a stage. Kept pure so the copy can be tested without rendering:
+ * a spinner with no explanation is what made people think the app had frozen.
+ */
+export function describePreparingStage(params: { stage: PreparingStage; elapsedMs: number }): {
+  title: string;
+  summary: string;
+  slow: boolean;
+} {
+  const slow = params.elapsedMs >= PREPARING_SLOW_AFTER_MS;
+  if (params.stage === "loading") {
+    return {
+      title: t("login.preparing.loadingTitle"),
+      summary: t("login.preparing.loadingSummary"),
+      slow,
+    };
+  }
+  return {
+    title: t("login.preparing.startingTitle"),
+    summary: slow ? t("login.preparing.slow") : t("login.preparing.startingSummary"),
+    slow,
+  };
+}
+
+/**
+ * Shown while the app is still coming up: first waiting for the engine, then
+ * while it decides whether this is a fresh install (one config.get). Keeps the
+ * dashboard from flashing before the wizard replaces it on slow machines.
+ *
+ * It used to show one unchanging line and a spinner for up to a minute, and
+ * several minutes on a cold laptop, so people concluded it had hung. It now
+ * names the stage it is actually on, and says why a first start is slow.
+ */
+export function renderPreparingGate(
+  state: AppViewState,
+  opts?: { stage?: PreparingStage; nowMs?: number },
+) {
   const basePath = normalizeBasePath(state.basePath ?? "");
   const faviconSrc = agentLogoUrl(basePath);
+  const nowMs = opts?.nowMs ?? Date.now();
+  preparingSinceMs ??= nowMs;
+  const copy = describePreparingStage({
+    stage: opts?.stage ?? "starting",
+    elapsedMs: Math.max(0, nowMs - preparingSinceMs),
+  });
   return html`
-    <div class="login-gate" data-preparing="true">
+    <div class="login-gate" data-preparing="true" data-stage=${opts?.stage ?? "starting"}>
       <div class="login-gate__card login-gate__card--reconnecting" role="status" aria-live="polite">
         <div class="login-gate__header">
           <img class="login-gate__logo" src=${faviconSrc} alt="Daisy" />
           <div class="login-gate__spinner" aria-hidden="true"></div>
-          <div class="login-gate__title">${t("login.preparing.title")}</div>
-          <div class="login-gate__sub">${t("login.preparing.summary")}</div>
+          <div class="login-gate__title">${copy.title}</div>
+          <div class="login-gate__sub">${copy.summary}</div>
         </div>
       </div>
     </div>

@@ -1,12 +1,14 @@
 // Control UI chat module implements chat welcome behavior.
 import { html } from "lit";
 import { t } from "../../i18n/index.ts";
+import type { SkillStatusEntry } from "../types.ts";
 import {
   agentLogoUrl,
   assistantAvatarFallbackUrl,
   resolveChatAvatarRenderUrl,
   resolveAssistantTextAvatar,
 } from "../views/agents-utils.ts";
+import { buildWelcomeSuggestions } from "./welcome-suggestions.ts";
 
 export type ChatWelcomeProps = {
   assistantName: string;
@@ -15,14 +17,11 @@ export type ChatWelcomeProps = {
   basePath?: string;
   onDraftChange: (next: string) => void;
   onSend: () => void;
+  /** Skills this install has, so the chips only suggest what Daisy can do. */
+  skills?: readonly SkillStatusEntry[];
+  /** Rotates the suggestions so a returning user sees different ideas. */
+  suggestionSeed?: number;
 };
-
-const WELCOME_SUGGESTION_KEYS = [
-  "chat.welcome.suggestions.whatCanYouDo",
-  "chat.welcome.suggestions.summarizeRecentSessions",
-  "chat.welcome.suggestions.configureChannel",
-  "chat.welcome.suggestions.checkSystemHealth",
-];
 
 function resolveAssistantAvatarUrl(
   props: Pick<ChatWelcomeProps, "assistantAvatar" | "assistantAvatarUrl">,
@@ -75,8 +74,10 @@ export function renderWelcomeState(props: ChatWelcomeProps) {
         ${t("chat.welcome.hintAfterShortcut")}
       </p>
       <div class="agent-chat__suggestions">
-        ${WELCOME_SUGGESTION_KEYS.map((key) => {
-          const text = t(key);
+        ${buildWelcomeSuggestions({
+          skills: props.skills,
+          seed: props.suggestionSeed,
+        }).map((text) => {
           return html`
             <button
               type="button"

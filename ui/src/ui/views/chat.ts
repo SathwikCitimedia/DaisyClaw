@@ -73,6 +73,7 @@ import { icons } from "../icons.ts";
 import { formatGoalDetail, formatGoalSummary } from "../session-goal.ts";
 import type { SidebarContent } from "../sidebar-content.ts";
 import { detectTextDirection } from "../text-direction.ts";
+import type { SkillStatusEntry } from "../types.ts";
 import type {
   AgentFileEntry,
   AgentsFilesListResult,
@@ -115,6 +116,10 @@ function isCurrentSessionSubmittedProgress(
 }
 
 export type ChatProps = {
+  /** Skills this install has, so the empty-chat chips suggest real abilities. */
+  skills?: readonly SkillStatusEntry[];
+  /** Rotates those chips so a returning user sees different ideas. */
+  suggestionSeed?: number;
   sessionKey: string;
   onSessionKeyChange: (next: string) => void;
   thinkingLevel: string | null;
@@ -499,7 +504,7 @@ function renderRealtimeTalkStatus(props: ChatProps) {
     props.realtimeTalkDetail ??
     ((props.realtimeTalkConversation?.length ?? 0) === 0 ? props.realtimeTalkTranscript : null) ??
     (props.realtimeTalkStatus === "thinking"
-      ? "Asking DaisyClaw..."
+      ? "Asking Daisy..."
       : props.realtimeTalkStatus === "connecting"
         ? "Connecting Talk..."
         : "Talk live");

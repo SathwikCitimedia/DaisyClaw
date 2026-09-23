@@ -582,6 +582,7 @@ export const coreGatewayHandlers: GatewayRequestHandlers = {
     methods: [
       "usage.status",
       "usage.cost",
+      "usage.spending",
       "sessions.usage",
       "sessions.usage.timeseries",
       "sessions.usage.logs",

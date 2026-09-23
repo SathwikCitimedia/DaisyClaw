@@ -527,6 +527,12 @@ export const DaisyClawSchema = z
       })
       .strict()
       .optional(),
+    spending: z
+      .object({
+        monthlyLimitUsd: z.number().nonnegative().optional(),
+      })
+      .strict()
+      .optional(),
     diagnostics: z
       .object({
         enabled: z.boolean().optional(),

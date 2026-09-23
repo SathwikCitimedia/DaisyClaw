@@ -68,14 +68,28 @@ export function resolveThreadFlag(params: {
   return isThreadSessionKey(params.sessionKey);
 }
 
+/**
+ * The desktop app's own chat window behaves like a messaging app, not like a
+ * channel. A daily reset is right for WhatsApp, where each day is a new
+ * conversation, but in the dashboard it meant the user said goodnight and found
+ * an assistant the next morning that had started over. They kept their history
+ * on screen and lost the thread of it, which reads as being forgotten.
+ *
+ * So the built-in chat defaults to picking up where it left off, and only
+ * starts fresh after several quiet days. Anything the user or an operator
+ * configures for this channel still wins.
+ */
+const DASHBOARD_CHAT_CHANNEL = "webchat";
+const DASHBOARD_CHAT_IDLE_MINUTES = 5 * 24 * 60;
+
+const DEFAULT_CHANNEL_RESETS: Readonly<Record<string, SessionResetConfig>> = {
+  [DASHBOARD_CHAT_CHANNEL]: { mode: "idle", idleMinutes: DASHBOARD_CHAT_IDLE_MINUTES },
+};
+
 export function resolveChannelResetConfig(params: {
   sessionCfg?: SessionConfig;
   channel?: string | null;
 }): SessionResetConfig | undefined {
-  const resetByChannel = params.sessionCfg?.resetByChannel;
-  if (!resetByChannel) {
-    return undefined;
-  }
   const normalized = normalizeMessageChannel(params.channel);
   const fallback = normalizeOptionalLowercaseString(params.channel);
   // Channel ids can arrive as public message-channel names or raw provider keys.
@@ -83,5 +97,9 @@ export function resolveChannelResetConfig(params: {
   if (!key) {
     return undefined;
   }
-  return resetByChannel[key];
+  const configured = params.sessionCfg?.resetByChannel?.[key];
+  if (configured) {
+    return configured;
+  }
+  return DEFAULT_CHANNEL_RESETS[key];
 }

@@ -70,6 +70,7 @@ import { formatErrorMessage, formatUncaughtError } from "../../infra/errors.js";
 import { jsonUtf8Bytes } from "../../infra/json-utf8-bytes.js";
 import { normalizeReplyPayloadsForDelivery } from "../../infra/outbound/payloads.js";
 import { getSessionBindingService } from "../../infra/outbound/session-binding-service.js";
+import { describeSpendingLimitReached, evaluateSpending } from "../../infra/spending-limit.js";
 import { logLargePayload } from "../../logging/diagnostic-payload.js";
 import {
   appendLocalMediaParentRoots,
@@ -2738,6 +2739,15 @@ export const chatHandlers: GatewayRequestHandlers = {
       messageText: string;
       refine?: boolean;
     };
+    // Follow-up suggestions are a convenience the user never asked for, and the
+    // refining pass costs a second paid call per reply. They are the first
+    // thing to go when the user is near their own limit, so the budget is left
+    // for the messages they actually typed.
+    const suggestionSpending = await evaluateSpending({ cfg: context.getRuntimeConfig() });
+    if (suggestionSpending.exceeded || suggestionSpending.nearLimit) {
+      respond(true, { actions: [] }, undefined);
+      return;
+    }
     const agentIdOverride = normalizeOptionalText((params as { agentId?: string }).agentId);
     const requestedAgentId = resolveRequestedChatAgentId({
       cfg: (context as { getRuntimeConfig?: () => DaisyClawConfig }).getRuntimeConfig?.(),
@@ -3082,6 +3092,18 @@ export const chatHandlers: GatewayRequestHandlers = {
     });
     if (!explicitOriginResult.ok) {
       respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, explicitOriginResult.error));
+      return;
+    }
+    // The user's own ceiling on their own provider bill. Checked before any
+    // paid work starts, so a stuck conversation or a scheduled job cannot keep
+    // spending once they have said stop.
+    const spending = await evaluateSpending({ cfg: context.getRuntimeConfig() });
+    if (spending.exceeded) {
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.UNAVAILABLE, describeSpendingLimitReached(spending)),
+      );
       return;
     }
     if (

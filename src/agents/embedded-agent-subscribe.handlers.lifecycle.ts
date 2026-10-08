@@ -14,6 +14,7 @@ import {
   classifyFailoverReason,
   formatUserFacingAssistantErrorText,
   GENERIC_ASSISTANT_ERROR_TEXT,
+  isLikelyContextOverflowError,
 } from "./embedded-agent-helpers.js";
 import { hasCommittedMessagingToolDeliveryEvidence } from "./embedded-agent-runner/delivery-evidence.js";
 import { isIncompleteTerminalAssistantTurn } from "./embedded-agent-runner/run/incomplete-turn.js";
@@ -147,28 +148,40 @@ export function handleAgentEnd(
       ...(typeof terminalAborted === "boolean" ? { aborted: terminalAborted } : {}),
     };
     if (isError) {
-      emitAgentEvent({
-        runId: ctx.params.runId,
-        stream: "lifecycle",
-        data: {
-          phase: "error",
-          error: lifecycleErrorText ?? GENERIC_ASSISTANT_ERROR_TEXT,
-          ...terminalMeta,
-          ...(livenessState ? { livenessState } : {}),
-          ...(replayInvalid ? { replayInvalid } : {}),
-          endedAt: Date.now(),
-        },
-      });
-      void ctx.params.onAgentEvent?.({
-        stream: "lifecycle",
-        data: {
-          phase: "error",
-          error: lifecycleErrorText ?? GENERIC_ASSISTANT_ERROR_TEXT,
-          ...terminalMeta,
-          ...(livenessState ? { livenessState } : {}),
-          ...(replayInvalid ? { replayInvalid } : {}),
-        },
-      });
+      const emitError = () => {
+        emitAgentEvent({
+          runId: ctx.params.runId,
+          stream: "lifecycle",
+          data: {
+            phase: "error",
+            error: lifecycleErrorText ?? GENERIC_ASSISTANT_ERROR_TEXT,
+            ...terminalMeta,
+            ...(livenessState ? { livenessState } : {}),
+            ...(replayInvalid ? { replayInvalid } : {}),
+            endedAt: Date.now(),
+          },
+        });
+        void ctx.params.onAgentEvent?.({
+          stream: "lifecycle",
+          data: {
+            phase: "error",
+            error: lifecycleErrorText ?? GENERIC_ASSISTANT_ERROR_TEXT,
+            ...terminalMeta,
+            ...(livenessState ? { livenessState } : {}),
+            ...(replayInvalid ? { replayInvalid } : {}),
+          },
+        });
+      };
+      // An overflow the run will recover from (compact, then retry) is not the
+      // end of the reply; the run sends it only if recovery fails.
+      const rawError = isAssistantMessage(lastAssistant) ? lastAssistant.errorMessage : undefined;
+      if (
+        isLikelyContextOverflowError(rawError) &&
+        ctx.params.holdRecoverableOverflowError?.(emitError) === true
+      ) {
+        return;
+      }
+      emitError();
       return;
     }
     const successPhase = ctx.params.terminalLifecyclePhase ?? "end";

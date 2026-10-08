@@ -92,6 +92,20 @@ describe("monthly spending limit", () => {
     expect(message.toLowerCase()).toContain("next month");
   });
 
+  it("states the limit in the currency and amount the user typed", async () => {
+    spent(12);
+    const cfg = { spending: { monthlyLimitUsd: 10.38, currency: "INR", monthlyLimit: 1000 } };
+    const status = await evaluateSpending({ cfg: cfg as never });
+    expect(describeSpendingLimitReached(status, cfg as never)).toContain("₹1,000.00");
+  });
+
+  it("counts replies it could not price, so a total is not trusted blindly", async () => {
+    loadCostUsageSummary.mockResolvedValue({ totals: { totalCost: 1.2, missingCostEntries: 3 } });
+    const status = await evaluateSpending({ cfg: {} as never });
+    expect(status.spentUsd).toBe(1.2);
+    expect(status.unpricedReplies).toBe(3);
+  });
+
   it("starts the month at local midnight on the first", () => {
     const start = resolveMonthStartMs(new Date(2026, 8, 23, 14, 30).getTime());
     expect(new Date(start).getDate()).toBe(1);

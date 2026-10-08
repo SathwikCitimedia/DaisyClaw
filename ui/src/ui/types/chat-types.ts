@@ -4,7 +4,26 @@
 
 /** Union type for items in the chat thread */
 export type ChatItem =
-  | { kind: "message"; key: string; message: unknown; duplicateCount?: number }
+  | {
+      kind: "message";
+      key: string;
+      message: unknown;
+      duplicateCount?: number;
+      /**
+       * A tool result kept only so a finished reply can fold it into its steps;
+       * it is dropped from the thread if it is not folded.
+       */
+      foldOnly?: boolean;
+    }
+  | {
+      /** The work behind a finished reply, folded into one line above the answer. */
+      kind: "steps";
+      key: string;
+      /** Plain-words summary, e.g. "Searched the web twice · Read a web page". */
+      summary: string;
+      groups: MessageGroup[];
+      timestamp: number;
+    }
   | {
       kind: "divider";
       key: string;

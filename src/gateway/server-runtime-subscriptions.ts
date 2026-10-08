@@ -85,6 +85,7 @@ export function startGatewayEventSubscriptions(params: {
           broadcastToConnIds: params.broadcastToConnIds,
           sessionEventSubscribers: params.sessionEventSubscribers,
           sessionMessageSubscribers: params.sessionMessageSubscribers,
+          chatAbortControllers: params.chatAbortControllers,
         }),
     );
     return transcriptUpdateHandlerPromise;
@@ -99,6 +100,7 @@ export function startGatewayEventSubscriptions(params: {
         createLifecycleEventBroadcastHandler({
           broadcastToConnIds: params.broadcastToConnIds,
           sessionEventSubscribers: params.sessionEventSubscribers,
+          chatAbortControllers: params.chatAbortControllers,
         }),
     );
     return lifecycleEventHandlerPromise;

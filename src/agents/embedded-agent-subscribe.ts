@@ -341,6 +341,14 @@ export function subscribeEmbeddedAgentSession(params: SubscribeEmbeddedAgentSess
       options?.consumePendingToolMedia === false
         ? withAssistantDirectives
         : consumePendingToolMediaIntoReply(state, withAssistantDirectives);
+    // Tool media only fills in when the assistant named none of its own, so
+    // media present before that merge is the assistant's, saved with its text.
+    if (
+      !withToolMedia.isReasoning &&
+      (withAssistantDirectives.mediaUrls ?? []).some((url) => url.trim())
+    ) {
+      setReplyPayloadMetadata(withToolMedia, { mediaFromAssistantText: true });
+    }
     if (state.deferBlockReplyDelivery) {
       const deferredPayload =
         options?.assistantMessageIndex !== undefined

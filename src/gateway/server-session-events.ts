@@ -7,12 +7,14 @@ import { getRuntimeConfig } from "../config/io.js";
 import { normalizeAgentId } from "../routing/session-key.js";
 import type { SessionLifecycleEvent } from "../sessions/session-lifecycle-events.js";
 import type { SessionTranscriptUpdate } from "../sessions/transcript-events.js";
+import type { ChatAbortControllerEntry } from "./chat-abort.js";
 import { projectChatDisplayMessage } from "./chat-display-projection.js";
 import type { GatewayBroadcastToConnIdsFn } from "./server-broadcast-types.js";
 import type {
   SessionEventSubscriberRegistry,
   SessionMessageSubscriberRegistry,
 } from "./server-chat.js";
+import { withTrackedActiveSessionRun } from "./server-methods/session-active-runs.js";
 import { resolveSessionKeyForTranscriptFile } from "./session-transcript-key.js";
 import {
   attachDaisyClawTranscriptMeta,
@@ -42,6 +44,51 @@ function resolveSessionMessageBroadcastKeys(sessionKey: string, agentId?: string
   return [sessionKey];
 }
 
+type ActiveRunLookup = {
+  chatAbortControllers?: Map<string, ChatAbortControllerEntry>;
+  /** The key the event was raised for, which may be an alias of the row's key. */
+  requestedKey: string;
+};
+
+/**
+ * The row with a run in flight reported as running. The row's saved status
+ * still says "done" from the previous answer until the new run's lifecycle is
+ * written, and clients that trust it end the reply that is in progress.
+ */
+function withLiveRunStatus(
+  sessionRow: GatewaySessionRow,
+  agentId: string | undefined,
+  activeRun: ActiveRunLookup | undefined,
+): GatewaySessionRow {
+  if (!activeRun?.chatAbortControllers) {
+    return sessionRow;
+  }
+  const run = withTrackedActiveSessionRun(
+    {
+      status: sessionRow.status,
+      startedAt: sessionRow.startedAt,
+      endedAt: sessionRow.endedAt,
+      runtimeMs: sessionRow.runtimeMs,
+    },
+    {
+      context: { chatAbortControllers: activeRun.chatAbortControllers },
+      requestedKey: activeRun.requestedKey,
+      canonicalKey: sessionRow.key,
+      ...(agentId ? { agentId } : {}),
+      defaultAgentId: resolveDefaultAgentId(getRuntimeConfig()),
+    },
+  );
+  return run.status === sessionRow.status
+    ? sessionRow
+    : {
+        ...sessionRow,
+        status: run.status as GatewaySessionRow["status"],
+        startedAt: run.startedAt,
+        endedAt: run.endedAt,
+        runtimeMs: run.runtimeMs,
+      };
+}
+
 function buildGatewaySessionSnapshot(params: {
   sessionRow: GatewaySessionRow | null | undefined;
   agentId?: string;
@@ -49,11 +96,12 @@ function buildGatewaySessionSnapshot(params: {
   label?: string;
   displayName?: string;
   parentSessionKey?: string;
+  activeRun?: ActiveRunLookup;
 }): Record<string, unknown> {
-  const { sessionRow } = params;
-  if (!sessionRow) {
+  if (!params.sessionRow) {
     return {};
   }
+  const sessionRow = withLiveRunStatus(params.sessionRow, params.agentId, params.activeRun);
   const omitUnscopedGlobalGoal = sessionRow.key === "global" && !params.agentId;
   // The unscoped global row hides goal state to avoid presenting one agent's
   // scoped goal as the global/default session goal.
@@ -122,6 +170,7 @@ export function createTranscriptUpdateBroadcastHandler(params: {
   broadcastToConnIds: GatewayBroadcastToConnIdsFn;
   sessionEventSubscribers: SessionEventSubscribers;
   sessionMessageSubscribers: SessionMessageSubscribers;
+  chatAbortControllers?: Map<string, ChatAbortControllerEntry>;
 }) {
   let broadcastQueue = Promise.resolve();
   return (update: SessionTranscriptUpdate): void => {
@@ -138,6 +187,7 @@ async function handleTranscriptUpdateBroadcast(
     broadcastToConnIds: GatewayBroadcastToConnIdsFn;
     sessionEventSubscribers: SessionEventSubscribers;
     sessionMessageSubscribers: SessionMessageSubscribers;
+    chatAbortControllers?: Map<string, ChatAbortControllerEntry>;
   },
   update: SessionTranscriptUpdate,
 ): Promise<void> {
@@ -183,6 +233,7 @@ async function handleTranscriptUpdateBroadcast(
     }),
     agentId: visibleAgentId,
     includeSession: true,
+    activeRun: { chatAbortControllers: params.chatAbortControllers, requestedKey: sessionKey },
   });
   const rawMessage = attachDaisyClawTranscriptMeta(update.message, {
     ...(typeof update.messageId === "string" ? { id: update.messageId } : {}),
@@ -232,6 +283,7 @@ async function handleTranscriptUpdateBroadcast(
 export function createLifecycleEventBroadcastHandler(params: {
   broadcastToConnIds: GatewayBroadcastToConnIdsFn;
   sessionEventSubscribers: SessionEventSubscribers;
+  chatAbortControllers?: Map<string, ChatAbortControllerEntry>;
 }) {
   return (event: SessionLifecycleEvent): void => {
     const connIds = params.sessionEventSubscribers.getAll();
@@ -252,6 +304,10 @@ export function createLifecycleEventBroadcastHandler(params: {
           label: event.label,
           displayName: event.displayName,
           parentSessionKey: event.parentSessionKey,
+          activeRun: {
+            chatAbortControllers: params.chatAbortControllers,
+            requestedKey: event.sessionKey,
+          },
         }),
       },
       connIds,

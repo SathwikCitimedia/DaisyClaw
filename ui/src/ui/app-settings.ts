@@ -19,6 +19,7 @@ import {
   roundedControlUiDurationMs,
   scheduleControlUiTabVisibleTiming,
 } from "./control-ui-performance.ts";
+import { loadAccountSignIn, type AccountSignInHost } from "./controllers/account-sign-in.ts";
 import { loadAgentFiles, type AgentFilesState } from "./controllers/agent-files.ts";
 import {
   loadAgentIdentities,
@@ -434,6 +435,18 @@ export async function refreshActiveTab(host: SettingsHost, opts?: { chatStartup?
         {
           const primaryRefresh = loadConfig(app);
           loadConfigSchemaAfterPrimary(host, app, primaryRefresh);
+          if (host.tab === "config") {
+            // The spending card lives here; it used to be filled only by the
+            // Overview page, so opening Settings first showed a dash.
+            void loadSpending(app);
+            // Connections needs each account's real state and its tool's install recipe.
+            void loadAccountSignIn(app as unknown as AccountSignInHost, {
+              reloadSkills: () => loadSkills(app),
+            });
+            if (!app.skillsReport) {
+              void loadSkills(app);
+            }
+          }
           await primaryRefresh;
         }
         break;

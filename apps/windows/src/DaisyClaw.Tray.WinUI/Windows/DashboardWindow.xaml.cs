@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using DaisyClawTray.Helpers;
 using Microsoft.UI.Xaml;
 using Microsoft.Web.WebView2.Core;
@@ -37,6 +38,7 @@ public sealed partial class DashboardWindow : WindowEx
             await GatewayChatHelper.InitializeWebView2Async(WebView);
             _webViewReady = true;
             WebView.CoreWebView2.NavigationCompleted += OnNavigationCompleted;
+            WebView.CoreWebView2.NewWindowRequested += OnNewWindowRequested;
             if (_pendingUrl is { } url)
             {
                 _pendingUrl = null;
@@ -47,6 +49,38 @@ public sealed partial class DashboardWindow : WindowEx
         {
             // WebView2 runtime unavailable: the window stays blank; callers can
             // still fall back to the system browser.
+        }
+    }
+
+    /// <summary>
+    /// Links that leave Daisy (Google's console, a sign-in page, help pages)
+    /// open in the user's own browser. Google refuses to sign anyone in inside
+    /// an embedded window, and a stray popup window is easy to lose. Daisy's
+    /// own pages and in-app previews (blob/data) keep the built-in behaviour.
+    /// </summary>
+    private void OnNewWindowRequested(
+        CoreWebView2 sender,
+        CoreWebView2NewWindowRequestedEventArgs args)
+    {
+        if (!Uri.TryCreate(args.Uri, UriKind.Absolute, out var target) ||
+            (target.Scheme != Uri.UriSchemeHttp && target.Scheme != Uri.UriSchemeHttps))
+        {
+            return;
+        }
+        if (Uri.TryCreate(sender.Source, UriKind.Absolute, out var current) &&
+            string.Equals(current.Host, target.Host, StringComparison.OrdinalIgnoreCase) &&
+            current.Port == target.Port)
+        {
+            return;
+        }
+        args.Handled = true;
+        try
+        {
+            Process.Start(new ProcessStartInfo(target.AbsoluteUri) { UseShellExecute = true });
+        }
+        catch
+        {
+            // No default browser registered: nothing better to offer than not opening.
         }
     }
 

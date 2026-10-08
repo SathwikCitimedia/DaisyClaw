@@ -40,7 +40,8 @@ describe("buildEmbeddedExtensionFactories", () => {
       modelId: "gpt-5.4",
       model: undefined,
     });
-    expect(factories).toHaveLength(1);
+    // The tool-result bridge, then shortening answered tool output (no prompt cache here).
+    expect(factories).toHaveLength(2);
 
     const handlers = new Map<string, Function>();
     await factories[0]?.({

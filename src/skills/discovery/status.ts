@@ -54,6 +54,8 @@ export type SkillStatusEntry = {
   baseDir: string;
   skillKey: string;
   primaryEnv?: string;
+  /** Present with `primaryEnv`: whether that key is set for the skill. */
+  primaryEnvSatisfied?: boolean;
   emoji?: string;
   homepage?: string;
   /** User-facing capability bullets for the skill dialog. */
@@ -319,6 +321,12 @@ function buildSkillStatus(
     baseDir: entry.skill.baseDir,
     skillKey,
     primaryEnv: entry.metadata?.primaryEnv,
+    // Whether the key the skill mainly needs is actually set, saved for the
+    // skill or in the environment. A skill that can fall back to another tool
+    // does not list its key as required, so `missing` alone cannot tell.
+    ...(entry.metadata?.primaryEnv
+      ? { primaryEnvSatisfied: isEnvSatisfied(entry.metadata.primaryEnv) }
+      : {}),
     emoji,
     homepage,
     ...(entry.metadata?.highlights?.length ? { highlights: entry.metadata.highlights } : {}),

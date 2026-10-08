@@ -1483,6 +1483,30 @@ describe("dispatchCronDelivery — double-announce guard", () => {
     );
   });
 
+  // Someone who only uses the Daisy app has no chat app to announce to. The
+  // gateway posts the reply into the Daisy chat instead, so the run itself
+  // succeeded; it used to be marked as an error even when the task was done.
+  it("does not fail the run when no chat app is set up at all", async () => {
+    const params = makeBaseParams({ synthesizedText: "Sent the update request." });
+    params.resolvedDelivery = {
+      ok: false,
+      channel: undefined,
+      to: undefined,
+      accountId: undefined,
+      threadId: undefined,
+      mode: "implicit",
+      error: new Error(
+        "Channel is required (no configured channels detected). Run daisyclaw channels add to configure one.",
+      ),
+    };
+
+    const state = await dispatchCronDelivery(params);
+
+    expect(deliverOutboundPayloads).not.toHaveBeenCalled();
+    expect(state.delivered).toBe(false);
+    expectResultFields(state.result, { status: "ok" });
+  });
+
   it("falls back to the current agent session key when route resolution is unavailable", async () => {
     const params = makeBaseParams({ synthesizedText: "hello from cron" });
     params.cfgWithAgentDefaults = {

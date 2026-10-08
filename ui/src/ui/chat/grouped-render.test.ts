@@ -1502,10 +1502,12 @@ describe("grouped chat rendering", () => {
       timestamp: Date.now(),
     });
     expect(container.querySelector(".chat-message-image")).toBeNull();
-    const documentLink = container.querySelector<HTMLAnchorElement>(
-      ".chat-assistant-attachment-card__link",
+    const documentLink = container.querySelector<HTMLAnchorElement>("a.chat-file-card");
+    expect(documentLink?.querySelector(".chat-file-card__name")?.textContent).toBe(
+      "user-upload.pdf",
     );
-    expect(documentLink?.textContent?.trim()).toBe("user-upload.pdf");
+    expect(documentLink?.querySelector(".chat-file-card__type")?.textContent).toBe("PDF");
+    expect(documentLink?.getAttribute("data-file-kind")).toBe("pdf");
     expect(documentLink?.getAttribute("href")).toBe("/__daisyclaw__/media/user-upload.pdf");
     vi.unstubAllGlobals();
   });
@@ -1631,9 +1633,10 @@ describe("grouped chat rendering", () => {
     );
   });
 
-  it("opens only safe assistant image URLs in a hardened new tab", () => {
+  it("opens only safe assistant images, in the app's viewer", () => {
     const container = document.createElement("div");
     const openSpy = vi.spyOn(window, "open").mockReturnValue(null);
+    const viewer = () => document.querySelector<HTMLDialogElement>("dialog.image-viewer");
     const renderAssistantImage = (url: string) =>
       renderAssistantMessage(container, {
         role: "assistant",
@@ -1647,26 +1650,37 @@ describe("grouped chat rendering", () => {
       expect(image).toBeInstanceOf(HTMLImageElement);
       image!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
 
-      expect(openSpy).toHaveBeenCalledTimes(1);
+      // The picture opens over the app, not in a browser tab.
+      expect(openSpy).not.toHaveBeenCalled();
+      expect(viewer()?.querySelector<HTMLImageElement>(".image-viewer__image")?.src).toBe(
+        "https://example.com/cat.png",
+      );
+      // Opening it outside the app is still a hardened new tab.
+      viewer()!.querySelector<HTMLButtonElement>(".image-viewer__open")!.click();
       expect(openSpy).toHaveBeenCalledWith(
         "https://example.com/cat.png",
         "_blank",
         "noopener,noreferrer",
       );
+      viewer()!.querySelector<HTMLButtonElement>(".image-viewer__close")!.click();
+      expect(viewer()).toBeNull();
 
       openSpy.mockClear();
       renderAssistantImage("javascript:alert(1)");
       image = container.querySelector<HTMLImageElement>(".chat-message-image");
       expect(image).toBeInstanceOf(HTMLImageElement);
       image!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      expect(viewer()).toBeNull();
       expect(openSpy).not.toHaveBeenCalled();
 
       renderAssistantImage("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' />");
       image = container.querySelector<HTMLImageElement>(".chat-message-image");
       expect(image).toBeInstanceOf(HTMLImageElement);
       image!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      expect(viewer()).toBeNull();
       expect(openSpy).not.toHaveBeenCalled();
     } finally {
+      viewer()?.remove();
       openSpy.mockRestore();
     }
   });
@@ -1706,11 +1720,13 @@ describe("grouped chat rendering", () => {
       );
 
     renderMessage();
+    // The picture shows a badge; the document says it on its own card.
     expect(
       Array.from(container.querySelectorAll(".chat-assistant-attachment-badge")).map((badge) =>
         badge.textContent?.trim(),
       ),
-    ).toEqual(["Checking...", "Checking..."]);
+    ).toEqual(["Checking..."]);
+    expect(container.querySelector(".chat-file-card__type")?.textContent).toBe("Checking…");
     await flushAssistantAttachmentAvailabilityChecks();
 
     const [, fetchInit] = requireFetchCallForUrl(
@@ -1720,9 +1736,7 @@ describe("grouped chat rendering", () => {
     expectSameOriginGet(fetchInit);
 
     const image = container.querySelector<HTMLImageElement>(".chat-message-image");
-    const docLink = container.querySelector<HTMLAnchorElement>(
-      ".chat-assistant-attachment-card__link",
-    );
+    const docLink = container.querySelector<HTMLAnchorElement>("a.chat-file-card");
     expect(image?.getAttribute("src")).toBe(
       "/daisyclaw/__daisyclaw__/assistant-media?source=%2Ftmp%2Fdaisyclaw%2Ftest+image.png&mediaTicket=ticket-local",
     );
@@ -1877,13 +1891,11 @@ describe("grouped chat rendering", () => {
     );
 
     const image = container.querySelector<HTMLImageElement>(".chat-message-image");
-    const docLink = container.querySelector<HTMLAnchorElement>(
-      ".chat-assistant-attachment-card__link",
-    );
+    const docLink = container.querySelector<HTMLAnchorElement>("a.chat-file-card");
     expect(image?.getAttribute("src")).toBe("/media/inbound/test-image.png");
     expect(docLink?.getAttribute("href")).toBe("/__daisyclaw__/media/test-doc.pdf");
     expect(container.querySelector(".chat-assistant-attachment-badge")).toBeNull();
-    expect(container.querySelector(".chat-assistant-attachment-card--blocked")).toBeNull();
+    expect(container.querySelector(".chat-file-card__type")?.textContent).toBe("PDF");
   });
 
   it("renders blocked local assistant files as unavailable with a reason", () => {
@@ -1904,16 +1916,13 @@ describe("grouped chat rendering", () => {
       },
     );
 
-    expect(container.querySelector(".chat-assistant-attachment-card__link")).toBeNull();
-    const blockedCard = container.querySelector(".chat-assistant-attachment-card--blocked");
-    expect(blockedCard?.querySelector(".chat-assistant-attachment-card__title")?.textContent).toBe(
-      "private.pdf",
-    );
-    expect(blockedCard?.querySelector(".chat-assistant-attachment-badge")?.textContent).toBe(
-      "Unavailable",
-    );
+    // Still shown as the file it is, but not as a link, with the reason.
+    expect(container.querySelector("a.chat-file-card")).toBeNull();
+    const blockedCard = container.querySelector(".chat-file-card");
+    expect(blockedCard?.querySelector(".chat-file-card__name")?.textContent).toBe("private.pdf");
+    expect(blockedCard?.querySelector(".chat-file-card__type")?.textContent).toBe("Unavailable");
     expect(
-      blockedCard?.querySelector(".chat-assistant-attachment-card__reason")?.textContent?.trim(),
+      container.querySelector(".chat-assistant-attachment-card__reason")?.textContent?.trim(),
     ).toBe("Outside allowed folders");
     expect(container.querySelector(".chat-text")?.textContent?.trim()).toBe("Blocked\nDone");
   });
@@ -2576,5 +2585,187 @@ describe("inline message editing: failure and progress", () => {
 
     renderMessageGroups(container, [group], { editingBusyKey: null });
     expect(container.querySelector(".chat-inline-edit__updating")).toBeNull();
+  });
+});
+
+describe("pin and regenerate buttons", () => {
+  it("offers Pin on a pinnable message and marks a pinned one", () => {
+    const container = document.createElement("div");
+    const onTogglePin = vi.fn();
+    renderGroupedMessage(container, { role: "user", content: "keep this", timestamp: 1 }, "user", {
+      pinId: "ts:user:1",
+      pinned: false,
+      onTogglePin,
+    });
+    const pin = container.querySelector<HTMLButtonElement>(".chat-group-pin");
+    expect(pin?.getAttribute("aria-label")).toBe("Pin message");
+    expect(container.querySelector(".chat-group")?.getAttribute("data-pin-id")).toBe("ts:user:1");
+    pin?.click();
+    expect(onTogglePin).toHaveBeenCalledTimes(1);
+
+    renderGroupedMessage(container, { role: "user", content: "keep this", timestamp: 1 }, "user", {
+      pinId: "ts:user:1",
+      pinned: true,
+      onTogglePin,
+    });
+    const pinned = container.querySelector<HTMLButtonElement>(".chat-group-pin");
+    expect(pinned?.getAttribute("aria-label")).toBe("Unpin message");
+    expect(pinned?.getAttribute("aria-pressed")).toBe("true");
+    expect(container.querySelector(".chat-group--pinned")).not.toBeNull();
+  });
+
+  it("shows no Pin button when the message cannot be pinned", () => {
+    const container = document.createElement("div");
+    renderAssistantMessage(container, { role: "assistant", content: "streaming" });
+    expect(container.querySelector(".chat-group-pin")).toBeNull();
+    expect(container.querySelector(".chat-group")?.hasAttribute("data-pin-id")).toBe(false);
+  });
+
+  it("shows Regenerate only where it is offered, and disables it while it runs", () => {
+    const container = document.createElement("div");
+    renderAssistantMessage(container, { role: "assistant", content: "Paris", timestamp: 2 });
+    expect(container.querySelector(".chat-group-regenerate")).toBeNull();
+
+    const onRegenerate = vi.fn();
+    renderAssistantMessage(
+      container,
+      { role: "assistant", content: "Paris", timestamp: 2 },
+      { onRegenerate },
+    );
+    const button = container.querySelector<HTMLButtonElement>(".chat-group-regenerate");
+    expect(button?.getAttribute("aria-label")).toBe("Regenerate reply");
+    button?.click();
+    expect(onRegenerate).toHaveBeenCalledTimes(1);
+
+    renderAssistantMessage(
+      container,
+      { role: "assistant", content: "Paris", timestamp: 2 },
+      { onRegenerate, regenerating: true },
+    );
+    const busy = container.querySelector<HTMLButtonElement>(".chat-group-regenerate");
+    expect(busy?.disabled).toBe(true);
+    expect(busy?.getAttribute("aria-label")).toBe("Regenerating…");
+  });
+});
+
+describe("send status under a just-sent message", () => {
+  it("says why it was not sent and offers Retry and Remove", () => {
+    const container = document.createElement("div");
+    const onRetry = vi.fn();
+    const onRemove = vi.fn();
+    const group = createMessageGroup(
+      { role: "user", content: "analyze this pdf", timestamp: 1_000 },
+      "user",
+    );
+
+    renderMessageGroups(container, [group], {
+      sendStatuses: [
+        {
+          state: "failed",
+          error: "DaisyClaw didn't confirm this message. Retry won't send it twice.",
+          onRetry,
+          onRemove,
+        },
+      ],
+    });
+
+    const status = container.querySelector(".chat-send-status--failed");
+    expect(status?.getAttribute("role")).toBe("alert");
+    expect(status?.querySelector(".chat-send-status__text")?.textContent).toBe(
+      "DaisyClaw didn't confirm this message. Retry won't send it twice.",
+    );
+    const [retry, remove] = Array.from(
+      container.querySelectorAll<HTMLButtonElement>(".chat-send-status__action"),
+    );
+    expect(retry?.textContent?.trim()).toBe("Retry");
+    expect(remove?.textContent?.trim()).toBe("Remove");
+    retry?.click();
+    remove?.click();
+    expect(onRetry).toHaveBeenCalledTimes(1);
+    expect(onRemove).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows a waiting message without Retry while the connection is down", () => {
+    const container = document.createElement("div");
+    const group = createMessageGroup({ role: "user", content: "hello", timestamp: 2_000 }, "user");
+
+    renderMessageGroups(container, [group], {
+      sendStatuses: [{ state: "waiting-reconnect", onRetry: vi.fn(), onRemove: vi.fn() }],
+    });
+
+    expect(container.querySelector(".chat-send-status__text")?.textContent).toBe(
+      "Waiting for DaisyClaw to reconnect…",
+    );
+    expect(container.querySelectorAll(".chat-send-status__action")).toHaveLength(1);
+  });
+});
+
+describe("a reply that arrived cut short", () => {
+  it("shows the whole saved reply once it has been fetched", async () => {
+    const { setFullMessageClient, resetFullMessageTextForTest } =
+      await import("./full-message-text.ts");
+    const request = vi.fn(async () => ({
+      ok: true,
+      message: {
+        role: "assistant",
+        content: [{ type: "text", text: "Opening paragraph. And the ending everyone wanted." }],
+      },
+    }));
+    setFullMessageClient({ request } as never);
+    try {
+      const container = document.createElement("div");
+      const onRequestUpdate = vi.fn();
+      const group = createMessageGroup(
+        {
+          role: "assistant",
+          content: [{ type: "text", text: "Opening paragraph.\n...(truncated)..." }],
+          timestamp: 3_000,
+          __daisyclaw: { id: "msg-long", truncated: true },
+        },
+        "assistant",
+      );
+
+      renderMessageGroups(container, [group], { sessionKey: "main", onRequestUpdate });
+      await vi.waitFor(() => expect(onRequestUpdate).toHaveBeenCalled());
+      renderMessageGroups(container, [group], { sessionKey: "main", onRequestUpdate });
+
+      expect(container.textContent).toContain("And the ending everyone wanted.");
+      expect(container.textContent).not.toContain("(truncated)");
+      expect(request).toHaveBeenCalledWith(
+        "chat.message.get",
+        expect.objectContaining({ sessionKey: "main", messageId: "msg-long" }),
+      );
+    } finally {
+      resetFullMessageTextForTest();
+    }
+  });
+});
+
+describe("an image made while the reply is still being written", () => {
+  it("loads in the live bubble from the folders it may show", () => {
+    const pendingFetch = vi.fn(() => new Promise<Response>(() => {}));
+    vi.stubGlobal("fetch", pendingFetch);
+    try {
+      const withRoots = document.createElement("div");
+      render(
+        renderStreamingGroup(
+          "Here's your meme!\n\nMEDIA:/live-workspace/meme.png",
+          5_000,
+          true,
+          undefined,
+          undefined,
+          "",
+          "token",
+          { localMediaPreviewRoots: ["/live-workspace"] },
+        ),
+        withRoots,
+      );
+
+      expect(withRoots.querySelector(".chat-assistant-attachments")).not.toBeNull();
+      expect(withRoots.textContent).not.toContain("Outside allowed folders");
+      expect(pendingFetch).toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });

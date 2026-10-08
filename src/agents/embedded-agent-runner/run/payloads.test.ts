@@ -711,3 +711,22 @@ describe("buildEmbeddedRunPayloads tool-error warnings", () => {
     expectSinglePayloadText(payloads, "THINKING-OFF-OK");
   });
 });
+
+describe("media the assistant named in its answer", () => {
+  // The gateway shows these from the saved message instead of saving a copy,
+  // which used to split the conversation and lose the image on reload.
+  it("marks it as coming from the assistant's own text", () => {
+    const payloads = buildPayloads({
+      assistantTexts: ["Here's the Drake version!\n\nMEDIA:/tmp/workspace/drake.png"],
+    });
+
+    expect(payloads[0]?.mediaUrls).toEqual(["/tmp/workspace/drake.png"]);
+    expect(getReplyPayloadMetadata(payloads[0] as object)?.mediaFromAssistantText).toBe(true);
+  });
+
+  it("leaves text-only answers unmarked", () => {
+    const payloads = buildPayloads({ assistantTexts: ["No pictures here."] });
+
+    expect(getReplyPayloadMetadata(payloads[0] as object)?.mediaFromAssistantText).toBeUndefined();
+  });
+});

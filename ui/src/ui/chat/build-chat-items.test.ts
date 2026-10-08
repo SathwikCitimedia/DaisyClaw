@@ -6,6 +6,7 @@ import {
   threadAwaitsAssistantReply,
   type BuildChatItemsProps,
 } from "./build-chat-items.ts";
+import { readPendingSendMarker } from "./pending-send.ts";
 
 const SENDER_METADATA_BLOCK =
   'Sender (untrusted metadata):\n```json\n{"label":"daisyclaw-control-ui","id":"daisyclaw-control-ui"}\n```';
@@ -596,17 +597,31 @@ describe("buildChatItems", () => {
     expect(groups[0].messages[1].duplicateCount).toBeUndefined();
   });
 
-  it("keeps failed queued sends out of the thread", () => {
+  it("keeps failed sends in the thread with the reason, so they can be retried there", () => {
     const groups = messageGroups({
       queue: [
         {
           id: "failed-send-1",
-          text: "restore me to the composer",
+          text: "analyze this pdf",
           createdAt: 1,
           sendSubmittedAtMs: 10,
           sendState: "failed",
+          sendError: "DaisyClaw didn't confirm this message.",
         },
       ],
+    });
+
+    expect(groups).toHaveLength(1);
+    expect(readPendingSendMarker(groups[0].messages[0].message)).toStrictEqual({
+      id: "failed-send-1",
+      state: "failed",
+      error: "DaisyClaw didn't confirm this message.",
+    });
+  });
+
+  it("leaves messages typed during a reply to the Queued panel", () => {
+    const groups = messageGroups({
+      queue: [{ id: "queued-1", text: "after the reply", createdAt: 1 }],
     });
 
     expect(groups).toStrictEqual([]);

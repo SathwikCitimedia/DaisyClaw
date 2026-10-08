@@ -1046,7 +1046,7 @@ const applyCostTotal = (totals: CostUsageTotals, costTotal: number | undefined) 
 // generated models.json because the Codex backend exposes no per-token price. Treating
 // such a config as a real $0 makes usage-cost report confident zero spend, which
 // silently blinds every budget/spike safeguard that keys off totalCost.
-const isModelPricingKnown = (cost: ReturnType<typeof resolveModelCostConfig>): boolean => {
+export const isModelPricingKnown = (cost: ReturnType<typeof resolveModelCostConfig>): boolean => {
   if (!cost) {
     return false;
   }

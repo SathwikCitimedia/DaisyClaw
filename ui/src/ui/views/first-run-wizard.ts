@@ -18,6 +18,7 @@ import { showToast } from "../toast.ts";
 import type { SkillStatusEntry } from "../types.ts";
 import { renderChannelSetup } from "./channels.setup.ts";
 import type { ChannelsProps } from "./channels.types.ts";
+import { CONNECTIONS, resolveConnectionStatus } from "./connections.ts";
 import {
   WIZARD_CHANNEL_LOGOS,
   WIZARD_PROVIDER_LOGOS,
@@ -47,22 +48,59 @@ const WIZARD_CHANNELS: ReadonlyArray<{ key: string; label: string; desc: string 
  * one-line descriptions (the SKILL.md descriptions are developer-toned).
  * Keys must match the starter tiers in src/skills/default-skill-pack.ts.
  */
-type WizardSkillMeta = { key: string; title: string; desc: string; account?: boolean };
+export type WizardSkillMeta = {
+  key: string;
+  title: string;
+  desc: string;
+  account?: boolean;
+  /** What connecting it takes, shown while it waits in the "connect later" row. */
+  laterNote?: string;
+};
 
 const WIZARD_SKILLS: readonly WizardSkillMeta[] = [
   { key: "weather", title: "Weather", desc: "Forecasts for any place, any day" },
   { key: "reminders", title: "Reminders", desc: "Nudges you at the right time" },
   { key: "quick-notes", title: "Quick Notes", desc: "Jot things down by just saying them" },
-  { key: "taskflow", title: "Tasks", desc: "Simple to-do lists, managed in chat" },
+  // TaskFlow runs longer jobs in the background; it is not a to-do list, and
+  // calling it one set people up to ask for something it cannot do.
+  {
+    key: "taskflow",
+    title: "Background Jobs",
+    desc: "Works through longer jobs, keeps you posted",
+  },
   { key: "daily-briefing", title: "Daily Briefing", desc: "A morning summary made for you" },
   { key: "diagram-maker", title: "Diagrams", desc: "Turn ideas into clean flowcharts" },
   { key: "meme-maker", title: "Memes", desc: "Fresh memes on demand" },
   { key: "canvas", title: "Canvas", desc: "Visual boards Daisy can draw on" },
   { key: "skill-installer", title: "Skill Finder", desc: "Ask Daisy to add new abilities" },
-  { key: "gog", title: "Google", desc: "Gmail, Calendar, and Drive", account: true },
-  { key: "spotify-player", title: "Spotify", desc: "Control your music", account: true },
-  { key: "notion", title: "Notion", desc: "Read and update your pages", account: true },
-  { key: "trello", title: "Trello", desc: "Manage your boards and cards", account: true },
+  {
+    key: "gog",
+    title: "Google",
+    desc: "Gmail, Calendar, and Drive",
+    account: true,
+    laterNote: "Your own Google account · about 15 minutes · Daisy can guide you",
+  },
+  {
+    key: "spotify-player",
+    title: "Spotify",
+    desc: "Control your music",
+    account: true,
+    laterNote: "One click to sign in · needs Spotify Premium",
+  },
+  {
+    key: "notion",
+    title: "Notion",
+    desc: "Read and update your pages",
+    account: true,
+    laterNote: "Paste a token from Notion",
+  },
+  {
+    key: "trello",
+    title: "Trello",
+    desc: "Manage your boards and cards",
+    account: true,
+    laterNote: "Paste a key and token from Trello",
+  },
 ];
 
 // Skills whose enable/disable call failed; their switch falls back to the state
@@ -196,6 +234,9 @@ export function reopenFirstRunWizard(state: AppViewState): void {
     // ignore
   }
   brainSkipped = false;
+  // A second run must switch the starter skills on (and fetch account tools)
+  // again, not skip that step because the first run already did it.
+  wizardSkillsEnabledOnce = false;
   resetDraft();
   state.firstRunError = null;
   state.firstRunBusy = false;
@@ -286,9 +327,36 @@ async function connectProvider(state: AppViewState, preset: ProviderPreset): Pro
   }
 }
 
-function wizardSkillRows(
-  state: AppViewState,
-): Array<{ meta: WizardSkillMeta; skill: SkillStatusEntry }> {
+/**
+ * "ready" skills get a real switch. "connect-later" is an account that can be
+ * connected in Settings but is not yet, so a switch here could not make it
+ * work. An account nobody can connect yet (Settings says "Coming soon") is not
+ * offered at all; it appears here by itself once Settings can connect it.
+ */
+export type WizardSkillReadiness = "ready" | "connect-later";
+
+type WizardSkillRow = {
+  meta: WizardSkillMeta;
+  skill: SkillStatusEntry;
+  readiness: WizardSkillReadiness;
+};
+
+export function resolveWizardSkillReadiness(
+  meta: WizardSkillMeta,
+  skill: SkillStatusEntry,
+): WizardSkillReadiness | null {
+  if (!meta.account) {
+    return "ready";
+  }
+  const connection = CONNECTIONS.find((entry) => entry.skillKey === meta.key);
+  const status = connection ? resolveConnectionStatus(connection, skill) : "unavailable";
+  if (status === "unavailable") {
+    return null;
+  }
+  return status === "connected" ? "ready" : "connect-later";
+}
+
+function wizardSkillRows(state: AppViewState): WizardSkillRow[] {
   const report = state.skillsReport;
   if (!report?.skills?.length) {
     return [];
@@ -296,7 +364,8 @@ function wizardSkillRows(
   const byKey = new Map(report.skills.map((skill) => [skill.skillKey, skill]));
   return WIZARD_SKILLS.flatMap((meta) => {
     const skill = byKey.get(meta.key);
-    return skill ? [{ meta, skill }] : [];
+    const readiness = skill ? resolveWizardSkillReadiness(meta, skill) : null;
+    return skill && readiness ? [{ meta, skill, readiness }] : [];
   });
 }
 
@@ -507,22 +576,24 @@ function renderBrain(state: AppViewState): TemplateResult {
 }
 
 function renderSkills(state: AppViewState): TemplateResult {
-  const rows = wizardSkillRows(state);
+  const allRows = wizardSkillRows(state);
+  const rows = allRows.filter((row) => row.readiness === "ready");
+  const laterRows = allRows.filter((row) => row.readiness === "connect-later");
   // Starter skills default ON, so the shown state matches the config (runs once
-  // per wizard session). Skills that need an account are the exception: they
-  // were switched on here and then could not be connected anywhere, so the
-  // user's first real request failed and looked like the assistant was broken.
-  // They stay off until the user connects the account in Settings.
-  if (rows.length > 0 && !wizardSkillsEnabledOnce) {
+  // per wizard session). Accounts that are not connected are the exception:
+  // switched on here with nothing connected, the user's first real request
+  // failed and looked like the assistant was broken. They are listed apart,
+  // without a switch, until the account is connected in Settings.
+  if (allRows.length > 0 && !wizardSkillsEnabledOnce) {
     wizardSkillsEnabledOnce = true;
-    for (const { skill, meta } of rows) {
-      if (meta.account) {
-        continue;
-      }
+    for (const { skill } of rows) {
       if (skill.disabled && !wizardSkillsOff.has(skill.skillKey)) {
         void updateSkillEnabled(state, skill.skillKey, true).catch(() => undefined);
       }
     }
+    // Fetch the tools behind the accounts now, while setup carries on, so
+    // Connect in Settings starts the sign-in at once instead of downloading.
+    void preinstallAccountTools(state, laterRows);
   }
   return html`
     <h1 class="first-run__title">Pick your skills</h1>
@@ -530,7 +601,7 @@ function renderSkills(state: AppViewState): TemplateResult {
       Skills are things Daisy can do for you. These are all on to start — switch off any you don't
       want. You can change this anytime.
     </p>
-    ${rows.length === 0
+    ${allRows.length === 0
       ? html`<div class="first-run__hint">
           Loading skills…
           <button class="first-run__link" @click=${() => void loadSkills(state)}>Retry</button>
@@ -548,12 +619,7 @@ function renderSkills(state: AppViewState): TemplateResult {
                 <div class="first-run__skill-card">
                   <span class="first-run__skill-logo" aria-hidden="true">${logo ?? nothing}</span>
                   <span class="first-run__skill-info">
-                    <span class="first-run__skill-title">
-                      ${meta.title}
-                      ${meta.account
-                        ? html`<span class="first-run__skill-chip">connect in Settings</span>`
-                        : nothing}
-                    </span>
+                    <span class="first-run__skill-title">${meta.title}</span>
                     <span class="first-run__skill-desc">${meta.desc}</span>
                   </span>
                   <label class="first-run__switch">
@@ -600,6 +666,7 @@ function renderSkills(state: AppViewState): TemplateResult {
               `;
             })}
           </div>
+          ${renderConnectLaterSkills(laterRows)}
         `}
     <button
       class="btn primary first-run__cta"
@@ -610,6 +677,71 @@ function renderSkills(state: AppViewState): TemplateResult {
       Continue
     </button>
   `;
+}
+
+/** Accounts that can be connected in Settings but are not yet: listed, with no switch. */
+function renderConnectLaterSkills(
+  rows: readonly WizardSkillRow[],
+): TemplateResult | typeof nothing {
+  if (rows.length === 0) {
+    return nothing;
+  }
+  return html`
+    <div class="first-run__skills-later" data-first-run-connect-later>
+      <div class="first-run__skills-later-title">Connect these later in Settings</div>
+      <div class="first-run__skills-grid">
+        ${rows.map(
+          ({ meta }) => html`
+            <div class="first-run__skill-card first-run__skill-card--later">
+              <span class="first-run__skill-logo" aria-hidden="true"
+                >${WIZARD_SKILL_LOGOS[meta.key] ?? nothing}</span
+              >
+              <span class="first-run__skill-info">
+                <span class="first-run__skill-title">${meta.title}</span>
+                <span class="first-run__skill-desc">${meta.desc}</span>
+                ${meta.laterNote
+                  ? html`<span class="first-run__skill-note">${meta.laterNote}</span>`
+                  : nothing}
+              </span>
+            </div>
+          `,
+        )}
+      </div>
+    </div>
+  `;
+}
+
+/**
+ * Downloads the programs the "connect later" accounts need, one at a time and
+ * quietly: a failure here is not the user's problem yet, and Connect in
+ * Settings installs again when it finds the tool missing.
+ */
+async function preinstallAccountTools(
+  state: AppViewState,
+  rows: readonly WizardSkillRow[],
+): Promise<void> {
+  let installed = false;
+  for (const { skill } of rows) {
+    const missing = [...(skill.missing?.bins ?? []), ...(skill.missing?.anyBins ?? [])];
+    const option = skill.install?.[0];
+    if (missing.length === 0 || !option || !state.client || !state.connected) {
+      continue;
+    }
+    try {
+      await state.client.request(
+        "skills.install",
+        { name: skill.name, installId: option.id, timeoutMs: 120_000 },
+        // Server-side install budget is 120s; keep the client timeout above it.
+        { timeoutMs: 150_000 },
+      );
+      installed = true;
+    } catch {
+      // Settings installs again on Connect.
+    }
+  }
+  if (installed) {
+    void loadSkills(state).catch(() => undefined);
+  }
 }
 
 /** Connects the selected channel from inside the wizard, then advances. */

@@ -124,6 +124,7 @@ import {
   MediaOffloadError,
   type OffloadedRef,
   parseMessageWithAttachments,
+  resolveChatAttachmentLooksLikeImage,
   resolveChatAttachmentMaxBytes,
   UnsupportedAttachmentError,
 } from "../chat-attachments.js";
@@ -184,7 +185,7 @@ import {
   loadOptionalServerMethodModelCatalog,
   startOptionalServerMethodModelCatalogLoad,
 } from "./optional-model-catalog.js";
-import { hasTrackedActiveSessionRun } from "./session-active-runs.js";
+import { withTrackedActiveSessionRun } from "./session-active-runs.js";
 import { emitSessionsChanged } from "./session-change-event.js";
 import { applyAutoSessionLabel } from "./session-label-apply.js";
 import type {
@@ -2654,24 +2655,26 @@ async function handleChatHistoryRequest({
         modelCatalog,
       })
     : undefined;
-  const sessionInfo = buildGatewaySessionInfo({
-    cfg,
-    storePath,
-    store,
-    key: canonicalKey,
-    entry,
-    agentId: selectedAgent.agentId,
-    modelCatalog,
-  });
   const activeRunAgentId =
     canonicalKey === "global" ? (selectedAgent.agentId ?? defaultAgentId) : selectedAgent.agentId;
-  sessionInfo.hasActiveRun = hasTrackedActiveSessionRun({
-    context,
-    requestedKey: sessionKey,
-    canonicalKey,
-    ...(activeRunAgentId ? { agentId: activeRunAgentId } : {}),
-    defaultAgentId,
-  });
+  const sessionInfo = withTrackedActiveSessionRun(
+    buildGatewaySessionInfo({
+      cfg,
+      storePath,
+      store,
+      key: canonicalKey,
+      entry,
+      agentId: selectedAgent.agentId,
+      modelCatalog,
+    }),
+    {
+      context,
+      requestedKey: sessionKey,
+      canonicalKey,
+      ...(activeRunAgentId ? { agentId: activeRunAgentId } : {}),
+      defaultAgentId,
+    },
+  );
   const defaults = getSessionDefaults(cfg, modelCatalog, { allowPluginNormalization: false });
   const thinkingLevel = sessionInfo.thinkingLevel ?? sessionInfo.thinkingDefault;
   const verboseLevel = entry?.verboseLevel ?? cfg.agents?.defaults?.verboseDefault;
@@ -3102,7 +3105,10 @@ export const chatHandlers: GatewayRequestHandlers = {
       respond(
         false,
         undefined,
-        errorShape(ErrorCodes.UNAVAILABLE, describeSpendingLimitReached(spending)),
+        errorShape(
+          ErrorCodes.UNAVAILABLE,
+          describeSpendingLimitReached(spending, context.getRuntimeConfig()),
+        ),
       );
       return;
     }
@@ -3390,11 +3396,25 @@ export const chatHandlers: GatewayRequestHandlers = {
         await measureDiagnosticsTimelineSpan(
           "gateway.chat_send.prepare_attachments",
           async () => {
-            const supportsSessionModelImages = await resolveGatewayModelSupportsImages({
-              loadGatewayModelCatalog: context.loadGatewayModelCatalog,
-              provider: resolvedSessionModel.provider,
-              model: resolvedSessionModel.model,
-            });
+            // Only images depend on what the model can see. A PDF or document
+            // is saved and handed over the same way either way, so it never
+            // waits on the model lookup, and images check the saved model list
+            // instead of rebuilding it. The message is not acknowledged until
+            // this finishes, and a rebuild has taken over a minute.
+            const looksLikeImage = await Promise.all(
+              normalizedAttachments.map((attachment, index) =>
+                // A malformed file is reported by the parse below, with its own reason.
+                resolveChatAttachmentLooksLikeImage(attachment, index).catch(() => false),
+              ),
+            );
+            const supportsSessionModelImages = looksLikeImage.some(Boolean)
+              ? await resolveGatewayModelSupportsImages({
+                  loadGatewayModelCatalog: context.loadGatewayModelCatalog,
+                  provider: resolvedSessionModel.provider,
+                  model: resolvedSessionModel.model,
+                  preferSavedCatalog: true,
+                })
+              : true;
             const explicitOriginSupportsInlineImages =
               explicitOriginTargetsAcpSession(explicitOriginResult.value) ||
               explicitOriginTargetsPlugin;
@@ -3769,6 +3789,18 @@ export const chatHandlers: GatewayRequestHandlers = {
           return;
         }
         if (isSourceReplyTranscriptMirrorPayload(payload)) {
+          return;
+        }
+        // Media the assistant named in its own text is saved with that message
+        // and shown from it. A copy appended while the run was still going
+        // landed beside the run's next message rather than before it, splitting
+        // the conversation; history follows one branch, so the copy and its
+        // image disappeared on reload. Voice audio is not in the text and still
+        // needs its copy.
+        if (
+          getReplyPayloadMetadata(payload)?.mediaFromAssistantText === true &&
+          !payload.ttsSupplement
+        ) {
           return;
         }
         const ttsSupplementMarker = buildTtsSupplementTranscriptMarker(payload);

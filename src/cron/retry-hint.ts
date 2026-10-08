@@ -25,7 +25,10 @@ const TRANSIENT_PATTERNS: Record<CronRetryOn, RegExp> = {
     /\b529\b|\boverloaded(?:_error)?\b|high demand|temporar(?:ily|y) overloaded|capacity exceeded/i,
   network:
     /(network|fetch failed|socket|econnreset|econnrefused|eai_again|enetdown|ehostunreach|ehostdown|enetreset|enetunreach|epipe)/i,
-  timeout: /(timeout|etimedout)/i,
+  // Runs that never got started are worth trying again soon. A run that timed
+  // out doing its task is not matched: retrying it at once repeats the cost.
+  timeout:
+    /(timeout|etimedout|setup timed out before runner start|stalled before execution start)/i,
   server_error: SERVER_ERROR_PATTERN,
 };
 

@@ -285,6 +285,23 @@ function isSessionRowForSelectedChat(
   return uiSessionRowMatchesSelectedChat(host, rowKey, sessionKey);
 }
 
+/**
+ * A finished status that cannot belong to the reply in progress. The row's
+ * status is saved a beat after a run starts, so a row read just after sending
+ * can still say "done" from the previous answer. Ending the reply on that hid
+ * its progress until the answer popped in. A status that ended before this
+ * reply began is the earlier answer's. (Current gateways report such a row as
+ * running; this covers older ones.)
+ */
+function isEarlierRunsTerminalRow(host: RunLifecycleHost, row: GatewaySessionRow): boolean {
+  const replyStartedAt = host.chatStreamStartedAt;
+  return (
+    typeof row.endedAt === "number" &&
+    typeof replyStartedAt === "number" &&
+    row.endedAt < replyStartedAt
+  );
+}
+
 export function reconcileChatRunFromSessionRow(
   host: RunLifecycleHost,
   row: GatewaySessionRow,
@@ -297,6 +314,9 @@ export function reconcileChatRunFromSessionRow(
     return false;
   }
   if (isSessionRunActive(row)) {
+    return false;
+  }
+  if (isEarlierRunsTerminalRow(host, row)) {
     return false;
   }
   const terminalStatus = row.status !== undefined;

@@ -25,6 +25,26 @@ import { isSuppressedControlReplyText } from "./control-reply-text.js";
 
 export const DEFAULT_CHAT_HISTORY_TEXT_MAX_CHARS = 8_000;
 
+/**
+ * The cap for what people read: their own messages and the assistant's
+ * replies. The 8,000-character cap above suits thinking and tool-call details,
+ * but a long answer cut there lost its ending on screen. 40,000 characters is
+ * longer than one reply at a typical output limit and, at up to three bytes a
+ * character, still fits the 128 KB a single history message may take.
+ */
+export const DEFAULT_CHAT_HISTORY_REPLY_MAX_CHARS = 40_000;
+
+function resolveReplyMaxChars(maxChars: number, replyMaxChars?: number): number {
+  if (replyMaxChars !== undefined) {
+    return replyMaxChars;
+  }
+  // Only the default cap is widened for reading; a caller that asked for a
+  // particular size gets that size.
+  return maxChars === DEFAULT_CHAT_HISTORY_TEXT_MAX_CHARS
+    ? DEFAULT_CHAT_HISTORY_REPLY_MAX_CHARS
+    : maxChars;
+}
+
 type RoleContentMessage = {
   role: string;
   content?: unknown;
@@ -251,7 +271,7 @@ export function augmentChatHistoryWithCanvasBlocks(messages: unknown[]): unknown
 
 function sanitizeChatHistoryContentBlock(
   block: unknown,
-  opts?: { preserveExactToolPayload?: boolean; maxChars?: number },
+  opts?: { preserveExactToolPayload?: boolean; maxChars?: number; replyMaxChars?: number },
 ): { block: unknown; changed: boolean } {
   if (!block || typeof block !== "object") {
     return { block, changed: false };
@@ -261,13 +281,14 @@ function sanitizeChatHistoryContentBlock(
   const preserveExactToolPayload =
     opts?.preserveExactToolPayload === true || isToolHistoryBlockType(entry.type);
   const maxChars = opts?.maxChars ?? DEFAULT_CHAT_HISTORY_TEXT_MAX_CHARS;
+  const replyMaxChars = resolveReplyMaxChars(maxChars, opts?.replyMaxChars);
   if (typeof entry.text === "string") {
     const stripped = stripInlineDirectiveTagsForDisplay(entry.text);
     if (preserveExactToolPayload) {
       entry.text = stripped.text;
       changed ||= stripped.changed;
     } else {
-      const res = truncateChatHistoryText(stripped.text, maxChars);
+      const res = truncateChatHistoryText(stripped.text, replyMaxChars);
       entry.text = res.text;
       changed ||= stripped.changed || res.truncated;
     }
@@ -278,7 +299,7 @@ function sanitizeChatHistoryContentBlock(
       entry.content = stripped.text;
       changed ||= stripped.changed;
     } else {
-      const res = truncateChatHistoryText(stripped.text, maxChars);
+      const res = truncateChatHistoryText(stripped.text, replyMaxChars);
       entry.content = res.text;
       changed ||= stripped.changed || res.truncated;
     }
@@ -452,10 +473,12 @@ function sanitizeUsage(raw: unknown): Record<string, number> | undefined {
 function sanitizeChatHistoryMessage(
   message: unknown,
   maxChars: number = DEFAULT_CHAT_HISTORY_TEXT_MAX_CHARS,
+  replyMaxCharsOverride?: number,
 ): { message: unknown; changed: boolean } {
   if (!message || typeof message !== "object") {
     return { message, changed: false };
   }
+  const replyMaxChars = resolveReplyMaxChars(maxChars, replyMaxCharsOverride);
   const entry = { ...(message as Record<string, unknown>) };
   let changed = false;
   const role = typeof entry.role === "string" ? entry.role.toLowerCase() : "";
@@ -510,20 +533,20 @@ function sanitizeChatHistoryMessage(
       entry.content = stripped.text;
       changed ||= stripped.changed;
     } else {
-      const res = truncateChatHistoryText(stripped.text, maxChars);
+      const res = truncateChatHistoryText(stripped.text, replyMaxChars);
       entry.content = res.text;
       changed ||= stripped.changed || res.truncated;
     }
   } else if (Array.isArray(entry.content)) {
     const updated = entry.content.map((block) =>
-      sanitizeChatHistoryContentBlock(block, { preserveExactToolPayload, maxChars }),
+      sanitizeChatHistoryContentBlock(block, { preserveExactToolPayload, maxChars, replyMaxChars }),
     );
     if (updated.some((item) => item.changed)) {
       entry.content = updated.map((item) => item.block);
       changed = true;
     }
     if (entry.role === "assistant" && Array.isArray(entry.content)) {
-      const mixedToolText = projectAssistantTextFromMixedToolContent(entry.content, maxChars);
+      const mixedToolText = projectAssistantTextFromMixedToolContent(entry.content, replyMaxChars);
       if (mixedToolText) {
         entry.content = mixedToolText.content;
         if (entry.phase === "commentary") {
@@ -546,7 +569,7 @@ function sanitizeChatHistoryMessage(
       entry.text = stripped.text;
       changed ||= stripped.changed;
     } else {
-      const res = truncateChatHistoryText(stripped.text, maxChars);
+      const res = truncateChatHistoryText(stripped.text, replyMaxChars);
       entry.text = res.text;
       changed ||= stripped.changed || res.truncated;
     }
@@ -1093,6 +1116,7 @@ function shouldDropAssistantHistoryMessage(message: unknown): boolean {
 export function sanitizeChatHistoryMessages(
   messages: unknown[],
   maxChars: number = DEFAULT_CHAT_HISTORY_TEXT_MAX_CHARS,
+  replyMaxChars?: number,
 ): unknown[] {
   if (messages.length === 0) {
     return messages;
@@ -1104,7 +1128,7 @@ export function sanitizeChatHistoryMessages(
       changed = true;
       continue;
     }
-    const res = sanitizeChatHistoryMessage(message, maxChars);
+    const res = sanitizeChatHistoryMessage(message, maxChars, replyMaxChars);
     changed ||= res.changed;
     if (shouldDropAssistantHistoryMessage(res.message)) {
       changed = true;
@@ -1595,9 +1619,16 @@ function projectSessionsSendInterSessionMessages(
   return changed ? projected : messages;
 }
 
+type ChatDisplayProjectionOptions = {
+  maxChars?: number;
+  /** Cap for message and reply text; defaults to the reply cap when maxChars is the default. */
+  replyMaxChars?: number;
+  stripEnvelope?: boolean;
+};
+
 export function projectChatDisplayMessages(
   messages: unknown[],
-  options?: { maxChars?: number; stripEnvelope?: boolean },
+  options?: ChatDisplayProjectionOptions,
 ): Array<Record<string, unknown>> {
   const source = options?.stripEnvelope === false ? messages : stripEnvelopeFromMessages(messages);
   const mirrored = mirrorMessageToolVisibleReplies(source);
@@ -1611,6 +1642,7 @@ export function projectChatDisplayMessages(
   return sanitizeChatHistoryMessages(
     projectedForwarded,
     options?.maxChars ?? DEFAULT_CHAT_HISTORY_TEXT_MAX_CHARS,
+    options?.replyMaxChars,
   ) as Array<Record<string, unknown>>;
 }
 
@@ -1628,7 +1660,7 @@ function limitChatDisplayMessages<T>(messages: T[], maxMessages?: number): T[] {
 
 export function projectRecentChatDisplayMessages(
   messages: unknown[],
-  options?: { maxChars?: number; maxMessages?: number; stripEnvelope?: boolean },
+  options?: ChatDisplayProjectionOptions & { maxMessages?: number },
 ): Array<Record<string, unknown>> {
   return limitChatDisplayMessages(
     projectChatDisplayMessages(messages, options),
@@ -1638,7 +1670,7 @@ export function projectRecentChatDisplayMessages(
 
 export function projectChatDisplayMessage(
   message: unknown,
-  options?: { maxChars?: number; stripEnvelope?: boolean },
+  options?: ChatDisplayProjectionOptions,
 ): Record<string, unknown> | undefined {
   return projectChatDisplayMessages([message], options)[0];
 }

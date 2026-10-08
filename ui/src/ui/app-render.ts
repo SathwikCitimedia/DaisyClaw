@@ -30,9 +30,19 @@ import {
 import { hasOperatorAdminAccess, hasOperatorWriteAccess, warnQueryToken } from "./app-settings.ts";
 import type { AppViewState } from "./app-view-state.ts";
 import { actionPromptFor, resolveAssistantActionChips } from "./chat/action-recommendations.ts";
-import { describeEditFailure } from "./chat/edit-turn.ts";
-import { reconcileChatRunLifecycle } from "./chat/run-lifecycle.ts";
 import {
+  cancelPaletteChatSearch,
+  IDLE_PALETTE_CHAT_SEARCH,
+  schedulePaletteChatSearch,
+  type ChatSearchHitView,
+} from "./chat/chat-search.ts";
+import { describeEditFailure } from "./chat/edit-turn.ts";
+import { exportChatWithFeedback } from "./chat/export-chat-action.ts";
+import { forgetPinnedMessages } from "./chat/pinned-messages.ts";
+import { reconcileChatRunLifecycle } from "./chat/run-lifecycle.ts";
+import { messageMatchesSearchQuery } from "./chat/search-match.ts";
+import {
+  openChatSessionPicker,
   renderChatSessionSelect,
   resolveChatAgentFilterId,
   resolveChatAgentFilterOptions,
@@ -46,6 +56,14 @@ import {
   recordControlUiRenderTiming,
   roundedControlUiDurationMs,
 } from "./control-ui-performance.ts";
+import {
+  cancelAccountSignIn,
+  disconnectAccountSignIn,
+  INITIAL_ACCOUNT_SIGN_IN,
+  loadAccountSignIn,
+  saveGoogleClientFile,
+  startAccountSignIn,
+} from "./controllers/account-sign-in.ts";
 import { loadAgentFileContent, loadAgentFiles, saveAgentFile } from "./controllers/agent-files.ts";
 import { loadAgentIdentities, loadAgentIdentity } from "./controllers/agent-identity.ts";
 import { loadAgentSkills } from "./controllers/agent-skills.ts";
@@ -77,7 +95,7 @@ import {
   removeConfigFormValue,
   updateMcpServerEnabled,
 } from "./controllers/config.ts";
-import { connectAccount } from "./controllers/connections.ts";
+import { connectAccount, disconnectAccount } from "./controllers/connections.ts";
 import {
   loadCronJobsPage,
   loadCronRuns,
@@ -95,6 +113,8 @@ import {
   getVisibleCronJobs,
   updateCronJobsFilter,
   updateCronRunsFilter,
+  draftCronJobFromText,
+  requestCronDraft,
 } from "./controllers/cron.ts";
 import {
   connectCustomProvider,
@@ -177,16 +197,17 @@ import {
   updateSkillEdit,
   updateSkillEnabled,
 } from "./controllers/skills.ts";
-import { saveSpendingLimit } from "./controllers/spending.ts";
+import { loadSpending, saveSpendingCurrency, saveSpendingLimit } from "./controllers/spending.ts";
 import { captureSessionToWorkboard, getWorkboardState } from "./controllers/workboard.ts";
 import { getCronJobPayload } from "./cron-payload.ts";
+import { renderDismissibleErrorPill } from "./dismissible-error.ts";
+import "./components/dashboard-header.ts";
 import {
   FACTORY_RESET_CONFIRM_PHRASE,
   isFactoryResetPending,
   markFactoryResetPending,
   readFactoryResetPendingAt,
 } from "./factory-reset.ts";
-import "./components/dashboard-header.ts";
 import { formatTimeMs } from "./format.ts";
 import { formatRelativeTimestamp } from "./format.ts";
 import { icons } from "./icons.ts";
@@ -215,11 +236,18 @@ import {
   parseAgentSessionKey,
   resolveAgentIdFromSessionKey,
 } from "./session-key.ts";
+import {
+  buildSidebarChatSections,
+  togglePinnedSession,
+  type SidebarChatBucket,
+  type SidebarChatEntry,
+} from "./sidebar-chat-groups.ts";
 import { loadLocalAssistantIdentity } from "./storage.ts";
 import { normalizeStringEntries } from "./string-coerce.ts";
 import { normalizeOptionalString } from "./string-coerce.ts";
 import { showToast } from "./toast.ts";
 import type { AgentsFilesGetResult, AgentsFilesListResult, GatewaySessionRow } from "./types.ts";
+import type { AccountSignInProps } from "./views/account-sign-in.ts";
 import { isRenderableControlUiAvatarUrl } from "./views/agents-utils.ts";
 import { agentLogoUrl } from "./views/agents-utils.ts";
 import {
@@ -229,13 +257,14 @@ import {
   resolveModelPrimary,
   sortLocaleStrings,
 } from "./views/agents-utils.ts";
-import { renderChat } from "./views/chat.ts";
-import { renderCommandPalette } from "./views/command-palette.ts";
+import { openChatFind, renderChat } from "./views/chat.ts";
+import { renderCommandPalette, type PaletteChatSearchView } from "./views/command-palette.ts";
 import { getPresetById } from "./views/config-presets.ts";
 import { renderQuickSettings, type QuickSettingsChannel } from "./views/config-quick.ts";
 import { renderConfig, type ConfigProps } from "./views/config.ts";
 import {
   renderCronQuickCreate,
+  applyCronDraftToQuickCreate,
   createDefaultDraft,
   draftToCronFormPatch,
 } from "./views/cron-quick-create.ts";
@@ -248,6 +277,7 @@ import {
   reopenFirstRunWizard,
 } from "./views/first-run-wizard.ts";
 import { renderGatewayUrlConfirmation } from "./views/gateway-url-confirmation.ts";
+import { paletteShortcutLabel, renderKeyboardShortcutsDialog } from "./views/keyboard-shortcuts.ts";
 import {
   renderConsumerGate,
   renderLoginGate,
@@ -567,6 +597,120 @@ async function persistQuickSettingsChange(state: AppViewState, label: string): P
   }
 }
 
+/** What a user asks when they would rather Daisy walked them through connecting an account. */
+const SET_UP_WITH_DAISY_PROMPTS = {
+  google:
+    "Help me connect my Google account to you, step by step. I'm in Settings, Connections, Google.",
+  spotify: "Help me connect my Spotify account to you.",
+} as const;
+
+/** Settings → Connections rows for the accounts signed in through the browser. */
+function buildAccountSignInProps(state: AppViewState): AccountSignInProps {
+  const store = state.accountSignIn ?? INITIAL_ACCOUNT_SIGN_IN;
+  const hooks = { reloadSkills: () => loadSkills(state) };
+  return {
+    ...store,
+    onGoogleEmailChange: (value) => {
+      state.accountSignIn = {
+        ...(state.accountSignIn ?? INITIAL_ACCOUNT_SIGN_IN),
+        googleEmail: value,
+      };
+    },
+    onGoogleClientFile: (file) => void saveGoogleClientFile(state, file),
+    onReplaceGoogleFile: () => {
+      state.accountSignIn = {
+        ...(state.accountSignIn ?? INITIAL_ACCOUNT_SIGN_IN),
+        replacingGoogleFile: true,
+      };
+    },
+    onKeepGoogleFile: () => {
+      if (!state.accountSignIn?.replacingGoogleFile) {
+        return;
+      }
+      state.accountSignIn = { ...state.accountSignIn, replacingGoogleFile: false };
+    },
+    onConnect: (service) => void startAccountSignIn(state, service, hooks),
+    onCancel: (service) => void cancelAccountSignIn(state, service),
+    onDisconnect: (service, email) => void disconnectAccountSignIn(state, service, email, hooks),
+    onSetUpWithDaisy: (service) => {
+      state.setTab("chat" as import("./navigation.ts").Tab);
+      state.handleChatDraftChange(SET_UP_WITH_DAISY_PROMPTS[service]);
+    },
+    onCopyLink: (url) => {
+      void navigator.clipboard
+        ?.writeText(url)
+        .then(() => showToast("Sign-in link copied. Paste it into your browser.", { tone: "info" }))
+        .catch(() => showToast("Couldn't copy the link.", { tone: "error" }));
+    },
+    onRefresh: () => void loadAccountSignIn(state, hooks),
+  };
+}
+
+/** Search hits labelled for the Ctrl+K box: the chat's name, then who said it and the words around the match. */
+function buildPaletteChatSearchView(state: AppViewState): PaletteChatSearchView {
+  const search = state.paletteChatSearch ?? IDLE_PALETTE_CHAT_SEARCH;
+  const assistantLabel = state.assistantName?.trim() || "Assistant";
+  return {
+    status: search.status,
+    truncated: search.truncated,
+    results: search.results.map((hit) => {
+      const row = state.sessionsResult?.sessions?.find((entry) => entry.key === hit.sessionKey);
+      const who = hit.role === "user" ? t("overview.palette.chatSearch.you") : assistantLabel;
+      return {
+        label: hit.sessionLabel?.trim() || resolveSessionDisplayName(hit.sessionKey, row),
+        description: `${who}: ${hit.snippet}`,
+      };
+    }),
+  };
+}
+
+/**
+ * Opens a search hit: switch to its chat, show only the messages that match,
+ * and when the match is further back than the loaded part of the chat, reach
+ * back for it (a few pages at most) so the result never opens to nothing.
+ */
+async function openChatSearchHit(state: AppViewState, hit: ChatSearchHitView, query: string) {
+  const update = () => (state as AppViewState & { requestUpdate?: () => void }).requestUpdate?.();
+  state.setTab("chat" as import("./navigation.ts").Tab);
+  if (hit.sessionKey !== state.sessionKey) {
+    await switchChatSessionAndWait(state, hit.sessionKey);
+  }
+  openChatFind(query);
+  update();
+  for (let page = 0; page < 5; page++) {
+    if (state.sessionKey !== hit.sessionKey) {
+      return;
+    }
+    if (state.chatMessages.some((message) => messageMatchesSearchQuery(message, query))) {
+      break;
+    }
+    if (!hasOlderChatHistory(state)) {
+      break;
+    }
+    await loadOlderChatHistory(state);
+  }
+  update();
+}
+
+/**
+ * The chat list scrolls, so a menu under one of the last chats would be cut
+ * off. Open it upward when there is no room below, then bring it into view.
+ */
+function placeSidebarPopover(popover: HTMLElement, anchor: HTMLElement) {
+  const list = anchor.closest(".sidebar-recent-sessions__list");
+  if (!(list instanceof HTMLElement)) {
+    return;
+  }
+  const listBox = list.getBoundingClientRect();
+  if (popover.getBoundingClientRect().bottom > listBox.bottom) {
+    popover.classList.add("sidebar-popover--above");
+  }
+  const box = popover.getBoundingClientRect();
+  if (box.top < listBox.top || box.bottom > listBox.bottom) {
+    popover.scrollIntoView({ block: "nearest" });
+  }
+}
+
 /**
  * Chat names come from the user and from auto-titling, so they can contain
  * markup characters. These two confirmations are built as raw HTML, where an
@@ -662,8 +806,42 @@ function resolveSidebarRecentSessions(state: AppViewState): GatewaySessionRow[] 
         !row.spawnedBy &&
         (!shouldFilterByAgent || isSidebarSessionForSelectedAgent(state, row, selectedAgentId)),
     )
-    .toSorted((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0))
-    .slice(0, 5);
+    .toSorted((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0));
+}
+
+const SIDEBAR_CHAT_SECTION_LABEL_KEYS: Record<SidebarChatBucket, string> = {
+  pinned: "chat.sidebar.pinned",
+  today: "chat.sidebar.today",
+  yesterday: "chat.sidebar.yesterday",
+  previous7Days: "chat.sidebar.previous7Days",
+  older: "chat.sidebar.older",
+};
+
+function isSidebarSessionPinned(state: AppViewState, key: string): boolean {
+  return (state.settings.pinnedSessions ?? []).some((pin) => pin.key === key);
+}
+
+function setSidebarSessionPinned(state: AppViewState, key: string, label: string, pin: boolean) {
+  const current = state.settings.pinnedSessions ?? [];
+  if (current.some((entry) => entry.key === key) === pin) {
+    return;
+  }
+  state.applySettings({
+    ...state.settings,
+    pinnedSessions: togglePinnedSession(current, key, label),
+  });
+}
+
+/** A renamed chat keeps its new name on the pin too. */
+function renamePinnedSidebarSession(state: AppViewState, key: string, label: string) {
+  const current = state.settings.pinnedSessions ?? [];
+  if (!current.some((entry) => entry.key === key)) {
+    return;
+  }
+  state.applySettings({
+    ...state.settings,
+    pinnedSessions: current.map((entry) => (entry.key === key ? { key, label } : entry)),
+  });
 }
 
 /**
@@ -701,7 +879,14 @@ function resolveEnabledSidebarPluginIds(state: AppViewState): ReadonlySet<string
 function renderSidebarSessions(state: AppViewState) {
   const collapsed = state.settings.navCollapsed;
   const busy = isSidebarSessionBusy(state);
-  const recent = collapsed ? [] : resolveSidebarRecentSessions(state);
+  const { sections, hasMore } = collapsed
+    ? { sections: [], hasMore: false }
+    : buildSidebarChatSections({
+        rows: resolveSidebarRecentSessions(state),
+        pinned: state.settings.pinnedSessions ?? [],
+        now: new Date(),
+        labelFor: (key, row) => resolveSessionDisplayName(key, row),
+      });
   const newSessionDisabled = !state.connected || state.sessionsLoading || busy || !state.client;
   const newSessionTitle = !state.connected
     ? "Connect to create a new session"
@@ -740,7 +925,7 @@ function renderSidebarSessions(state: AppViewState) {
           surface: "sidebar",
         })}
       </div>
-      ${collapsed || recent.length === 0
+      ${collapsed || sections.length === 0
         ? nothing
         : html`
             <div
@@ -766,7 +951,32 @@ function renderSidebarSessions(state: AppViewState) {
                 <span class="sidebar-recent-sessions__chevron"> ${icons.chevronDown} </span>
               </button>
               <div class="sidebar-recent-sessions__list">
-                ${recent.map((row) => renderSidebarRecentSession(state, row))}
+                ${sections.map(
+                  (section) => html`
+                    <div
+                      class="sidebar-chat-section sidebar-chat-section--${section.bucket}"
+                      role="group"
+                      aria-label=${t(SIDEBAR_CHAT_SECTION_LABEL_KEYS[section.bucket])}
+                    >
+                      <div class="sidebar-chat-section__label" aria-hidden="true">
+                        ${section.bucket === "pinned" ? icons.pin : nothing}
+                        ${t(SIDEBAR_CHAT_SECTION_LABEL_KEYS[section.bucket])}
+                      </div>
+                      ${section.entries.map((entry) => renderSidebarRecentSession(state, entry))}
+                    </div>
+                  `,
+                )}
+                ${hasMore
+                  ? html`
+                      <button
+                        type="button"
+                        class="sidebar-chat-see-all"
+                        @click=${() => openChatSessionPicker(state, "sidebar")}
+                      >
+                        ${t("chat.sidebar.seeAll")}
+                      </button>
+                    `
+                  : nothing}
               </div>
             </div>
           `}
@@ -774,11 +984,13 @@ function renderSidebarSessions(state: AppViewState) {
   `;
 }
 
-function renderSidebarRecentSession(state: AppViewState, row: GatewaySessionRow) {
+function renderSidebarRecentSession(state: AppViewState, entry: SidebarChatEntry) {
+  const row = { key: entry.key, hasActiveRun: false, ...entry.row };
   const active = row.key === state.sessionKey;
-  const label = resolveSessionDisplayName(row.key, row);
-  const meta = row.updatedAt ? formatRelativeTimestamp(row.updatedAt) : "n/a";
+  const label = entry.label;
+  const meta = row.updatedAt ? formatRelativeTimestamp(row.updatedAt) : "";
   const href = `${pathForTab("chat", state.basePath)}?session=${encodeURIComponent(row.key)}`;
+  const pinned = isSidebarSessionPinned(state, row.key);
 
   const startEditing = (anchor: HTMLElement) => {
     const input = anchor.querySelector(
@@ -795,6 +1007,7 @@ function renderSidebarRecentSession(state: AppViewState, row: GatewaySessionRow)
     const newLabel = input.value.trim();
     anchor?.classList.remove("sidebar-recent-session--editing");
     if (newLabel && newLabel !== label) {
+      renamePinnedSidebarSession(state, row.key, newLabel);
       void patchSession(state, row.key, { label: newLabel }).then(() => pendingUpdate?.());
     }
   };
@@ -815,6 +1028,8 @@ function renderSidebarRecentSession(state: AppViewState, row: GatewaySessionRow)
     menu.className = "sidebar-session-menu";
     menu.innerHTML = `
       <button type="button" class="sidebar-session-menu__item" data-action="rename">${icons.penLine.strings.join("")} Rename</button>
+      <button type="button" class="sidebar-session-menu__item" data-action="pin">${(pinned ? icons.pinOff : icons.pin).strings.join("")} ${escapeSidebarConfirmLabel(t(pinned ? "chat.sidebar.unpin" : "chat.sidebar.pin"))}</button>
+      <button type="button" class="sidebar-session-menu__item" data-action="export">${icons.download.strings.join("")} ${escapeSidebarConfirmLabel(t("chat.sidebar.export"))}</button>
       ${
         isMain
           ? `<button type="button" class="sidebar-session-menu__item sidebar-session-menu__item--danger" data-action="clear">${icons.trash.strings.join("")} Clear chat</button>`
@@ -822,6 +1037,7 @@ function renderSidebarRecentSession(state: AppViewState, row: GatewaySessionRow)
       }
     `;
     anchor.appendChild(menu);
+    placeSidebarPopover(menu, anchor);
     const closeMenu = (ev?: MouseEvent) => {
       if (!ev || !(ev.target instanceof Node) || !menu.contains(ev.target as Node)) {
         menu.remove();
@@ -838,6 +1054,20 @@ function renderSidebarRecentSession(state: AppViewState, row: GatewaySessionRow)
       document.removeEventListener("click", closeMenu as EventListener, true);
       startEditing(anchor);
     });
+    menu.querySelector("[data-action=pin]")?.addEventListener("click", (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      menu.remove();
+      document.removeEventListener("click", closeMenu as EventListener, true);
+      setSidebarSessionPinned(state, row.key, label, !pinned);
+    });
+    menu.querySelector("[data-action=export]")?.addEventListener("click", (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      menu.remove();
+      document.removeEventListener("click", closeMenu as EventListener, true);
+      void exportChatWithFeedback(state, row.key);
+    });
     menu.querySelector("[data-action=clear]")?.addEventListener("click", (ev) => {
       ev.preventDefault();
       ev.stopPropagation();
@@ -853,6 +1083,7 @@ function renderSidebarRecentSession(state: AppViewState, row: GatewaySessionRow)
         </div>
       `;
       anchor.appendChild(confirm);
+      placeSidebarPopover(confirm, anchor);
       confirm
         .querySelector(".sidebar-session-delete-confirm__cancel")
         ?.addEventListener("click", (e) => {
@@ -876,6 +1107,7 @@ function renderSidebarRecentSession(state: AppViewState, row: GatewaySessionRow)
                 key: row.key,
                 ...scopedAgentParamsForSession(state, row.key),
               });
+              forgetPinnedMessages(row.key);
               if (row.key === state.sessionKey) {
                 state.chatMessages = [];
                 state.chatSideResult = null;
@@ -911,6 +1143,7 @@ function renderSidebarRecentSession(state: AppViewState, row: GatewaySessionRow)
         </div>
       `;
       anchor.appendChild(confirm);
+      placeSidebarPopover(confirm, anchor);
       confirm
         .querySelector(".sidebar-session-delete-confirm__cancel")
         ?.addEventListener("click", (e) => {
@@ -933,6 +1166,10 @@ function renderSidebarRecentSession(state: AppViewState, row: GatewaySessionRow)
             // surface for it, so a refused delete must speak up here.
             if (deleted.length === 0 && state.sessionsError) {
               showToast(state.sessionsError, { tone: "error" });
+            }
+            if (deleted.includes(row.key)) {
+              setSidebarSessionPinned(state, row.key, label, false);
+              forgetPinnedMessages(row.key);
             }
             leaveDeletedChatSession(state, deleted);
             pendingUpdate?.();
@@ -1628,23 +1865,85 @@ function resolveQuickSettingsSessionRow(state: AppViewState) {
   return state.sessionsResult?.sessions?.find((row) => row.key === state.sessionKey);
 }
 
+/** Whether a chat app is actually set up, so job results can be announced there. */
+function hasConfiguredChatApp(state: AppViewState): boolean {
+  return Object.values(state.channelsSnapshot?.channels ?? {}).some(
+    (channel) =>
+      Boolean(channel) &&
+      typeof channel === "object" &&
+      (channel as { configured?: unknown }).configured === true,
+  );
+}
+
+/**
+ * Why the wizard could not create the task. The reason used to land on the
+ * full form hidden behind the wizard, so Create looked like it did nothing.
+ */
+function describeQuickCreateFailure(state: AppViewState): string {
+  const raw = (state.cronError ?? "")
+    .replace(/^[A-Za-z]*Error:\s*/, "")
+    .replace(/^invalid cron\.add params:\s*/i, "")
+    .trim();
+  if (raw) {
+    return `Couldn't create the task: ${raw}`;
+  }
+  if (Object.keys(state.cronFieldErrors ?? {}).length > 0) {
+    return "Some details need fixing. Choose Advanced to see which.";
+  }
+  return "Couldn't create the task. Check the connection and try again.";
+}
+
 function renderCronQuickCreateForTab(
   state: AppViewState,
   requestHostUpdate: (() => void) | undefined,
 ) {
+  const quickDraft = state.cronQuickCreateDraft ?? createDefaultDraft();
   return renderCronQuickCreate({
+    creating: state.cronBusy,
+    createError: quickDraft.createError ?? null,
     open: state.cronQuickCreateOpen,
     step: state.cronQuickCreateStep,
     draft: state.cronQuickCreateDraft ?? createDefaultDraft(),
+    hasChatApps: hasConfiguredChatApp(state),
+    onDescribe: () => {
+      const current = state.cronQuickCreateDraft ?? createDefaultDraft();
+      const text = current.prompt.trim();
+      const client = state.client;
+      if (!client || !text) {
+        state.cronQuickCreateStep = "when";
+        requestHostUpdate?.();
+        return;
+      }
+      state.cronQuickCreateDraft = { ...current, describing: true };
+      requestHostUpdate?.();
+      void (async () => {
+        let next: typeof current = { ...current, describing: false };
+        try {
+          const result = await requestCronDraft(client, text);
+          if (result.ok) {
+            next = applyCronDraftToQuickCreate(next, result.draft);
+          }
+        } catch {
+          // No timing worked out: step two's presets are still there.
+        }
+        state.cronQuickCreateDraft = next;
+        state.cronQuickCreateStep = "when";
+        requestHostUpdate?.();
+      })();
+    },
     onDraftChange: (patch) => {
       state.cronQuickCreateDraft = {
         ...(state.cronQuickCreateDraft ?? createDefaultDraft()),
         ...patch,
+        createError: undefined,
       };
       requestHostUpdate?.();
     },
     onStepChange: (step) => {
       state.cronQuickCreateStep = step;
+      if (state.cronQuickCreateDraft?.createError) {
+        state.cronQuickCreateDraft = { ...state.cronQuickCreateDraft, createError: undefined };
+      }
       requestHostUpdate?.();
     },
     onCreate: () => {
@@ -1656,9 +1955,14 @@ function renderCronQuickCreateForTab(
         ...formPatch,
       } as typeof state.cronForm;
       requestHostUpdate?.();
+      state.cronQuickCreateDraft = { ...draft, createError: undefined };
       void (async () => {
         const saved = await addCronJob(state);
         if (!saved) {
+          state.cronQuickCreateDraft = {
+            ...(state.cronQuickCreateDraft ?? draft),
+            createError: describeQuickCreateFailure(state),
+          };
           requestHostUpdate?.();
           return;
         }
@@ -2679,21 +2983,52 @@ export function renderApp(state: AppViewState) {
             connectionDrafts: state.connectionDrafts,
             connectionBusyKey: state.connectionBusyKey,
             connectionNotice: state.connectionNotice,
+            connectionDialog: state.connectionDialog,
             onConnectionDraftChange: (env, value) => {
               state.connectionDrafts = { ...state.connectionDrafts, [env]: value };
               requestHostUpdate?.();
             },
+            onConnectionDialogChange: (dialog) => {
+              state.connectionDialog = dialog;
+              // Each card starts clean: no earlier outcome, and no secret left
+              // in memory once the card is closed.
+              state.connectionNotice = null;
+              if (!dialog) {
+                state.connectionDrafts = {};
+              }
+              requestHostUpdate?.();
+            },
             onConnectAccount: (definition) => {
-              void connectAccount(state, definition).then(() => {
+              const pending = connectAccount(state, definition);
+              requestHostUpdate?.();
+              void pending.then(() => {
                 void loadSkills(state).catch(() => undefined);
                 requestHostUpdate?.();
               });
             },
-            spendingThisMonthUsd: state.spendingThisMonthUsd,
-            spendingLimitUsd: state.spendingLimitUsd,
-            spendingExceeded: state.spendingExceeded,
-            onSpendingLimitChange: (limitUsd) => {
-              void saveSpendingLimit(state, limitUsd).then(() => requestHostUpdate?.());
+            onDisconnectAccount: (definition) => {
+              const pending = disconnectAccount(state, definition);
+              requestHostUpdate?.();
+              void pending.then(() => {
+                void loadSkills(state).catch(() => undefined);
+                requestHostUpdate?.();
+              });
+            },
+            accountSignIn: buildAccountSignInProps(state),
+            spending: {
+              status: state.spendingStatus,
+              load: state.spendingLoad,
+              save: state.spendingSave,
+              onLimitChange: (amount) => {
+                void saveSpendingLimit(state, amount, () => requestHostUpdate?.());
+              },
+              onCurrencyChange: (currency) => {
+                void saveSpendingCurrency(state, currency, () => requestHostUpdate?.());
+              },
+              onRetry: () => {
+                void loadSpending(state).then(() => requestHostUpdate?.());
+                requestHostUpdate?.();
+              },
             },
             onCreateSupportBundle: () => {
               if (state.supportBundleBusy || !state.client) {
@@ -3211,9 +3546,11 @@ export function renderApp(state: AppViewState) {
       },
       onToggle: () => {
         state.paletteOpen = !state.paletteOpen;
+        cancelPaletteChatSearch(state);
       },
       onQueryChange: (q) => {
         state.paletteQuery = q;
+        schedulePaletteChatSearch(state, q);
       },
       onActiveIndexChange: (i) => {
         state.paletteActiveIndex = i;
@@ -3224,6 +3561,29 @@ export function renderApp(state: AppViewState) {
       onSlashCommand: (cmd) => {
         state.setTab("chat" as import("./navigation.ts").Tab);
         state.handleChatDraftChange(cmd.endsWith(" ") ? cmd : `${cmd} `);
+      },
+      chatSearch: buildPaletteChatSearchView(state),
+      onOpenChatResult: (index) => {
+        const search = state.paletteChatSearch ?? IDLE_PALETTE_CHAT_SEARCH;
+        const hit = search.results[index];
+        if (hit) {
+          void openChatSearchHit(state, hit, search.query);
+        }
+      },
+      onAction: (action) => {
+        if (action === "shortcuts") {
+          state.shortcutsOpen = true;
+          return;
+        }
+        if (action === "export-chat") {
+          void exportChatWithFeedback(state, state.sessionKey);
+        }
+      },
+    })}
+    ${renderKeyboardShortcutsDialog({
+      open: state.shortcutsOpen,
+      onClose: () => {
+        state.shortcutsOpen = false;
       },
     })}
     <div
@@ -3277,12 +3637,20 @@ export function renderApp(state: AppViewState) {
               class="topbar-search"
               @click=${() => {
                 state.paletteOpen = !state.paletteOpen;
+                // Same fresh start as Ctrl+K: no leftover query without its results.
+                if (state.paletteOpen) {
+                  state.paletteQuery = "";
+                  state.paletteActiveIndex = 0;
+                }
+                cancelPaletteChatSearch(state);
               }}
-              title=${t("chat.commandPaletteTitle")}
+              title=${t("chat.commandPaletteTitleWithShortcut", {
+                shortcut: paletteShortcutLabel(),
+              })}
               aria-label=${t("chat.openCommandPalette")}
             >
               <span class="topbar-search__label">${t("common.search")}</span>
-              <kbd class="topbar-search__kbd">⌘K</kbd>
+              <kbd class="topbar-search__kbd">${paletteShortcutLabel()}</kbd>
             </button>
             ${renderTopbarThemePicker(state)}
             <div class="topbar-status">${renderTopbarThemeModeToggle(state)}</div>
@@ -3533,7 +3901,9 @@ export function renderApp(state: AppViewState) {
                       </div>
                     `
                   : nothing}
-                ${headerError ? html`<div class="pill danger">${headerError}</div>` : nothing}
+                ${headerError
+                  ? renderDismissibleErrorPill(headerError, () => dismissChatError(state))
+                  : nothing}
               </div>
             </section>`}
         ${state.settingsHelpOpen && hasSettingsHelp(state.tab)
@@ -3882,6 +4252,17 @@ export function renderApp(state: AppViewState) {
                 runsSortDir: state.cronRunsSortDir,
                 fieldErrors: state.cronFieldErrors,
                 canSubmit: !hasCronFormErrors(state.cronFieldErrors),
+                draftText: state.cronDraftText,
+                draftBusy: state.cronDraftBusy,
+                draftError: state.cronDraftError,
+                hasChatApps: hasConfiguredChatApp(state),
+                onDraftTextChange: (text) => {
+                  state.cronDraftText = text;
+                  state.cronDraftError = null;
+                },
+                onDraft: () => {
+                  void draftCronJobFromText(state, () => requestHostUpdate?.());
+                },
                 agentSuggestions: cronAgentSuggestions,
                 modelSuggestions: cronModelSuggestions,
                 thinkingSuggestions: CRON_THINKING_SUGGESTIONS,

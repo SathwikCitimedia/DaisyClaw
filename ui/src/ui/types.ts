@@ -729,6 +729,8 @@ export type SkillStatusEntry = {
   skillKey: string;
   bundled?: boolean;
   primaryEnv?: string;
+  /** Whether `primaryEnv` is set for the skill; absent from older gateways. */
+  primaryEnvSatisfied?: boolean;
   emoji?: string;
   homepage?: string;
   highlights?: string[];

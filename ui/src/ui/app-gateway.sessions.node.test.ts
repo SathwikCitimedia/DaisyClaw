@@ -42,6 +42,7 @@ vi.mock("./app-chat.ts", () => ({
   flushChatQueueForEvent: flushChatQueueForEventMock,
   recordFirstAssistantChatTiming: recordFirstAssistantChatTimingMock,
   refreshChatAvatar: vi.fn(),
+  settleUnconfirmedSendForRun: () => false,
 }));
 vi.mock("./app-settings.ts", () => ({
   applySettings: vi.fn(),

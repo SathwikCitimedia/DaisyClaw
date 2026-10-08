@@ -178,6 +178,11 @@ export type ReplyPayloadMetadata = {
   beforeAgentRunBlocked?: boolean;
   /** Warning synthesized from an observed tool error after the run produced assistant output. */
   nonTerminalToolErrorWarning?: boolean;
+  /**
+   * The payload's media came from `MEDIA:` lines in the assistant's own text,
+   * which the runtime saves with the message, rather than from a tool or TTS.
+   */
+  mediaFromAssistantText?: boolean;
 };
 
 const replyPayloadMetadata = new WeakMap<object, ReplyPayloadMetadata>();

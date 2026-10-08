@@ -76,6 +76,25 @@ export class GatewayRequestError extends Error {
   }
 }
 
+/**
+ * The gateway did not answer a request in time. It may still be working on
+ * it: a slow answer is not a refusal, so callers that sent an idempotency key
+ * can safely ask again.
+ */
+export class GatewayRequestTimeoutError extends Error {
+  readonly method: string;
+  readonly timeoutMs: number;
+
+  constructor(method: string, timeoutMs: number) {
+    super(
+      `gateway request timed out: ${method} got no response in ${Math.round(timeoutMs / 1000)}s`,
+    );
+    this.name = "GatewayRequestTimeoutError";
+    this.method = method;
+    this.timeoutMs = timeoutMs;
+  }
+}
+
 function enrichProtocolMismatchDetails(message: string | undefined, details: unknown): unknown {
   if (readConnectErrorDetailCode(details) === ConnectErrorDetailCodes.PROTOCOL_MISMATCH) {
     return details;
@@ -1037,11 +1056,7 @@ export class GatewayBrowserClient {
               }
               this.pending.delete(id);
               this.emitRequestTiming(id, entry, false, "CLIENT_TIMEOUT");
-              reject(
-                new Error(
-                  `gateway request timed out: ${method} got no response in ${Math.round(timeoutMs / 1000)}s`,
-                ),
-              );
+              reject(new GatewayRequestTimeoutError(method, timeoutMs));
             }, timeoutMs)
           : null;
       const clearTimer = () => {

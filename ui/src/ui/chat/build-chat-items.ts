@@ -12,10 +12,12 @@ import {
 } from "./history-limits.ts";
 import { extractTextCached } from "./message-extract.ts";
 import { normalizeMessage, stripMessageDisplayMetadataText } from "./message-normalizer.ts";
+import { shouldRenderQueuedSendInThread } from "./pending-send.ts";
 import { normalizeRoleForGrouping } from "./role-normalizer.ts";
 import { messageMatchesSearchQuery } from "./search-match.ts";
 import { trimAccumulatedStreamPrefix } from "./stream-text.ts";
 import { extractToolCardsCached, extractToolPreview } from "./tool-cards.ts";
+import { foldCompletedTurnSteps } from "./turn-steps.ts";
 import { buildUserChatMessageContentBlocks } from "./user-message-content.ts";
 
 export type BuildChatItemsProps = {
@@ -336,17 +338,6 @@ function sanitizeStreamText(text: string): string {
   return stripped.trim().length > 0 ? stripped : "";
 }
 
-function shouldRenderQueuedSendInThread(item: ChatQueueItem): boolean {
-  if (typeof item.sendSubmittedAtMs !== "number" || item.sendState === "failed") {
-    return false;
-  }
-  return (
-    item.sendState === "waiting-model" ||
-    item.sendState === "sending" ||
-    item.sendState === "waiting-reconnect"
-  );
-}
-
 function queuedSendThreadMessage(item: ChatQueueItem): Record<string, unknown> | null {
   const content = buildUserChatMessageContentBlocks(item.text, item.attachments);
   if (content.length === 0) {
@@ -360,6 +351,7 @@ function queuedSendThreadMessage(item: ChatQueueItem): Record<string, unknown> |
       kind: "pending-send",
       id: item.id,
       state: item.sendState,
+      ...(item.sendError ? { error: item.sendError } : {}),
     },
   };
 }
@@ -614,9 +606,9 @@ export function buildChatItems(props: BuildChatItemsProps): Array<ChatItem | Mes
       continue;
     }
 
-    if (!props.showToolCalls && normalized.role.toLowerCase() === "toolresult") {
-      continue;
-    }
+    // With tool output switched off, a tool result is still kept long enough
+    // to fold into its finished reply's steps; unfolded, it is dropped below.
+    const foldOnly = !props.showToolCalls && normalized.role.toLowerCase() === "toolresult";
 
     const searchQuery = props.searchQuery ?? "";
     if (props.searchOpen && searchQuery.trim() && !messageMatchesSearchQuery(msg, searchQuery)) {
@@ -630,6 +622,7 @@ export function buildChatItems(props: BuildChatItemsProps): Array<ChatItem | Mes
       kind: "message",
       key: messageKey(msg, i),
       message: msg,
+      ...(foldOnly ? { foldOnly: true } : {}),
     });
   }
   const queuedSends = Array.isArray(props.queue) ? props.queue : [];
@@ -739,7 +732,19 @@ export function buildChatItems(props: BuildChatItemsProps): Array<ChatItem | Mes
     items.push({ kind: "reading-indicator", key: `reading:${props.sessionKey}` });
   }
 
-  return groupMessages(collapseSequentialDuplicateMessages(sortChatItemsByVisibleTime(items)));
+  const ordered = collapseSequentialDuplicateMessages(sortChatItemsByVisibleTime(items));
+  // While the find bar is filtering, every match stays where it is: folding
+  // would tuck a matching line out of sight.
+  const searching = Boolean(props.searchOpen && (props.searchQuery ?? "").trim());
+  const liveRunOpen =
+    props.stream !== null ||
+    segments.length > 0 ||
+    tools.length > 0 ||
+    props.awaitingReply === true;
+  const folded = searching
+    ? ordered
+    : foldCompletedTurnSteps(ordered, { liveRunOpen, group: groupMessages });
+  return groupMessages(folded.filter((item) => item.kind !== "message" || !item.foldOnly));
 }
 
 function messageKey(message: unknown, index: number): string {

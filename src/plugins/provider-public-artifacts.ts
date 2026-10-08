@@ -1,7 +1,7 @@
 // Extracts provider public artifacts from plugin metadata.
 import { normalizeProviderId } from "@daisyclaw/model-catalog-core/provider-id";
-import type { ModelProviderConfig } from "../config/types.js";
 import type { DaisyClawConfig } from "../config/types.daisyclaw.js";
+import type { ModelProviderConfig } from "../config/types.js";
 import { resolveBundledPluginsDir } from "./bundled-dir.js";
 import { loadPluginManifestRegistry, type PluginManifestRegistry } from "./manifest-registry.js";
 import type {
@@ -17,6 +17,50 @@ import { loadBundledPluginPublicArtifactModuleSync } from "./public-surface-load
 
 const PROVIDER_POLICY_ARTIFACT_CANDIDATES = ["provider-policy-api.js"] as const;
 const providerPolicySurfaceByPluginId = new Map<string, BundledProviderPolicySurface | null>();
+
+type BundledManifestPlugin = PluginManifestRegistry["plugins"][number];
+
+// Bundled plugins ship with this build and cannot change while it runs, so the
+// owner of each provider is looked up once per bundled directory. Without this,
+// every provider check (config normalisation, API key resolution, thinking
+// defaults) rediscovered and reopened every plugin manifest. One cold model
+// catalog build spent about 30 of its 88 seconds doing that, with the event loop
+// blocked, which pushed scheduled runs past their setup watchdog.
+const bundledPolicyPluginsByDir = new Map<string, BundledManifestPlugin[]>();
+const providerPolicyOwnerByKey = new Map<string, string | null>();
+
+/**
+ * The packaged bundled plugins change only when the app is updated, which
+ * restarts it. A directory given through DAISYCLAW_BUNDLED_PLUGINS_DIR
+ * (development, tests) can change under a running process, so it is read
+ * fresh every time.
+ */
+function canCacheBundledPolicyOwners(): boolean {
+  return !process.env.DAISYCLAW_BUNDLED_PLUGINS_DIR?.trim();
+}
+
+function listBundledPolicyPlugins(
+  bundledPluginsDir: string,
+  manifestRegistry: Pick<PluginManifestRegistry, "plugins"> | undefined,
+): BundledManifestPlugin[] {
+  const sortBundled = (plugins: readonly BundledManifestPlugin[]) =>
+    plugins
+      .filter((plugin) => plugin.origin === "bundled")
+      .toSorted((left, right) => left.id.localeCompare(right.id));
+  if (manifestRegistry) {
+    return sortBundled(manifestRegistry.plugins);
+  }
+  if (!canCacheBundledPolicyOwners()) {
+    return sortBundled(loadPluginManifestRegistry().plugins);
+  }
+  const cached = bundledPolicyPluginsByDir.get(bundledPluginsDir);
+  if (cached) {
+    return cached;
+  }
+  const plugins = sortBundled(loadPluginManifestRegistry().plugins);
+  bundledPolicyPluginsByDir.set(bundledPluginsDir, plugins);
+  return plugins;
+}
 
 /** Provider policy hooks loaded from bundled plugin public artifacts. */
 export type BundledProviderPolicySurface = {
@@ -86,19 +130,25 @@ function resolveBundledProviderPolicyPluginId(
     return null;
   }
 
-  const registry = options.manifestRegistry ?? loadPluginManifestRegistry();
-  for (const plugin of registry.plugins.toSorted((left, right) =>
-    left.id.localeCompare(right.id),
-  )) {
-    if (plugin.origin !== "bundled") {
-      continue;
-    }
+  // An explicit registry is the caller's snapshot; only the default is cached.
+  const ownerKey =
+    options.manifestRegistry || !canCacheBundledPolicyOwners()
+      ? undefined
+      : `${bundledPluginsDir}\0${normalizedProviderId}`;
+  if (ownerKey !== undefined && providerPolicyOwnerByKey.has(ownerKey)) {
+    return providerPolicyOwnerByKey.get(ownerKey) ?? null;
+  }
+  let owner: string | null = null;
+  for (const plugin of listBundledPolicyPlugins(bundledPluginsDir, options.manifestRegistry)) {
     if (pluginOwnsProviderPolicyRef(plugin, normalizedProviderId)) {
-      return plugin.id;
+      owner = plugin.id;
+      break;
     }
   }
-
-  return null;
+  if (ownerKey !== undefined) {
+    providerPolicyOwnerByKey.set(ownerKey, owner);
+  }
+  return owner;
 }
 
 function pluginOwnsProviderPolicyRef(

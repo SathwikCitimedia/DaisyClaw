@@ -174,7 +174,7 @@ function shouldHideAssistantChatMessage(message: unknown): boolean {
   return isAssistantSilentReply(message) || isAssistantHeartbeatAckForDisplay(message);
 }
 
-function shouldHideHistoryMessage(message: unknown): boolean {
+export function shouldHideHistoryMessage(message: unknown): boolean {
   return (
     shouldHideAssistantChatMessage(message) ||
     isSyntheticTranscriptRepairToolResult(message) ||

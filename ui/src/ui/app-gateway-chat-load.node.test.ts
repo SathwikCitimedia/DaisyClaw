@@ -110,6 +110,7 @@ vi.mock("./app-chat.ts", () => ({
   markQueuedChatSendsWaitingForReconnect: vi.fn(),
   retryReconnectableQueuedChatSends: vi.fn(async () => undefined),
   refreshChatAvatar: refreshChatAvatarMock,
+  settleUnconfirmedSendForRun: () => false,
 }));
 
 vi.mock("./app-settings.ts", () => ({

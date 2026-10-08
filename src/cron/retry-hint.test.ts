@@ -31,6 +31,23 @@ describe("resolveCronExecutionRetryHint", () => {
     }
   });
 
+  // A run that never got started is retried soon; one that timed out doing its
+  // task waits for its next slot rather than repeating the cost at once.
+  it("retries runs that could not get started, not ones that ran too long", () => {
+    for (const error of [
+      "cron: isolated agent setup timed out before runner start",
+      "cron: isolated agent run stalled before execution start (last phase: auth)",
+    ]) {
+      expect(resolveCronExecutionRetryHint(error)).toEqual({
+        retryable: true,
+        category: "timeout",
+      });
+    }
+    expect(resolveCronExecutionRetryHint("cron: job execution timed out")).toEqual({
+      retryable: false,
+    });
+  });
+
   it("does not retry permanent errors", () => {
     expect(resolveCronExecutionRetryHint("invalid API key", ["network"])).toEqual({
       retryable: false,

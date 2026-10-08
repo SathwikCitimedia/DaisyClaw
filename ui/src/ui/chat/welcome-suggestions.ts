@@ -30,7 +30,6 @@ const SKILL_PROMPTS: Readonly<Record<string, readonly string[]>> = {
   "daily-briefing": ["What does my day look like?", "Send me a morning summary at 8am"],
   "diagram-maker": ["Draw a flowchart of how my morning goes", "Sketch a simple mind map for me"],
   "meme-maker": ["Make me a meme about Mondays", "Find a meme for finishing a big project"],
-  taskflow: ["Keep track of a few things for me", "What's still on my list?"],
   summarize: ["Summarise this link for me", "Give me the short version of this article"],
   canvas: ["Show me that on a board", "Draw this out so I can see it"],
   "skill-installer": ["What else can you learn to do?"],

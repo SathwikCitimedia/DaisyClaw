@@ -26,6 +26,7 @@ import type {
   NormalizedOutboundPayload,
   OutboundDeliveryResult,
 } from "../../infra/outbound/deliver.js";
+import { isNoConfiguredChannelsMessage } from "../../infra/outbound/no-configured-channels.js";
 import {
   createOutboundPayloadPlan,
   projectOutboundPayloadPlanForMirror,
@@ -1218,7 +1219,12 @@ export async function dispatchCronDelivery(
 
   if (params.deliveryRequested && !params.skipHeartbeatDelivery && !sourceDeliverySatisfied) {
     if (!params.resolvedDelivery.ok) {
-      if (!params.deliveryBestEffort) {
+      // With no chat app set up at all there is nowhere to announce to, and
+      // the gateway posts the reply into the Daisy chat instead. That is not a
+      // failed run: treating it as one marked every web-chat user's job as an
+      // error even when the task itself was done.
+      const noChatAppsAtAll = isNoConfiguredChannelsMessage(params.resolvedDelivery.error.message);
+      if (!params.deliveryBestEffort && !noChatAppsAtAll) {
         return {
           result: failDeliveryTarget(params.resolvedDelivery.error.message),
           delivered,
@@ -1229,7 +1235,11 @@ export async function dispatchCronDelivery(
           deliveryPayloads,
         };
       }
-      await logCronDeliveryWarn(`[cron:${params.job.id}] ${params.resolvedDelivery.error.message}`);
+      if (!noChatAppsAtAll) {
+        await logCronDeliveryWarn(
+          `[cron:${params.job.id}] ${params.resolvedDelivery.error.message}`,
+        );
+      }
       return {
         result: params.withRunSession({
           status: "ok",

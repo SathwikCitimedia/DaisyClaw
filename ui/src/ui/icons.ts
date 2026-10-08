@@ -332,6 +332,13 @@ export const icons = {
       <path d="M12 17h.01" />
     </svg>
   `,
+  info: html`
+    <svg viewBox="0 0 24 24">
+      <circle cx="12" cy="12" r="10" />
+      <path d="M12 16v-4" />
+      <path d="M12 8h.01" />
+    </svg>
+  `,
   layoutComfortable: html`
     <svg viewBox="0 0 24 24">
       <rect width="7" height="7" x="3" y="3" rx="1" />
@@ -547,6 +554,20 @@ export const icons = {
       <line x1="12" x2="12" y1="15" y2="3" />
     </svg>
   `,
+  keyboard: html`
+    <svg viewBox="0 0 24 24">
+      <rect width="20" height="16" x="2" y="4" rx="2" />
+      <path d="M6 8h.01" />
+      <path d="M10 8h.01" />
+      <path d="M14 8h.01" />
+      <path d="M18 8h.01" />
+      <path d="M8 12h.01" />
+      <path d="M12 12h.01" />
+      <path d="M16 12h.01" />
+      <path d="M7 16h10" />
+    </svg>
+  `,
+  chevronLeft: html` <svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6" /></svg> `,
   mic: html`
     <svg viewBox="0 0 24 24">
       <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" />

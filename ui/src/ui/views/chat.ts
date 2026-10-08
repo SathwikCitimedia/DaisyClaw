@@ -22,23 +22,36 @@ import {
 } from "../chat/build-chat-items.ts";
 import { renderChatQueue } from "../chat/chat-queue.ts";
 import { buildRawSidebarContent } from "../chat/chat-sidebar-raw.ts";
-import { renderWelcomeState, resolveAssistantDisplayAvatar } from "../chat/chat-welcome.ts";
+import {
+  renderWelcomeGreeting,
+  renderWelcomeSuggestions,
+  resolveAssistantDisplayAvatar,
+} from "../chat/chat-welcome.ts";
 import { renderContextNotice } from "../chat/context-notice.ts";
 import { DeletedMessages } from "../chat/deleted-messages.ts";
 import { submitEditedTurn, type EditFork, type EditForkTarget } from "../chat/edit-turn.ts";
 import { exportChatMarkdown } from "../chat/export.ts";
+import { renderFileCard } from "../chat/file-card.ts";
 import {
   getAssistantAttachmentAvailabilityRenderVersion,
+  groupPlainText,
   renderMessageGroup,
   renderReadingIndicatorGroup,
   renderStreamingGroup,
+  type ChatSendStatus,
 } from "../chat/grouped-render.ts";
 import { CHAT_HISTORY_RENDER_LIMIT_MAX } from "../chat/history-limits.ts";
 import type { ChatInputHistoryKeyInput, ChatInputHistoryKeyResult } from "../chat/input-history.ts";
-import { PinnedMessages } from "../chat/pinned-messages.ts";
+import { readPendingSendMarker, shouldRenderQueuedSendInThread } from "../chat/pending-send.ts";
+import {
+  getPinnedMessages,
+  resolvePinnableMessageIds,
+  type PinnedMessages,
+} from "../chat/pinned-messages.ts";
 import { getPinnedMessageSummary } from "../chat/pinned-summary.ts";
 import type { RealtimeTalkConversationEntry } from "../chat/realtime-talk-conversation.ts";
 import type { RealtimeTalkStatus } from "../chat/realtime-talk.ts";
+import { resolveRegenerateTurn } from "../chat/regenerate.ts";
 import { renderChatRunControls } from "../chat/run-controls.ts";
 import type { ChatRunUiStatus } from "../chat/run-lifecycle.ts";
 import { getOrCreateSessionCacheValue } from "../chat/session-cache.ts";
@@ -58,6 +71,7 @@ import {
   renderFallbackIndicator,
 } from "../chat/status-indicators.ts";
 import { getExpandedToolCards, syncToolCardExpansionState } from "../chat/tool-expansion-state.ts";
+import { renderTurnSteps } from "../chat/turn-steps-render.ts";
 import { describeVoiceError, type VoiceErrorFix } from "../chat/voice-error.ts";
 import {
   cancelWaitCaptionTick,
@@ -68,11 +82,13 @@ import {
   scheduleWaitCaptionTick,
   trackWaitElapsedMs,
 } from "../chat/wait-caption.ts";
+import { renderDismissibleErrorBanner } from "../dismissible-error.ts";
 import type { EmbedSandboxMode } from "../embed-sandbox.ts";
 import { icons } from "../icons.ts";
 import { formatGoalDetail, formatGoalSummary } from "../session-goal.ts";
 import type { SidebarContent } from "../sidebar-content.ts";
 import { detectTextDirection } from "../text-direction.ts";
+import { showToast } from "../toast.ts";
 import type { SkillStatusEntry } from "../types.ts";
 import type {
   AgentFileEntry,
@@ -267,7 +283,6 @@ export type ChatProps = {
   };
 };
 
-const pinnedMessagesMap = new Map<string, PinnedMessages>();
 const deletedMessagesMap = new Map<string, DeletedMessages>();
 const SLASH_MENU_LISTBOX_ID = "chat-slash-menu-listbox";
 const SLASH_MENU_ACTIVE_ANNOUNCEMENT_ID = "chat-slash-active-announcement";
@@ -314,14 +329,6 @@ const TALK_REASONING_OPTIONS: TalkSelectOption[] = [
 const INITIAL_CHAT_HISTORY_RENDER_WINDOW = 30;
 const CHAT_HISTORY_RENDER_WINDOW_BATCH = 30;
 const CHAT_HISTORY_RENDER_EXPAND_SCROLL_TOP_PX = 48;
-
-function getPinnedMessages(sessionKey: string): PinnedMessages {
-  return getOrCreateSessionCacheValue(
-    pinnedMessagesMap,
-    sessionKey,
-    () => new PinnedMessages(sessionKey),
-  );
-}
 
 function getDeletedMessages(sessionKey: string): DeletedMessages {
   return getOrCreateSessionCacheValue(
@@ -580,6 +587,15 @@ interface ChatEphemeralState {
   editingError: string | null;
   /** Key of the user group whose edit is being applied (fork + send in flight). */
   editingBusyKey: string | null;
+  /** Key of the reply being regenerated (fork + resend in flight). */
+  regeneratingKey: string | null;
+  /** Folded steps the user opened (or closed), by steps item key. */
+  openSteps: Map<string, boolean>;
+  /** Whether the last render showed the empty-chat layout, and for which chat. */
+  lastWelcomeMode: boolean;
+  lastWelcomeSessionKey: string | null;
+  /** Until when the message box plays its settle after leaving the empty layout. */
+  composerSettleUntil: number;
   historyRenderSessionKey: string | null;
   historyRenderMessagesRef: unknown[] | null;
   historyRenderMessageCount: number;
@@ -613,6 +629,11 @@ function createChatEphemeralState(): ChatEphemeralState {
     editingDraft: null,
     editingError: null,
     editingBusyKey: null,
+    regeneratingKey: null,
+    openSteps: new Map(),
+    lastWelcomeMode: false,
+    lastWelcomeSessionKey: null,
+    composerSettleUntil: 0,
     historyRenderSessionKey: null,
     historyRenderMessagesRef: null,
     historyRenderMessageCount: 0,
@@ -1113,43 +1134,39 @@ function renderAttachmentPreview(props: ChatProps): TemplateResult | typeof noth
   if (attachments.length === 0) {
     return nothing;
   }
+  const removeButton = (att: ChatAttachment) => html`
+    <button
+      class="chat-attachment-remove"
+      type="button"
+      aria-label=${`Remove ${att.fileName ?? "attachment"}`}
+      title="Remove"
+      @click=${(event: Event) => {
+        event.preventDefault();
+        const next = (props.attachments ?? []).filter((a) => a.id !== att.id);
+        releaseChatAttachmentPayload(att.id);
+        props.onAttachmentsChange?.(next);
+      }}
+    >
+      &times;
+    </button>
+  `;
   return html`
     <div class="chat-attachments-preview">
-      ${attachments.map(
-        (att) => html`
-          <div
-            class=${[
-              "chat-attachment-thumb",
-              isImageAttachment(att) ? "" : "chat-attachment-thumb--file",
-            ]
-              .filter(Boolean)
-              .join(" ")}
-          >
-            ${isImageAttachment(att) && getChatAttachmentPreviewUrl(att)
-              ? html`<img src=${getChatAttachmentPreviewUrl(att)!} alt="Attachment preview" />`
-              : html`
-                  <div class="chat-attachment-file" title=${att.fileName ?? "Attached file"}>
-                    <span class="chat-attachment-file__icon">${icons.paperclip}</span>
-                    <span class="chat-attachment-file__name"
-                      >${att.fileName ?? "Attached file"}</span
-                    >
-                  </div>
-                `}
-            <button
-              class="chat-attachment-remove"
-              type="button"
-              aria-label="Remove attachment"
-              @click=${() => {
-                const next = (props.attachments ?? []).filter((a) => a.id !== att.id);
-                releaseChatAttachmentPayload(att.id);
-                props.onAttachmentsChange?.(next);
-              }}
-            >
-              &times;
-            </button>
-          </div>
-        `,
-      )}
+      ${attachments.map((att) => {
+        const previewUrl = isImageAttachment(att) ? getChatAttachmentPreviewUrl(att) : null;
+        return previewUrl
+          ? html`
+              <div class="chat-attachment-thumb">
+                <img src=${previewUrl} alt=${att.fileName ?? "Attachment preview"} />
+                ${removeButton(att)}
+              </div>
+            `
+          : renderFileCard({
+              fileName: att.fileName ?? "Attached file",
+              mimeType: att.mimeType,
+              extra: removeButton(att),
+            });
+      })}
     </div>
   `;
 }
@@ -1582,24 +1599,16 @@ function renderPinnedSection(
   pinned: PinnedMessages,
   requestUpdate: () => void,
 ): TemplateResult | typeof nothing {
+  const entries = pinned.entries;
+  if (entries.length === 0) {
+    return nothing;
+  }
   const userRoleLabel = resolveLocalUserName({
     name: props.userName ?? null,
     avatar: props.userAvatar ?? null,
   });
-  const messages = Array.isArray(props.messages) ? props.messages : [];
-  const entries: Array<{ index: number; text: string; role: string }> = [];
-  for (const idx of pinned.indices) {
-    const msg = messages[idx] as Record<string, unknown> | undefined;
-    if (!msg) {
-      continue;
-    }
-    const text = getPinnedMessageSummary(msg);
-    const role = typeof msg.role === "string" ? msg.role : "unknown";
-    entries.push({ index: idx, text, role });
-  }
-  if (entries.length === 0) {
-    return nothing;
-  }
+  const assistantLabel = props.assistantName?.trim() || "Assistant";
+  const countLabel = t("chat.messageActions.pinnedCount", { count: String(entries.length) });
   return html`
     <div class="agent-chat__pinned">
       <button
@@ -1610,7 +1619,7 @@ function renderPinnedSection(
           requestUpdate();
         }}
       >
-        ${icons.bookmark} ${entries.length} pinned
+        ${icons.bookmark} ${countLabel}
         <span class="collapse-chevron ${vs.pinnedExpanded ? "" : "collapse-chevron--collapsed"}"
           >${icons.chevronDown}</span
         >
@@ -1619,21 +1628,29 @@ function renderPinnedSection(
         ? html`
             <div class="agent-chat__pinned-list">
               ${entries.map(
-                ({ index, text, role }) => html`
+                (entry) => html`
                   <div class="agent-chat__pinned-item">
-                    <span class="agent-chat__pinned-role"
-                      >${role === "user" ? userRoleLabel : "Assistant"}</span
+                    <button
+                      type="button"
+                      class="agent-chat__pinned-jump"
+                      title=${t("chat.messageActions.jumpToPinned")}
+                      @click=${(event: Event) => jumpToPinnedMessage(event, entry.id)}
                     >
-                    <span class="agent-chat__pinned-text"
-                      >${text.slice(0, 100)}${text.length > 100 ? "..." : ""}</span
-                    >
+                      <span class="agent-chat__pinned-role"
+                        >${entry.role === "user" ? userRoleLabel : assistantLabel}</span
+                      >
+                      <span class="agent-chat__pinned-text"
+                        >${entry.text.slice(0, 100)}${entry.text.length > 100 ? "…" : ""}</span
+                      >
+                    </button>
                     <button
                       class="btn btn--ghost"
                       @click=${() => {
-                        pinned.unpin(index);
+                        pinned.unpin(entry.id);
                         requestUpdate();
                       }}
-                      title="Unpin"
+                      title=${t("chat.messageActions.unpin")}
+                      aria-label=${t("chat.messageActions.unpin")}
                     >
                       ${icons.x}
                     </button>
@@ -1645,6 +1662,27 @@ function renderPinnedSection(
         : nothing}
     </div>
   `;
+}
+
+/** Scrolls the thread to a pinned message and flashes it, or says where it is. */
+function jumpToPinnedMessage(event: Event, pinId: string) {
+  const root = (event.currentTarget as HTMLElement | null)?.closest(".agent-chat") ?? document;
+  const target = [...root.querySelectorAll<HTMLElement>(".chat-group[data-pin-ids]")].find(
+    (element) => (element.dataset.pinIds ?? "").split(" ").includes(pinId),
+  );
+  if (!target) {
+    showToast(t("chat.messageActions.pinnedNotLoaded"), { tone: "info", duration: 5000 });
+    return;
+  }
+  const reduceMotion =
+    typeof window.matchMedia === "function" &&
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  target.scrollIntoView({ block: "center", behavior: reduceMotion ? "auto" : "smooth" });
+  target.classList.remove("chat-group--flash");
+  // Restart the highlight animation when the same pin is clicked twice.
+  void target.offsetWidth;
+  target.classList.add("chat-group--flash");
+  window.setTimeout(() => target.classList.remove("chat-group--flash"), 1600);
 }
 
 function renderSlashMenu(
@@ -1840,6 +1878,37 @@ function renderChatLoadingSlow(props: ChatProps) {
   `;
 }
 
+/** Delivery of the just-sent messages in a group, for the line under the bubble. */
+function resolveSendStatuses(
+  group: { messages: ReadonlyArray<{ message: unknown }> },
+  props: Pick<ChatProps, "onQueueRetry" | "onQueueRemove">,
+): ChatSendStatus[] {
+  const statuses: ChatSendStatus[] = [];
+  for (const entry of group.messages) {
+    const marker = readPendingSendMarker(entry.message);
+    // While it is simply sending, the typing dots say enough.
+    if (!marker || marker.state === "sending") {
+      continue;
+    }
+    statuses.push({
+      state: marker.state,
+      ...(marker.error ? { error: marker.error } : {}),
+      ...(props.onQueueRetry ? { onRetry: () => props.onQueueRetry?.(marker.id) } : {}),
+      onRemove: () => props.onQueueRemove(marker.id),
+    });
+  }
+  return statuses;
+}
+
+/**
+ * Opens this chat's find bar on a query, e.g. when a search result from
+ * another chat is opened; the thread then shows only the matching messages.
+ */
+export function openChatFind(query: string) {
+  vs.searchOpen = true;
+  vs.searchQuery = query;
+}
+
 export function renderChat(props: ChatProps) {
   const canCompose = props.connected && !props.composeLocked;
   const isBusy = props.sending || props.stream !== null;
@@ -1985,6 +2054,19 @@ export function renderChat(props: ChatProps) {
   };
   const hasRealtimeTalkConversation = (props.realtimeTalkConversation?.length ?? 0) > 0;
   const isEmpty = chatItems.length === 0 && !props.loading && !hasRealtimeTalkConversation;
+  // An empty chat opens ChatGPT-style: greeting, then the message box, then
+  // ideas, all in the middle of the screen. The box is the same element as in
+  // a running chat (only its place changes), so typing and focus carry over
+  // when the first message sends it to the bottom.
+  const welcomeMode = isEmpty && !vs.searchOpen;
+  // Only the chat's own first message plays the settle; opening another chat
+  // shows it in place at once.
+  if (vs.lastWelcomeMode && !welcomeMode && vs.lastWelcomeSessionKey === props.sessionKey) {
+    vs.composerSettleUntil = Date.now() + 400;
+  }
+  vs.lastWelcomeMode = welcomeMode;
+  vs.lastWelcomeSessionKey = props.sessionKey;
+  const composerSettling = Date.now() < vs.composerSettleUntil;
   const showLoadingSkeleton = props.loading && chatItems.length === 0;
   const threadContextWindow =
     activeSession?.contextTokens ?? props.sessions?.defaults?.contextTokens ?? null;
@@ -1999,6 +2081,12 @@ export function renderChat(props: ChatProps) {
       break;
     }
   }
+  // Regenerate is offered on the latest reply only, when it answers the latest
+  // plain-text question and nothing else is in flight.
+  const regenerateTurn =
+    props.onEditFork && props.connected && !isBusy && !showAbortableUi && !vs.editingGroupKey
+      ? resolveRegenerateTurn(chatItems, lastAssistantGroupKey, groupPlainText)
+      : null;
 
   const thread = html`
     <div
@@ -2062,7 +2150,7 @@ export function renderChat(props: ChatProps) {
               </div>
             `
           : nothing}
-        ${isEmpty && !vs.searchOpen ? renderWelcomeState(props) : nothing}
+        ${welcomeMode ? renderWelcomeGreeting({ userName: props.userName }) : nothing}
         ${isEmpty && vs.searchOpen
           ? html` <div class="agent-chat__empty">No matching messages</div> `
           : nothing}
@@ -2094,6 +2182,10 @@ export function renderChat(props: ChatProps) {
             lastAssistantGroupKey ?? "",
             props.actionChips && props.actionChips !== nothing ? "1" : "0",
             vs.editingGroupKey ?? "",
+            pinned.signature(),
+            regenerateTurn ? regenerateTurn.userGroup.key : "",
+            vs.regeneratingKey ?? "",
+            stableBooleanMapSignature(vs.openSteps),
           ],
           () => {
             // Hiding a user turn also hides everything it produced (assistant
@@ -2110,6 +2202,11 @@ export function renderChat(props: ChatProps) {
               }
               for (let i = fromIndex + 1; i < chatItems.length; i++) {
                 const next = chatItems[i];
+                // A reply's folded steps go with the reply.
+                if (next.kind === "steps") {
+                  apply(next.key);
+                  continue;
+                }
                 if (next.kind !== "group") {
                   continue;
                 }
@@ -2187,12 +2284,114 @@ export function renderChat(props: ChatProps) {
                     assistantIdentity,
                     props.basePath,
                     props.assistantAttachmentAuthToken ?? null,
+                    {
+                      localMediaPreviewRoots: props.localMediaPreviewRoots ?? [],
+                      onRequestUpdate: requestUpdate,
+                    },
                   );
+                }
+                if (item.kind === "steps") {
+                  if (deleted.has(item.key)) {
+                    return nothing;
+                  }
+                  // Closed by default; the Tools switch opens them for people
+                  // who want to see every step.
+                  const open = vs.openSteps.get(item.key) ?? Boolean(props.showToolCalls);
+                  return renderTurnSteps(item, {
+                    open,
+                    onToggle: () => {
+                      vs.openSteps.set(item.key, !open);
+                      requestUpdate();
+                    },
+                    renderGroup: (group) =>
+                      renderMessageGroup(group, {
+                        onOpenSidebar: props.onOpenSidebar,
+                        sessionKey: props.sessionKey,
+                        agentId: props.fullMessageAgentId,
+                        showReasoning,
+                        showToolCalls: true,
+                        autoExpandToolCalls: false,
+                        isToolMessageExpanded: (messageId: string) =>
+                          expandedToolCards.get(messageId),
+                        onToggleToolMessageExpanded: (messageId: string, expanded?: boolean) => {
+                          expandedToolCards.set(
+                            messageId,
+                            !(expanded ?? expandedToolCards.get(messageId) ?? false),
+                          );
+                          requestUpdate();
+                        },
+                        isToolExpanded: (toolCardId: string) =>
+                          expandedToolCards.get(toolCardId) ?? false,
+                        onToggleToolExpanded: toggleToolCardExpanded,
+                        onRequestUpdate: requestUpdate,
+                        assistantName: props.assistantName,
+                        assistantAvatar: assistantIdentity.avatar,
+                        userName: props.userName ?? null,
+                        userAvatar: props.userAvatar ?? null,
+                        basePath: props.basePath,
+                        localMediaPreviewRoots: props.localMediaPreviewRoots ?? [],
+                        assistantAttachmentAuthToken: props.assistantAttachmentAuthToken ?? null,
+                        canvasPluginSurfaceUrl: props.canvasPluginSurfaceUrl,
+                        embedSandboxMode: props.embedSandboxMode ?? "scripts",
+                        allowExternalEmbedUrls: props.allowExternalEmbedUrls ?? false,
+                      }),
+                  });
                 }
                 if (item.kind === "group") {
                   if (deleted.has(item.key)) {
                     return nothing;
                   }
+                  const groupRole = String(item.role).toLowerCase();
+                  const pinIds =
+                    groupRole === "user" || groupRole === "assistant"
+                      ? [
+                          ...new Set(
+                            item.messages.flatMap((entry) =>
+                              resolvePinnableMessageIds(entry.message),
+                            ),
+                          ),
+                        ]
+                      : [];
+                  const pinnedId = pinned.findPinned(pinIds);
+                  const pinId = pinnedId ?? pinIds[0] ?? null;
+                  const regenerate =
+                    regenerateTurn && item.key === lastAssistantGroupKey
+                      ? () => {
+                          const turn = regenerateTurn;
+                          const messageId = readTranscriptMessageId(
+                            turn.userGroup.messages[0]?.message,
+                          );
+                          vs.regeneratingKey = item.key;
+                          requestUpdate();
+                          void submitEditedTurn({
+                            text: turn.text,
+                            target: messageId ? { messageId } : { lastUser: true },
+                            fork: props.onEditFork,
+                            // Never reached: a fork and a target are always present here.
+                            draftChange: () => {},
+                            hide: () => {
+                              hideTurnCascade(turn.userGroup, turn.userIndex);
+                              requestUpdate();
+                            },
+                            unhide: () => {
+                              restoreTurnCascade(turn.userGroup, turn.userIndex);
+                              requestUpdate();
+                            },
+                            setBusy: (busy) => {
+                              if (!busy) {
+                                vs.regeneratingKey = null;
+                              }
+                              requestUpdate();
+                            },
+                            onFailure: (_text, error) => {
+                              showToast(t("chat.messageActions.regenerateFailed", { error }), {
+                                tone: "error",
+                                duration: 6000,
+                              });
+                            },
+                          });
+                        }
+                      : undefined;
                   return renderMessageGroup(item, {
                     onOpenSidebar: props.onOpenSidebar,
                     sessionKey: props.sessionKey,
@@ -2225,6 +2424,31 @@ export function renderChat(props: ChatProps) {
                     contextWindow: threadContextWindow,
                     actionChips:
                       item.key === lastAssistantGroupKey ? (props.actionChips ?? nothing) : nothing,
+                    pinId,
+                    pinIds,
+                    pinned: pinnedId !== null,
+                    onTogglePin: pinId
+                      ? () => {
+                          if (pinnedId) {
+                            pinned.unpin(pinnedId);
+                          } else {
+                            pinned.pin({
+                              id: pinId,
+                              role: groupRole === "user" ? "user" : "assistant",
+                              text: item.messages
+                                .map((entry) => getPinnedMessageSummary(entry.message))
+                                .filter(Boolean)
+                                .join("\n"),
+                              timestamp: item.timestamp,
+                            });
+                            vs.pinnedExpanded = true;
+                          }
+                          requestUpdate();
+                        }
+                      : undefined,
+                    onRegenerate: regenerate,
+                    regenerating: vs.regeneratingKey === item.key,
+                    sendStatuses: groupRole === "user" ? resolveSendStatuses(item, props) : [],
                     onDelete: () => {
                       hideTurnCascade(item, itemIndex);
                       requestUpdate();
@@ -2525,26 +2749,7 @@ export function renderChat(props: ChatProps) {
             </div>
           `
         : nothing}
-      ${props.error
-        ? html`
-            <div class="callout danger callout--dismissible" role="alert">
-              <span class="callout__content">${props.error}</span>
-              ${props.onDismissError
-                ? html`
-                    <button
-                      class="callout__dismiss"
-                      type="button"
-                      @click=${props.onDismissError}
-                      aria-label="Dismiss error"
-                      title="Dismiss error"
-                    >
-                      ${icons.x}
-                    </button>
-                  `
-                : nothing}
-            </div>
-          `
-        : nothing}
+      ${props.error ? renderDismissibleErrorBanner(props.error, props.onDismissError) : nothing}
       ${props.focusMode && props.onToggleFocusMode
         ? html`
             <button
@@ -2568,12 +2773,14 @@ export function renderChat(props: ChatProps) {
       >
         <div class="chat-split-container ${sidebarOpen ? "chat-split-container--open" : ""}">
           <div
-            class="chat-main"
+            class="chat-main ${welcomeMode ? "chat-main--welcome" : ""}"
             style="flex: ${sidebarOpen ? `0 0 ${splitRatio * 100}%` : "1 1 100%"}"
           >
             ${thread}
             ${renderChatQueue({
-              queue: props.queue,
+              // Sent messages show in the conversation with their delivery
+              // underneath; the panel keeps only messages waiting their turn.
+              queue: props.queue.filter((queued) => !shouldRenderQueuedSendInThread(queued)),
               canAbort: showAbortableUi,
               onQueueRetry: props.onQueueRetry,
               onQueueSteer: props.onQueueSteer,
@@ -2605,7 +2812,7 @@ export function renderChat(props: ChatProps) {
 
             <!-- Input bar -->
             <div
-              class="agent-chat__input"
+              class="agent-chat__input ${composerSettling ? "agent-chat__input--settling" : ""}"
               @click=${(event: MouseEvent) => focusComposerFromChrome(event, props.connected)}
             >
               ${renderSlashMenu(requestUpdate, props, visibleDraft)}
@@ -2769,6 +2976,7 @@ export function renderChat(props: ChatProps) {
                 })}
               </div>
             </div>
+            ${welcomeMode ? renderWelcomeSuggestions(props) : nothing}
           </div>
 
           ${sidebarOpen

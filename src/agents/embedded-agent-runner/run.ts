@@ -14,7 +14,11 @@ import {
   resolveContextEngine,
   resolveContextEngineOwnerPluginId,
 } from "../../context-engine/registry.js";
-import { emitAgentPlanEvent, registerAgentRunContext } from "../../infra/agent-events.js";
+import {
+  emitAgentEvent,
+  emitAgentPlanEvent,
+  registerAgentRunContext,
+} from "../../infra/agent-events.js";
 import { sleepWithAbort } from "../../infra/backoff.js";
 import { freezeDiagnosticTraceContext } from "../../infra/diagnostic-trace-context.js";
 import { formatErrorMessage } from "../../infra/errors.js";
@@ -1206,6 +1210,23 @@ export async function runEmbeddedAgent(
         sessionAgentId,
       );
       let overflowCompactionAttempts = 0;
+      // A context overflow the loop below can still recover from (compact,
+      // then retry) is held here rather than shown: otherwise the person sees
+      // "prompt too large" flash up while the recovery quietly succeeds. A
+      // retry drops it; a run that ends without recovering sends it.
+      let heldOverflowError: (() => void) | null = null;
+      const holdRecoverableOverflowError = (emit: () => void): boolean => {
+        if (overflowCompactionAttempts >= MAX_OVERFLOW_COMPACTION_ATTEMPTS) {
+          return false;
+        }
+        heldOverflowError = emit;
+        return true;
+      };
+      const releaseHeldOverflowError = () => {
+        const emit = heldOverflowError;
+        heldOverflowError = null;
+        emit?.();
+      };
       let toolResultTruncationAttempted = false;
       let bootstrapPromptWarningSignaturesSeen =
         params.bootstrapPromptWarningSignaturesSeen ??
@@ -1622,6 +1643,8 @@ export async function runEmbeddedAgent(
           } else {
             parentAbortSignal?.addEventListener("abort", relayParentAbort, { once: true });
           }
+          // Starting another attempt means the last overflow was recovered from.
+          heldOverflowError = null;
           const rawAttempt = await runEmbeddedAttemptWithBackend({
             sessionId: activeSessionId,
             sessionKey: resolvedSessionKey,
@@ -1732,6 +1755,7 @@ export async function runEmbeddedAgent(
             onReasoningEnd: params.onReasoningEnd,
             onToolResult: params.onToolResult,
             onAgentEvent: params.onAgentEvent,
+            holdRecoverableOverflowError,
             onExecutionPhase: params.onExecutionPhase,
             extraSystemPrompt: params.extraSystemPrompt,
             sourceReplyDeliveryMode: params.sourceReplyDeliveryMode,
@@ -2180,6 +2204,13 @@ export async function runEmbeddedAgent(
                 `context overflow detected (attempt ${overflowCompactionAttempts}/${MAX_OVERFLOW_COMPACTION_ATTEMPTS}); attempting auto-compaction for ${provider}/${modelId}`,
               );
               let compactResult: Awaited<ReturnType<typeof contextEngine.compact>>;
+              // Shown as "making room" so a minute of summarizing reads as
+              // progress, not as a stuck or failed reply.
+              emitAgentEvent({
+                runId: params.runId,
+                stream: "compaction",
+                data: { phase: "start", trigger: "overflow" },
+              });
               await runOwnsCompactionBeforeHook("overflow recovery");
               try {
                 const overflowCompactionRuntimeContext = {
@@ -2278,6 +2309,17 @@ export async function runEmbeddedAgent(
                   reason: String(compactErr),
                 };
               }
+              emitAgentEvent({
+                runId: params.runId,
+                stream: "compaction",
+                data: {
+                  phase: "end",
+                  trigger: "overflow",
+                  completed: compactResult.ok && compactResult.compacted,
+                  // A successful overflow compaction always retries the prompt.
+                  willRetry: compactResult.ok && compactResult.compacted,
+                },
+              });
               await runOwnsCompactionAfterHook("overflow recovery", compactResult);
               if (preflightRecovery && isNoRealConversationCompactionNoop(compactResult)) {
                 lastCompactionTokensAfter = undefined;
@@ -3742,6 +3784,8 @@ export async function runEmbeddedAgent(
           };
         }
       } finally {
+        // An overflow that was held for recovery but never recovered from.
+        releaseHeldOverflowError();
         forgetPromptBuildDrainCacheForRun(params.runId);
         stopRuntimeAuthRefreshTimer();
         await runAgentCleanupStep({

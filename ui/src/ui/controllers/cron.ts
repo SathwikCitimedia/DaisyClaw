@@ -73,6 +73,10 @@ export type CronState = {
   cronError: string | null;
   cronForm: CronFormState;
   cronFormCollapsed: boolean;
+  /** The one-sentence description typed above the New Job form. */
+  cronDraftText: string;
+  cronDraftBusy: boolean;
+  cronDraftError: string | null;
   cronFieldErrors: CronFieldErrors;
   cronEditingJobId: string | null;
   cronRunsJobId: string | null;
@@ -501,6 +505,7 @@ function jobToForm(job: CronJob, prev: CronFormState): CronFormState {
     scheduleAt: "",
     everyAmount: prev.everyAmount,
     everyUnit: prev.everyUnit,
+    everyStartAt: "",
     cronExpr: prev.cronExpr,
     cronTz: "",
     scheduleExact: false,
@@ -568,6 +573,12 @@ function jobToForm(job: CronJob, prev: CronFormState): CronFormState {
     const parsed = parseEverySchedule(job.schedule.everyMs);
     next.everyAmount = parsed.everyAmount;
     next.everyUnit = parsed.everyUnit;
+    // A start still ahead is the user's; one already past is just when the job
+    // was made, and showing it would only confuse.
+    const anchorMs = job.schedule.anchorMs;
+    if (typeof anchorMs === "number" && anchorMs > Date.now()) {
+      next.everyStartAt = formatDateTimeLocal(new Date(anchorMs).toISOString());
+    }
   } else {
     next.cronExpr = job.schedule.expr;
     next.cronTz = job.schedule.tz ?? "";
@@ -595,7 +606,12 @@ function buildCronSchedule(form: CronFormState) {
     }
     const unit = form.everyUnit;
     const mult = unit === "minutes" ? 60_000 : unit === "hours" ? 3_600_000 : 86_400_000;
-    return { kind: "every" as const, everyMs: amount * mult };
+    const anchorMs = form.everyStartAt ? Date.parse(form.everyStartAt) : Number.NaN;
+    return {
+      kind: "every" as const,
+      everyMs: amount * mult,
+      ...(Number.isFinite(anchorMs) ? { anchorMs } : {}),
+    };
   }
   const expr = form.cronExpr.trim();
   if (!expr) {
@@ -697,6 +713,102 @@ function buildFailureAlert(form: CronFormState, existingChannel?: string) {
   }
   patch.accountId = accountId || undefined;
   return patch;
+}
+
+export type CronDraftSchedule =
+  | { kind: "every"; amount: number; unit: CronFormState["everyUnit"]; startAt?: string }
+  | { kind: "cron"; expr: string }
+  | { kind: "at"; at: string };
+
+export type CronDraftResponse =
+  | { ok: true; draft: { name: string; task: string; schedule: CronDraftSchedule } }
+  | { ok: false; reason: string };
+
+function viewerTimeZone(): string | undefined {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone;
+  } catch {
+    return undefined;
+  }
+}
+
+/** The viewer's wall-clock time with its weekday, for resolving "today 4 PM". */
+function viewerNow(date = new Date()): string {
+  const weekday = date.toLocaleDateString("en-US", { weekday: "long" });
+  return `${formatDateTimeLocal(date.toISOString())} ${weekday}`;
+}
+
+/** Asks the gateway to split one sentence into a job's name, task and schedule. */
+export async function requestCronDraft(
+  client: GatewayBrowserClient,
+  text: string,
+): Promise<CronDraftResponse> {
+  const timeZone = viewerTimeZone();
+  return (await client.request("cron.draft", {
+    text,
+    now: viewerNow(),
+    ...(timeZone ? { timeZone } : {}),
+  })) as CronDraftResponse;
+}
+
+/** Fills the form from a drafted job: the task alone, the schedule in its fields. */
+export function applyCronDraftToForm(
+  form: CronFormState,
+  draft: { name: string; task: string; schedule: CronDraftSchedule },
+): CronFormState {
+  const next: CronFormState = {
+    ...form,
+    name: draft.name,
+    payloadKind: "agentTurn",
+    payloadText: draft.task,
+    sessionTarget: form.sessionTarget === "main" ? "isolated" : form.sessionTarget,
+  };
+  const schedule = draft.schedule;
+  if (schedule.kind === "every") {
+    next.scheduleKind = "every";
+    next.everyAmount = String(schedule.amount);
+    next.everyUnit = schedule.unit;
+    next.everyStartAt = schedule.startAt ?? "";
+  } else if (schedule.kind === "cron") {
+    next.scheduleKind = "cron";
+    next.cronExpr = schedule.expr;
+    // The expression is in the viewer's local time.
+    next.cronTz = viewerTimeZone() ?? "";
+  } else {
+    next.scheduleKind = "at";
+    next.scheduleAt = schedule.at;
+  }
+  return normalizeCronFormState(next);
+}
+
+/**
+ * Asks the gateway to turn the sentence above the form into a job, and fills
+ * the form with it for review. Nothing is saved until the user saves.
+ */
+export async function draftCronJobFromText(state: CronState, onChange?: () => void): Promise<void> {
+  const text = state.cronDraftText.trim();
+  if (!state.client || !text || state.cronDraftBusy) {
+    return;
+  }
+  state.cronDraftBusy = true;
+  state.cronDraftError = null;
+  onChange?.();
+  try {
+    const result = await requestCronDraft(state.client, text);
+    if (!result.ok) {
+      state.cronDraftError = result.reason;
+      return;
+    }
+    state.cronForm = applyCronDraftToForm(state.cronForm, result.draft);
+    state.cronFieldErrors = validateCronForm(state.cronForm);
+  } catch (err) {
+    state.cronDraftError = `Couldn't work that out right now: ${String(
+      err instanceof Error ? err.message : err,
+    )}`;
+  } finally {
+    state.cronDraftBusy = false;
+    onChange?.();
+  }
 }
 
 export async function addCronJob(state: CronState): Promise<boolean> {

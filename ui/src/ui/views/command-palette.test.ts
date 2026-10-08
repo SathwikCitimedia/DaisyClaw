@@ -230,3 +230,76 @@ describe("command palette", () => {
     expect(onToggle).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("command palette actions and chat search", () => {
+  it("offers keyboard shortcuts and export as actions", async () => {
+    const onAction = vi.fn();
+    await renderPalette({ onAction, query: "export" });
+    const items = getFilteredPaletteItems("export");
+    expect(items.map((item) => item.id)).toContain("action-export-chat");
+    const option = container.querySelector<HTMLElement>("#cmd-palette-option-action-export-chat");
+    option?.click();
+    expect(onAction).toHaveBeenCalledWith("export-chat");
+
+    expect(getFilteredPaletteItems("keyboard").map((item) => item.id)).toContain(
+      "action-shortcuts",
+    );
+  });
+
+  it("lists messages found in the user's chats and opens the chosen one", async () => {
+    const onOpenChatResult = vi.fn();
+    const chatSearch = {
+      status: "done" as const,
+      truncated: false,
+      results: [
+        { label: "Visa", description: "Daisy: Bring your passport and two photos." },
+        { label: "Trip", description: "You: where is my passport?" },
+      ],
+    };
+    await renderPalette({ query: "passport", chatSearch, onOpenChatResult });
+    const rows = [...container.querySelectorAll<HTMLElement>(".cmd-palette__item--chat")];
+    expect(rows.map((row) => row.querySelector(".cmd-palette__chat-label")?.textContent)).toEqual([
+      "Visa",
+      "Trip",
+    ]);
+    expect(container.textContent).toContain("In your chats");
+    rows[1].click();
+    expect(onOpenChatResult).toHaveBeenCalledWith(1);
+  });
+
+  it("says when it is searching, found nothing, or failed", async () => {
+    await renderPalette({
+      query: "zzqx",
+      chatSearch: { status: "loading", truncated: false, results: [] },
+    });
+    expect(container.querySelector(".cmd-palette__status")?.textContent).toBe(
+      "Searching your chats…",
+    );
+    expect(container.querySelector(".cmd-palette__empty")).toBeNull();
+
+    await renderPalette({
+      query: "zzqx",
+      chatSearch: { status: "done", truncated: false, results: [] },
+    });
+    expect(container.querySelector(".cmd-palette__status")?.textContent).toBe(
+      "No messages in your recent chats match that.",
+    );
+
+    await renderPalette({
+      query: "zzqx",
+      chatSearch: { status: "error", truncated: false, results: [] },
+    });
+    expect(container.querySelector(".cmd-palette__status")?.textContent).toContain(
+      "Couldn't search your chats",
+    );
+  });
+
+  it("stays quiet about chats when the engine has no search", async () => {
+    await renderPalette({
+      query: "zzqx",
+      chatSearch: { status: "unsupported", truncated: false, results: [] },
+    });
+    expect(container.querySelector(".cmd-palette__status")).toBeNull();
+    expect(container.querySelector(".cmd-palette__empty")).not.toBeNull();
+  });
+});

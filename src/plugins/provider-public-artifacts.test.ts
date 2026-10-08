@@ -328,4 +328,51 @@ describe("provider public artifacts", () => {
       artifactBasename: "provider-policy-api.js",
     });
   });
+
+  // Every provider check used to rescan and reopen every plugin manifest. A cold
+  // model catalog build spent about 30 s on it, past the scheduled-run watchdog.
+  it("reads the bundled manifests once, not for every provider check", async () => {
+    const loadPluginManifestRegistry = vi.fn(() => ({
+      plugins: [
+        {
+          id: "owner",
+          channels: [],
+          cliBackends: [],
+          hooks: [],
+          origin: "bundled",
+          manifestPath: "/tmp/owner/daisyclaw.plugin.json",
+          providers: ["alias"],
+          rootDir: "/tmp/owner",
+          skills: [],
+          source: "/tmp/owner/index.js",
+        },
+      ],
+      diagnostics: [],
+    }));
+    const loadBundledPluginPublicArtifactModuleSync = vi.fn(({ dirName }: { dirName: string }) => {
+      if (dirName !== "owner") {
+        throw new Error(`Unable to resolve bundled plugin public surface ${dirName}`);
+      }
+      return { resolveThinkingProfile: () => ({ levels: [{ id: "owner" }] }) };
+    });
+    delete process.env.DAISYCLAW_BUNDLED_PLUGINS_DIR;
+    vi.doMock("./bundled-dir.js", () => ({ resolveBundledPluginsDir: () => "/tmp/bundled" }));
+    vi.doMock("./manifest-registry.js", async (importOriginal) => {
+      const actual = await importOriginal<typeof import("./manifest-registry.js")>();
+      return { ...actual, loadPluginManifestRegistry };
+    });
+    vi.doMock("./public-surface-loader.js", () => ({
+      loadBundledPluginPublicArtifactModuleSync,
+    }));
+
+    const { resolveBundledProviderPolicySurface: resolvePolicySurface } = await importFreshModule<
+      typeof import("./provider-public-artifacts.js")
+    >(import.meta.url, "./provider-public-artifacts.js?scope=bundled-manifests-once");
+
+    expect(resolvePolicySurface("alias")?.resolveThinkingProfile).toBeTypeOf("function");
+    expect(resolvePolicySurface("alias")?.resolveThinkingProfile).toBeTypeOf("function");
+    expect(resolvePolicySurface("litellm")).toBeNull();
+    expect(resolvePolicySurface("litellm")).toBeNull();
+    expect(loadPluginManifestRegistry).toHaveBeenCalledTimes(1);
+  });
 });

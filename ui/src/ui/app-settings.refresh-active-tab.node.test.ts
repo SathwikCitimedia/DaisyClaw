@@ -55,6 +55,7 @@ const mocks = vi.hoisted(() => ({
   loadSkillsMock: vi.fn(async () => {}),
   loadUsageMock: vi.fn(async () => {}),
   loadWorkboardMock: vi.fn(async () => {}),
+  loadAccountSignInMock: vi.fn(async () => {}),
   startDebugPollingMock: vi.fn(),
   startLogsPollingMock: vi.fn(),
   startNodesPollingMock: vi.fn(),
@@ -136,6 +137,9 @@ vi.mock("./controllers/sessions.ts", () => ({
 }));
 vi.mock("./controllers/skills.ts", () => ({
   loadSkills: mocks.loadSkillsMock,
+}));
+vi.mock("./controllers/account-sign-in.ts", () => ({
+  loadAccountSignIn: mocks.loadAccountSignInMock,
 }));
 vi.mock("./controllers/usage.ts", () => ({
   loadUsage: mocks.loadUsageMock,
@@ -422,6 +426,8 @@ describe("refreshActiveTab", () => {
     expect(outcome).toBe("resolved");
     expect(mocks.loadConfigSchemaMock).toHaveBeenCalledOnce();
     expect(mocks.loadConfigMock).toHaveBeenCalledOnce();
+    // Settings also asks each signed-in account for its real state.
+    expect(mocks.loadAccountSignInMock).toHaveBeenCalledOnce();
     expect(host.requestUpdate).not.toHaveBeenCalled();
 
     schema.resolve();

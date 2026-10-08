@@ -16,7 +16,7 @@ import {
 } from "../chat/attachment-payload-store.ts";
 import { renderChatQueue } from "../chat/chat-queue.ts";
 import { buildRawSidebarContent } from "../chat/chat-sidebar-raw.ts";
-import { renderWelcomeState } from "../chat/chat-welcome.ts";
+import { renderWelcomeGreeting, renderWelcomeSuggestions } from "../chat/chat-welcome.ts";
 import { renderChatSessionSelect } from "../chat/session-controls.ts";
 import type { GatewayBrowserClient } from "../gateway.ts";
 import type { GatewaySessionRow, ModelCatalogEntry, SessionsListResult } from "../types.ts";
@@ -1911,8 +1911,10 @@ describe("chat attachment picker", () => {
     const nextAttachments = requireFirstAttachmentsChange(onAttachmentsChange);
     expect(getChatAttachmentDataUrl(nextAttachments[0])).toMatch(/^data:application\/pdf;base64,/);
     const preview = renderChatView({ attachments: nextAttachments });
-    expect(preview.querySelectorAll(".chat-attachment-thumb--file")).toHaveLength(1);
-    expect(preview.querySelector(".chat-attachment-file__name")?.textContent).toBe("brief.pdf");
+    expect(preview.querySelectorAll(".chat-attachments-preview .chat-file-card")).toHaveLength(1);
+    expect(preview.querySelector(".chat-file-card__name")?.textContent).toBe("brief.pdf");
+    expect(preview.querySelector(".chat-file-card__type")?.textContent).toBe("PDF");
+    expect(preview.querySelector(".chat-file-card .chat-attachment-remove")).not.toBeNull();
   });
 
   it("filters video file attachments", () => {
@@ -1989,6 +1991,77 @@ describe("chat queue", () => {
 
     expect(onQueueRetry).toHaveBeenCalledWith("failed-1");
   });
+
+  it("keeps sent messages out of the Queued panel and shows delivery under the bubble", () => {
+    const onQueueRetry = vi.fn();
+    const onQueueRemove = vi.fn();
+    const unconfirmed = "DaisyClaw didn't confirm this message. Retry won't send it twice.";
+    buildChatItemsMock.mockReturnValueOnce([
+      {
+        kind: "group",
+        key: "group:user:pending",
+        role: "user",
+        messages: [
+          {
+            key: "pending-send:sent-1",
+            message: {
+              role: "user",
+              content: "analyze this pdf",
+              timestamp: 2,
+              __daisyclaw: {
+                kind: "pending-send",
+                id: "sent-1",
+                state: "failed",
+                error: unconfirmed,
+              },
+            },
+          },
+        ],
+        timestamp: 2,
+        isStreaming: false,
+      },
+    ] as never);
+    renderMessageGroupMock.mockClear();
+
+    const container = renderChatView({
+      onQueueRetry,
+      onQueueRemove,
+      queue: [
+        {
+          id: "sent-1",
+          text: "analyze this pdf",
+          createdAt: 2,
+          sendSubmittedAtMs: 10,
+          sendRunId: "run-sent-1",
+          sendState: "failed",
+          sendError: unconfirmed,
+        },
+        { id: "queued-1", text: "after the reply", createdAt: 3 },
+      ],
+    });
+
+    expect(container.querySelectorAll(".chat-queue__item")).toHaveLength(1);
+    expect(container.querySelector(".chat-queue__text")?.textContent?.trim()).toBe(
+      "after the reply",
+    );
+    const opts = (renderMessageGroupMock.mock.calls.at(-1) as unknown[] | undefined)?.[1] as
+      | {
+          sendStatuses?: Array<{
+            state: string;
+            error?: string;
+            onRetry?: () => void;
+            onRemove?: () => void;
+          }>;
+        }
+      | undefined;
+    expect(opts?.sendStatuses).toEqual([
+      expect.objectContaining({ state: "failed", error: unconfirmed }),
+    ]);
+    opts?.sendStatuses?.[0]?.onRetry?.();
+    opts?.sendStatuses?.[0]?.onRemove?.();
+    expect(onQueueRetry).toHaveBeenCalledWith("sent-1");
+    expect(onQueueRemove).toHaveBeenCalledWith("sent-1");
+  });
 });
 
 describe("chat sidebar raw content", () => {
@@ -2029,64 +2102,56 @@ describe("chat sidebar raw content", () => {
 });
 
 describe("chat welcome", () => {
-  afterEach(async () => {
-    await i18n.setLocale("en");
+  it("greets the user by name when Daisy knows it, plainly when not", () => {
+    const named = document.createElement("div");
+    render(renderWelcomeGreeting({ userName: "Bunty" }), named);
+    expect(named.querySelector(".agent-chat__greeting")?.textContent?.trim()).toBe(
+      "How can I help, Bunty?",
+    );
+
+    const unnamed = document.createElement("div");
+    render(renderWelcomeGreeting({ userName: null }), unnamed);
+    expect(unnamed.querySelector(".agent-chat__greeting")?.textContent?.trim()).toBe(
+      "How can I help?",
+    );
+
+    render(renderWelcomeGreeting({ userName: "   " }), unnamed);
+    expect(unnamed.querySelector(".agent-chat__greeting")?.textContent?.trim()).toBe(
+      "How can I help?",
+    );
   });
 
-  function renderWelcome(params: {
-    assistantAvatar: string | null;
-    assistantAvatarUrl?: string | null;
-  }) {
+  it("offers ideas that send straight away when picked", () => {
+    const onDraftChange = vi.fn();
+    const onSend = vi.fn();
     const container = document.createElement("div");
     render(
-      renderWelcomeState({
-        assistantName: "Val",
-        assistantAvatar: params.assistantAvatar,
-        assistantAvatarUrl: params.assistantAvatarUrl,
-        onDraftChange: () => undefined,
-        onSend: () => undefined,
+      renderWelcomeSuggestions({
+        assistantName: "Daisy",
+        assistantAvatar: null,
+        onDraftChange,
+        onSend,
       }),
       container,
     );
-    return container;
-  }
-
-  it("renders configured assistant avatars and fallback in the welcome state", () => {
-    let container = renderWelcome({ assistantAvatar: "VC", assistantAvatarUrl: null });
-
-    const avatar = container.querySelector<HTMLElement>(".agent-chat__avatar");
-    expect(avatar?.tagName).toBe("DIV");
-    expect(avatar?.textContent?.trim()).toBe("VC");
-    expect(avatar?.getAttribute("aria-label")).toBe("Val");
-
-    container = renderWelcome({
-      assistantAvatar: "avatars/val.png",
-      assistantAvatarUrl: "blob:identity-avatar",
-    });
-
-    const imageAvatar = container.querySelector<HTMLImageElement>("img");
-    expect(imageAvatar?.getAttribute("src")).toBe("blob:identity-avatar");
-    expect(imageAvatar?.getAttribute("alt")).toBe("Val");
-
-    container = renderWelcome({ assistantAvatar: null, assistantAvatarUrl: null });
-
-    const fallbackAvatar = container.querySelector<HTMLImageElement>(
-      ".agent-chat__avatar--logo img",
-    );
-    expect(fallbackAvatar?.getAttribute("src")).toBe("apple-touch-icon.png");
-    expect(fallbackAvatar?.getAttribute("alt")).toBe("Val");
+    const first = container.querySelector<HTMLButtonElement>(".agent-chat__suggestion");
+    expect(first?.textContent?.trim()).toBe("What can you help me with?");
+    first?.click();
+    expect(onDraftChange).toHaveBeenCalledWith("What can you help me with?");
+    expect(onSend).toHaveBeenCalledTimes(1);
   });
 
-  it("renders welcome text from the active locale", async () => {
-    await i18n.setLocale("zh-CN");
-    const container = renderWelcome({ assistantAvatar: "VC", assistantAvatarUrl: null });
-
-    expect(container.querySelector(".agent-chat__badge")?.textContent?.trim()).toBe(
-      t("chat.welcome.ready"),
-    );
-    expect(container.querySelector(".agent-chat__suggestion")?.textContent?.trim()).toBe(
-      t("chat.welcome.suggestions.whatCanYouDo"),
-    );
+  it("puts the empty chat in the middle and moves to the normal layout once it has messages", () => {
+    const empty = renderChatView({ sessionKey: "welcome-layout", messages: [] });
+    const main = empty.querySelector(".chat-main");
+    expect(main?.classList.contains("chat-main--welcome")).toBe(true);
+    // Greeting above the box, ideas below it.
+    const order = [
+      ...main!.querySelectorAll(
+        ".agent-chat__greeting, .agent-chat__input, .agent-chat__suggestions--welcome",
+      ),
+    ].map((el) => el.className.split(" ")[0]);
+    expect(order).toEqual(["agent-chat__greeting", "agent-chat__input", "agent-chat__suggestions"]);
   });
 });
 

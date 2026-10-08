@@ -12,10 +12,12 @@ import { resolveHeartbeatVisibility } from "../infra/heartbeat-visibility.js";
 import { isAcpSessionKey, isSubagentSessionKey } from "../sessions/session-key-utils.js";
 import { setSafeTimeout } from "../utils/timer-delay.js";
 import {
+  collectLiveAssistantMediaUrls,
   normalizeLiveAssistantEventText,
   projectLiveAssistantBufferedText,
   resolveMergedAssistantText,
   shouldSuppressAssistantEventForLiveChat,
+  withLiveAssistantMedia,
 } from "./live-chat-projector.js";
 import type {
   BufferedAgentEvent,
@@ -615,15 +617,24 @@ export function createAgentEventHandler({
     seq: number,
     text: string,
     delta?: unknown,
-    opts?: { controlUiVisible?: boolean },
+    opts?: { controlUiVisible?: boolean; mediaUrls?: readonly string[] },
   ) => {
     const cleaned = normalizeLiveAssistantEventText({ text, delta });
     const previousRawText = chatRunState.rawBuffers.get(clientRunId) ?? "";
-    const mergedRawText = resolveMergedAssistantText({
-      previousText: previousRawText,
-      nextText: cleaned.text,
-      nextDelta: cleaned.delta,
-    });
+    const seenMedia = chatRunState.liveMediaUrls.get(clientRunId) ?? [];
+    const newMedia = (opts?.mediaUrls ?? []).filter((url) => !seenMedia.includes(url));
+    const liveMedia = newMedia.length > 0 ? [...seenMedia, ...newMedia] : seenMedia;
+    if (newMedia.length > 0) {
+      chatRunState.liveMediaUrls.set(clientRunId, liveMedia);
+    }
+    const mergedRawText = withLiveAssistantMedia(
+      resolveMergedAssistantText({
+        previousText: previousRawText,
+        nextText: cleaned.text,
+        nextDelta: cleaned.delta,
+      }),
+      liveMedia,
+    );
     if (!mergedRawText) {
       return;
     }
@@ -1224,6 +1235,7 @@ export function createAgentEventHandler({
           evt.data.delta,
           {
             controlUiVisible: isControlUiVisible,
+            mediaUrls: collectLiveAssistantMediaUrls(evt.data),
           },
         );
       }

@@ -57,7 +57,12 @@ Use `spogo` **(preferred)** for Spotify playback/search. Fall back to `spotify_p
 Requirements
 
 - Spotify Premium account.
-- Either `spogo` or `spotify_player` installed.
+- Either `spogo` or `spotify_player` installed (on Windows only `spotify_player` is available).
+
+spotify_player sign-in
+
+- Settings → Connections → Spotify signs the user in (it runs `spotify_player authenticate`, which opens Spotify's login page in their browser; Spotify may ask to approve twice).
+- Check: `~/.cache/spotify-player/user_client_token.json` exists once signed in.
 
 spogo setup
 

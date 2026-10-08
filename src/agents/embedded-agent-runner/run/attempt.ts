@@ -3296,6 +3296,7 @@ export async function runEmbeddedAttempt(
           onExecutionPhase: params.onExecutionPhase,
           onAgentEvent: params.onAgentEvent,
           terminalLifecyclePhase: params.deferTerminalLifecycleEnd ? "finishing" : "end",
+          holdRecoverableOverflowError: params.holdRecoverableOverflowError,
           isTerminalAborted: () => aborted,
           onBeforeLifecycleTerminal: () => {
             if (

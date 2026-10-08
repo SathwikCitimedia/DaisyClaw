@@ -428,8 +428,29 @@ function appendCronDeliveryInstruction(params: {
       : "with an explicit target";
     return `${params.commandBody}\n\nUse the message tool if you need to notify the user directly ${targetHint}. If you do not send directly, your final plain-text reply will be delivered automatically.`.trim();
   }
-  return `${params.commandBody}\n\nReturn your response as plain text; it will be delivered automatically. If the task explicitly calls for messaging a specific external recipient, note who/where it should go instead of sending it yourself.`.trim();
+  // Only chat messages are held back, since the reply itself is delivered.
+  // Read more broadly, this used to stop a job set up to email someone from
+  // sending the email.
+  return `${params.commandBody}\n\nReturn your response as plain text; it will be delivered automatically. If the task asks you to message someone through a chat app, say who and where it should go instead of sending it yourself. Do carry out anything else the task asks for, such as sending an email.`.trim();
 }
+
+/**
+ * Said to every scheduled run. A job's text is often the user's own request,
+ * schedule and all ("every 20 min email Sam… until I stop"). Read
+ * literally, runs set about creating that schedule again instead of doing the
+ * work, so each run is told that the schedule exists and the task is due now.
+ *
+ * No one is at the screen during a run either. One that found the Google
+ * sign-in expired started a new browser sign-in and waited for it, which can
+ * pop a window up every run; it should stop and say what the user must do.
+ */
+export const CRON_SINGLE_RUN_INSTRUCTION =
+  "This message comes from a scheduled job that is already set up and running. Do the task once, now. " +
+  'Any timing in it, such as "every 20 minutes", "starting at 4 PM" or "until I stop", describes that schedule, ' +
+  "which is handled for you: do not create, change or remove scheduled jobs. " +
+  "No one is watching this run, so do not start anything that needs the user, such as signing in to an account " +
+  "or opening a browser window. If a sign-in has expired or something else needs them, stop and say plainly what " +
+  "they need to do, for example reconnect the account in Settings → Connections.";
 
 function resolvePositiveContextTokens(value: unknown): number | undefined {
   return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : undefined;
@@ -554,12 +575,17 @@ async function prepareCronRunContext(params: {
     agents: Object.assign({}, runtimeCfg.agents, { defaults: agentCfg }),
   };
   let catalog: Awaited<ReturnType<CronModelCatalogRuntime["loadModelCatalog"]>> | undefined;
+  // The catalog only picks the thinking level here, and the saved copy answers
+  // that in about a second. A fresh build discovers every provider and took over
+  // three minutes on a cold gateway, far past the 60 s setup watchdog, so every
+  // run that found the cache cold failed before the agent started.
   const loadCatalog = async () => {
     if (!catalog) {
       catalog = await (
         await loadCronModelCatalogRuntime()
       ).loadModelCatalog({
         config: cfgWithAgentDefaults,
+        readOnly: true,
       });
     }
     return catalog;
@@ -815,7 +841,7 @@ async function prepareCronRunContext(params: {
     });
     commandBody = `${safeContent}\n\n${timeLine}`.trim();
   } else {
-    commandBody = `${base}\n${timeLine}`.trim();
+    commandBody = `${base}\n${timeLine}\n\n${CRON_SINGLE_RUN_INSTRUCTION}`.trim();
   }
   commandBody = appendCronDeliveryInstruction({
     commandBody,

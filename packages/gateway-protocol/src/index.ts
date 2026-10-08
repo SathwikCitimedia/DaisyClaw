@@ -136,6 +136,24 @@ import {
   ChatRecommendActionsParamsSchema,
   type ChatRecommendActionsResult,
   ChatRecommendActionsResultSchema,
+  type ChatSearchParams,
+  ChatSearchParamsSchema,
+  type ConnectionsCancelParams,
+  ConnectionsCancelParamsSchema,
+  type ConnectionsCheckKeysParams,
+  ConnectionsCheckKeysParamsSchema,
+  type ConnectionsCheckKeysResult,
+  ConnectionsCheckKeysResultSchema,
+  type ConnectionsConnectParams,
+  ConnectionsConnectParamsSchema,
+  type ConnectionsDisconnectParams,
+  ConnectionsDisconnectParamsSchema,
+  type ConnectionsGoogleSetClientParams,
+  ConnectionsGoogleSetClientParamsSchema,
+  type ConnectionsStatusParams,
+  ConnectionsStatusParamsSchema,
+  type ChatSearchResult,
+  ChatSearchResultSchema,
   type RecommendableActionId,
   RECOMMENDABLE_ACTION_IDS,
   type ChatInjectParams,
@@ -176,6 +194,10 @@ import {
   CronRunParamsSchema,
   type CronRunsParams,
   CronRunsParamsSchema,
+  type CronDraftParams,
+  CronDraftParamsSchema,
+  type CronDraftResult,
+  CronDraftResultSchema,
   type CronStatusParams,
   CronStatusParamsSchema,
   type CronUpdateParams,
@@ -825,6 +847,7 @@ export const validateCronUpdateParams = lazyCompile<CronUpdateParams>(CronUpdate
 export const validateCronRemoveParams = lazyCompile<CronRemoveParams>(CronRemoveParamsSchema);
 export const validateCronRunParams = lazyCompile<CronRunParams>(CronRunParamsSchema);
 export const validateCronRunsParams = lazyCompile<CronRunsParams>(CronRunsParamsSchema);
+export const validateCronDraftParams = lazyCompile<CronDraftParams>(CronDraftParamsSchema);
 export const validateDevicePairListParams = lazyCompile<DevicePairListParams>(
   DevicePairListParamsSchema,
 );
@@ -888,6 +911,25 @@ export const validateChatRecommendActionsParams = lazyCompile<ChatRecommendActio
 );
 export const validateChatRecommendActionsResult = lazyCompile<ChatRecommendActionsResult>(
   ChatRecommendActionsResultSchema,
+);
+export const validateChatSearchParams = lazyCompile<ChatSearchParams>(ChatSearchParamsSchema);
+export const validateChatSearchResult = lazyCompile<ChatSearchResult>(ChatSearchResultSchema);
+export const validateConnectionsStatusParams = lazyCompile<ConnectionsStatusParams>(
+  ConnectionsStatusParamsSchema,
+);
+export const validateConnectionsGoogleSetClientParams =
+  lazyCompile<ConnectionsGoogleSetClientParams>(ConnectionsGoogleSetClientParamsSchema);
+export const validateConnectionsConnectParams = lazyCompile<ConnectionsConnectParams>(
+  ConnectionsConnectParamsSchema,
+);
+export const validateConnectionsCancelParams = lazyCompile<ConnectionsCancelParams>(
+  ConnectionsCancelParamsSchema,
+);
+export const validateConnectionsDisconnectParams = lazyCompile<ConnectionsDisconnectParams>(
+  ConnectionsDisconnectParamsSchema,
+);
+export const validateConnectionsCheckKeysParams = lazyCompile<ConnectionsCheckKeysParams>(
+  ConnectionsCheckKeysParamsSchema,
 );
 export const validateChatSendParams = lazyCompile(ChatSendParamsSchema);
 export const validateChatAbortParams = lazyCompile<ChatAbortParams>(ChatAbortParamsSchema);
@@ -991,6 +1033,15 @@ export {
   ChatEventSchema,
   ChatRecommendActionsParamsSchema,
   ChatRecommendActionsResultSchema,
+  ChatSearchParamsSchema,
+  ChatSearchResultSchema,
+  ConnectionsCancelParamsSchema,
+  ConnectionsCheckKeysParamsSchema,
+  ConnectionsCheckKeysResultSchema,
+  ConnectionsConnectParamsSchema,
+  ConnectionsDisconnectParamsSchema,
+  ConnectionsGoogleSetClientParamsSchema,
+  ConnectionsStatusParamsSchema,
   RECOMMENDABLE_ACTION_IDS,
   SendParamsSchema,
   PollParamsSchema,
@@ -1160,6 +1211,8 @@ export {
   CronRemoveParamsSchema,
   CronRunParamsSchema,
   CronRunsParamsSchema,
+  CronDraftParamsSchema,
+  CronDraftResultSchema,
   LogsTailParamsSchema,
   LogsTailResultSchema,
   ExecApprovalsGetParamsSchema,
@@ -1201,6 +1254,15 @@ export type {
   ChatEvent,
   ChatRecommendActionsParams,
   ChatRecommendActionsResult,
+  ChatSearchParams,
+  ChatSearchResult,
+  ConnectionsCancelParams,
+  ConnectionsCheckKeysParams,
+  ConnectionsCheckKeysResult,
+  ConnectionsConnectParams,
+  ConnectionsDisconnectParams,
+  ConnectionsGoogleSetClientParams,
+  ConnectionsStatusParams,
   RecommendableActionId,
   TickEvent,
   ShutdownEvent,
@@ -1369,6 +1431,8 @@ export type {
   CronRemoveParams,
   CronRunParams,
   CronRunsParams,
+  CronDraftParams,
+  CronDraftResult,
   CronRunLogEntry,
   ExecApprovalsGetParams,
   ExecApprovalsSetParams,

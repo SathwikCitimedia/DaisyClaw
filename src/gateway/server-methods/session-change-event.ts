@@ -1,7 +1,7 @@
 // Shared sessions.changed broadcaster for gateway RPC and chat-command mutations.
 import { resolveDefaultAgentId } from "../../agents/agent-scope.js";
 import { loadGatewaySessionRow } from "../session-utils.js";
-import { hasTrackedActiveSessionRun } from "./session-active-runs.js";
+import { withTrackedActiveSessionRun } from "./session-active-runs.js";
 import type { GatewayRequestContext } from "./types.js";
 
 export type SessionChangedPayload = {
@@ -35,6 +35,23 @@ export function emitSessionsChanged(
     : null;
   const omitUnscopedGlobalGoal = payload.sessionKey === "global" && !payload.agentId;
   const defaultAgentId = resolveDefaultAgentId(context.getRuntimeConfig());
+  const runState = sessionRow
+    ? withTrackedActiveSessionRun(
+        {
+          status: sessionRow.status,
+          startedAt: sessionRow.startedAt,
+          endedAt: sessionRow.endedAt,
+          runtimeMs: sessionRow.runtimeMs,
+        },
+        {
+          context,
+          requestedKey: payload.sessionKey ?? sessionRow.key,
+          canonicalKey: sessionRow.key,
+          agentId: sessionRow.key === "global" ? payload.agentId : undefined,
+          defaultAgentId,
+        },
+      )
+    : null;
   context.broadcastToConnIds(
     "sessions.changed",
     {
@@ -86,17 +103,11 @@ export function emitSessionsChanged(
             responseUsage: sessionRow.responseUsage,
             modelProvider: sessionRow.modelProvider,
             model: sessionRow.model,
-            status: sessionRow.status,
-            hasActiveRun: hasTrackedActiveSessionRun({
-              context,
-              requestedKey: payload.sessionKey ?? sessionRow.key,
-              canonicalKey: sessionRow.key,
-              agentId: sessionRow.key === "global" ? payload.agentId : undefined,
-              defaultAgentId,
-            }),
-            startedAt: sessionRow.startedAt,
-            endedAt: sessionRow.endedAt,
-            runtimeMs: sessionRow.runtimeMs,
+            status: runState?.status,
+            hasActiveRun: runState?.hasActiveRun ?? false,
+            startedAt: runState?.startedAt,
+            endedAt: runState?.endedAt,
+            runtimeMs: runState?.runtimeMs,
             compactionCheckpointCount: sessionRow.compactionCheckpointCount,
             latestCompactionCheckpoint: sessionRow.latestCompactionCheckpoint,
             pluginExtensions: sessionRow.pluginExtensions,

@@ -98,6 +98,17 @@ export type SpendingConfig = {
    * calendar month. Omitted or zero means no limit.
    */
   monthlyLimitUsd?: number;
+  /**
+   * ISO 4217 code that amounts are shown in, e.g. "INR". Providers bill in US
+   * dollars, so this only changes what the user sees. Omitted means it is
+   * picked from the viewer's time zone and region.
+   */
+  currency?: string;
+  /**
+   * The limit exactly as the user typed it, in `currency`, so the box keeps
+   * their number. Display only: enforcement reads `monthlyLimitUsd`.
+   */
+  monthlyLimit?: number;
 };
 
 export type DaisyClawConfig = {

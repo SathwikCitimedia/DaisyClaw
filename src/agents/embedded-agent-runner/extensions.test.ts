@@ -3,6 +3,7 @@ import type { SessionManager } from "daisyclaw/plugin-sdk/agent-sessions";
 import type { Model } from "daisyclaw/plugin-sdk/llm";
 import { describe, expect, it, vi } from "vitest";
 import type { DaisyClawConfig } from "../../config/config.js";
+import answeredToolResultsExtension from "../agent-hooks/answered-tool-results.js";
 import { getCompactionSafeguardRuntime } from "../agent-hooks/compaction-safeguard-runtime.js";
 import compactionSafeguardExtension from "../agent-hooks/compaction-safeguard.js";
 import contextPruningExtension from "../agent-hooks/context-pruning.js";
@@ -144,5 +145,25 @@ describe("buildEmbeddedExtensionFactories", () => {
     });
 
     expect(factories).toContain(contextPruningExtension);
+  });
+
+  it("shortens answered tool output for providers without a prompt cache only", () => {
+    const uncached = buildEmbeddedExtensionFactories({
+      cfg: undefined,
+      sessionManager: {} as SessionManager,
+      provider: "litellm",
+      modelId: "claude-sonnet-4-5",
+      model: { api: "openai-completions", contextWindow: 200_000 } as Model,
+    });
+    const cached = buildEmbeddedExtensionFactories({
+      cfg: undefined,
+      sessionManager: {} as SessionManager,
+      provider: "litellm",
+      modelId: "claude-sonnet-4-6",
+      model: { api: "anthropic-messages", contextWindow: 200_000 } as Model,
+    });
+
+    expect(uncached).toContain(answeredToolResultsExtension);
+    expect(cached).not.toContain(answeredToolResultsExtension);
   });
 });

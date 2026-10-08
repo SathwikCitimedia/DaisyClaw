@@ -5,6 +5,7 @@ import { randomUUID } from "node:crypto";
 import { normalizeOptionalLowercaseString } from "@daisyclaw/normalization-core/string-coerce";
 import type { DaisyClawConfig } from "../../config/types.daisyclaw.js";
 import type { ProviderRuntimeModel } from "../../plugins/provider-runtime-model.types.js";
+import answeredToolResultsExtension from "../agent-hooks/answered-tool-results.js";
 import { setCompactionSafeguardRuntime } from "../agent-hooks/compaction-safeguard-runtime.js";
 import compactionSafeguardExtension from "../agent-hooks/compaction-safeguard.js";
 import contextPruningExtension from "../agent-hooks/context-pruning.js";
@@ -185,6 +186,12 @@ export function buildEmbeddedExtensionFactories(params: {
     factories.push(pruningFactory);
   }
   factories.push(buildAgentToolResultMiddlewareFactory());
+  // Without a prompt cache the model reads the whole conversation again on
+  // every call, so old tool output is pure delay. Cached providers keep the
+  // exact history (opt-in context pruning trims it on their cache's terms).
+  if (!isCacheTtlEligibleProvider(params.provider, params.modelId, params.model?.api)) {
+    factories.push(answeredToolResultsExtension);
+  }
   return factories;
 }
 

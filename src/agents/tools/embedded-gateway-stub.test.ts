@@ -121,6 +121,8 @@ describe("embedded gateway stub", () => {
 
     expect(runtime.projectRecentChatDisplayMessages).toHaveBeenCalledWith(rawMessages, {
       maxChars: 100_000,
+      // History read by the model keeps replies at the same tight cap.
+      replyMaxChars: 100_000,
       maxMessages: 200,
     });
     expect(runtime.readSessionMessagesAsync).toHaveBeenCalledWith(
@@ -183,6 +185,8 @@ describe("embedded gateway stub", () => {
 
     expect(runtime.projectRecentChatDisplayMessages).toHaveBeenCalledWith(rawMessages, {
       maxChars: 100_000,
+      // History read by the model keeps replies at the same tight cap.
+      replyMaxChars: 100_000,
       maxMessages: 1,
     });
     expect(runtime.readSessionMessagesAsync).toHaveBeenCalledWith(
@@ -212,6 +216,8 @@ describe("embedded gateway stub", () => {
 
     expect(runtime.projectRecentChatDisplayMessages).toHaveBeenCalledWith(rawMessages, {
       maxChars: 100_000,
+      // History read by the model keeps replies at the same tight cap.
+      replyMaxChars: 100_000,
       maxMessages: 2,
     });
     expect(runtime.readSessionMessagesAsync).toHaveBeenCalledWith(

@@ -429,3 +429,76 @@
     flex: 1 1 100%;
   }
 }
+
+/* ── Custom schedule: any interval and a start time ── */
+
+.cqc-custom {
+  display: grid;
+  gap: 6px;
+  margin-top: 16px;
+  padding: 14px;
+  border: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--accent) 4%, var(--card));
+}
+
+.cqc-custom .cqc-field__label {
+  margin: 4px 0 0;
+}
+
+.cqc-custom__row {
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr);
+  gap: 8px;
+}
+
+.cqc-custom .cqc-body__hint {
+  margin: 0;
+}
+
+/* Says the step-one sentence was split, and shows the task it became. */
+.cqc-split-note {
+  display: grid;
+  gap: 4px;
+  margin: -8px 0 16px;
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  font-size: 0.8125rem;
+  color: var(--text);
+}
+
+.cqc-split-note__task {
+  font-weight: 600;
+  color: var(--text-strong, var(--text));
+}
+
+/* The whole job in one line, just before Create. */
+.cqc-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 16px;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
+  border-radius: var(--radius-md);
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  color: var(--text);
+}
+
+.cqc-summary__label {
+  font-weight: 600;
+  color: var(--text-strong, var(--text));
+}
+
+/* Why Create did not work, right above the button that failed. */
+.cqc-error {
+  margin: -12px 0 16px;
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  background: var(--danger-subtle);
+  color: var(--danger);
+  font-size: 0.8125rem;
+  line-height: 1.5;
+}

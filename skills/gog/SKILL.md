@@ -59,9 +59,20 @@ Use `gog` for Gmail/Calendar/Drive/Contacts/Sheets/Docs. Requires OAuth setup.
 
 Setup (once)
 
-- `gog auth credentials /path/to/client_secret.json`
-- `gog auth add you@gmail.com --services gmail,calendar,drive,contacts,docs,sheets`
-- `gog auth list`
+The user signs in with their own Google sign-in app. Settings → Connections → Google
+walks them through it and runs the commands for them; when helping in chat, guide them
+through the same steps and point them there for the file upload and sign-in:
+
+1. Create a Google Cloud project: https://console.cloud.google.com/projectcreate
+2. Enable the APIs for it: https://console.cloud.google.com/flows/enableapi?apiid=gmail.googleapis.com,calendar-json.googleapis.com,drive.googleapis.com,people.googleapis.com,docs.googleapis.com,sheets.googleapis.com
+3. Set up the sign-in screen (https://console.cloud.google.com/auth/overview): Get started, a name, audience External, their email. Then Audience → Publish app; while it stays in "Testing", Google expires the login every 7 days.
+4. Create a client (https://console.cloud.google.com/auth/clients/create): type "Desktop app", then Download JSON.
+5. Store the file and sign in (Settings does both):
+   - `gog auth credentials set /path/to/client_secret.json`
+   - `gog auth add you@gmail.com --services gmail,calendar,drive,contacts,docs,sheets`
+   - Google warns the app isn't verified: it is their own app, so Advanced → Continue.
+
+- Check: `gog auth list`
 
 Common commands
 

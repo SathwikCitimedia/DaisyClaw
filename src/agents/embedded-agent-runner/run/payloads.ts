@@ -268,6 +268,8 @@ export function buildEmbeddedRunPayloads(params: {
     interactive?: ReplyPayload["interactive"];
     channelData?: Record<string, unknown>;
     nonTerminalToolErrorWarning?: boolean;
+    /** Media parsed from the assistant's own answer text. */
+    mediaFromAssistantText?: boolean;
     sourceReplyMirror?: {
       idempotencyKey?: string;
     };
@@ -512,6 +514,7 @@ export function buildEmbeddedRunPayloads(params: {
     replyItems.push({
       text: cleanedText,
       media: mediaUrls,
+      ...((mediaUrls?.length ?? 0) > 0 ? { mediaFromAssistantText: true } : {}),
       audioAsVoice,
       replyToId,
       replyToTag,
@@ -597,6 +600,9 @@ export function buildEmbeddedRunPayloads(params: {
         setReplyPayloadMetadata(payload, {
           assistantMessageIndex: params.assistantMessageIndex,
         });
+      }
+      if (item.mediaFromAssistantText) {
+        setReplyPayloadMetadata(payload, { mediaFromAssistantText: true });
       }
       if (item.replyToId) {
         payload.replyToId = item.replyToId;

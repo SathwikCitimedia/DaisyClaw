@@ -19,6 +19,7 @@ import {
   resolveLocalUserAvatarText,
   resolveLocalUserAvatarUrl,
 } from "../user-identity.ts";
+import type { AccountSignInProps } from "./account-sign-in.ts";
 import {
   assistantAvatarFallbackUrl,
   resolveChatAvatarRenderUrl,
@@ -31,7 +32,12 @@ import {
   getPresetById,
   type ConfigPresetId,
 } from "./config-presets.ts";
-import { renderConnectionsCard, type ConnectionDefinition } from "./connections.ts";
+import {
+  renderConnectionsCard,
+  type ConnectionDefinition,
+  type ConnectionDialogState,
+} from "./connections.ts";
+import { renderSpendingCard, type SpendingCardProps } from "./spending-card.ts";
 
 // Outline icons for the context-profile preset cards (replaces the emoji
 // stored on each preset definition).
@@ -148,17 +154,16 @@ export type QuickSettingsProps = {
   connectionDrafts?: Readonly<Record<string, string>>;
   connectionBusyKey?: string | null;
   connectionNotice?: { skillKey: string; kind: "success" | "error"; message: string } | null;
+  connectionDialog?: ConnectionDialogState | null;
   onConnectionDraftChange?: (env: string, value: string) => void;
+  onConnectionDialogChange?: (dialog: ConnectionDialogState | null) => void;
   onConnectAccount?: (definition: ConnectionDefinition) => void;
+  onDisconnectAccount?: (definition: ConnectionDefinition) => void;
+  /** Browser sign-in for Google and Spotify. */
+  accountSignIn?: AccountSignInProps;
 
-  // Spending
-  /** Spent so far this calendar month, in dollars. */
-  spendingThisMonthUsd?: number | null;
-  /** The ceiling the user set, or null for none. */
-  spendingLimitUsd?: number | null;
-  /** True once the ceiling stopped Daisy making paid requests. */
-  spendingExceeded?: boolean;
-  onSpendingLimitChange?: (limitUsd: number | null) => void;
+  /** What Daisy has cost this month and the ceiling, in the user's currency. */
+  spending?: SpendingCardProps;
   supportBundleResult?: { ok: boolean; message: string } | null;
 
   // Connection
@@ -1222,79 +1227,6 @@ function renderResetCard(props: QuickSettingsProps) {
   `;
 }
 
-function formatSpend(value: number | null | undefined): string {
-  if (typeof value !== "number" || !Number.isFinite(value)) {
-    return "—";
-  }
-  return `$${value.toFixed(2)}`;
-}
-
-/**
- * What Daisy has cost this month, and the ceiling on it.
- *
- * The money goes straight to the user's own AI provider, so this is not a bill
- * from us: it is the only price they pay, and it used to be invisible until a
- * statement arrived weeks later.
- */
-function renderSpendingCard(props: QuickSettingsProps) {
-  if (!props.onSpendingLimitChange) {
-    return nothing;
-  }
-  const limit = props.spendingLimitUsd ?? null;
-  const spent = props.spendingThisMonthUsd ?? null;
-  const overLimit = props.spendingExceeded === true;
-  const nearLimit =
-    !overLimit && limit != null && typeof spent === "number" && spent >= limit * 0.8;
-  return html`
-    <div class="qs-card qs-card--spending" data-qs-spending>
-      ${renderCardHeader(icons.activity, "Spending")}
-      <div class="qs-card__body qs-spending">
-        <div class="qs-spending__figure">
-          <span class="qs-spending__amount" data-qs-spent>${formatSpend(spent)}</span>
-          <span class="qs-spending__caption">this month, paid to your AI provider</span>
-        </div>
-        ${overLimit
-          ? html`<p class="qs-spending__notice qs-spending__notice--stop">
-              Daisy has stopped making paid requests until you raise the limit or next month starts.
-            </p>`
-          : nearLimit
-            ? html`<p class="qs-spending__notice">
-                Close to your limit. Follow-up suggestions are paused to save what is left.
-              </p>`
-            : nothing}
-        <label class="qs-spending__limit">
-          <span>Stop after</span>
-          <span class="qs-spending__input">
-            <span aria-hidden="true">$</span>
-            <input
-              type="number"
-              min="0"
-              step="1"
-              inputmode="decimal"
-              data-qs-spending-limit
-              .value=${limit == null ? "" : String(limit)}
-              placeholder="no limit"
-              aria-label="Monthly spending limit in dollars"
-              @change=${(event: Event) => {
-                const raw = (event.target as HTMLInputElement).value.trim();
-                const parsed = raw === "" ? null : Number(raw);
-                props.onSpendingLimitChange?.(
-                  parsed != null && Number.isFinite(parsed) && parsed > 0 ? parsed : null,
-                );
-              }}
-            />
-          </span>
-          <span>a month</span>
-        </label>
-        <p class="qs-spending__hint">
-          Leave it empty for no limit. Daisy warns you before it stops, and the count starts again
-          each month.
-        </p>
-      </div>
-    </div>
-  `;
-}
-
 function renderDiagnosticsCard(props: QuickSettingsProps) {
   if (!props.onCreateSupportBundle) {
     return nothing;
@@ -1374,12 +1306,17 @@ export function renderQuickSettings(props: QuickSettingsProps) {
               drafts: props.connectionDrafts ?? {},
               busyKey: props.connectionBusyKey,
               notice: props.connectionNotice,
+              dialog: props.connectionDialog,
               onDraftChange: (env, value) => props.onConnectionDraftChange?.(env, value),
+              onDialogChange: (dialog) => props.onConnectionDialogChange?.(dialog),
               onConnect: (definition) => props.onConnectAccount?.(definition),
+              onDisconnect: (definition) => props.onDisconnectAccount?.(definition),
+              signIn: props.accountSignIn,
             })
           : nothing}
-        ${renderSpendingCard(props)} ${operatorCards ? renderPresetsCard(props) : nothing}
-        ${renderDiagnosticsCard(props)} ${renderResetCard(props)}
+        ${props.spending ? renderSpendingCard(props.spending) : nothing}
+        ${operatorCards ? renderPresetsCard(props) : nothing} ${renderDiagnosticsCard(props)}
+        ${renderResetCard(props)}
       </div>
 
       ${renderConnectionFooter(props)}

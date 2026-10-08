@@ -3,7 +3,9 @@ import { describe, expect, it, vi } from "vitest";
 import { DEFAULT_CRON_FORM } from "../app-defaults.ts";
 import {
   addCronJob,
+  applyCronDraftToForm,
   cancelCronEdit,
+  draftCronJobFromText,
   loadCronModelSuggestions,
   loadCronJobsPage,
   loadCronRuns,
@@ -43,6 +45,9 @@ function createState(overrides: Partial<CronState> = {}): CronState {
     cronError: null,
     cronForm: { ...DEFAULT_CRON_FORM },
     cronFormCollapsed: false,
+    cronDraftText: "",
+    cronDraftBusy: false,
+    cronDraftError: null,
     cronFieldErrors: {},
     cronEditingJobId: null,
     cronRunsJobId: null,
@@ -152,6 +157,81 @@ describe("cron controller", () => {
     });
 
     expect(normalized.deliveryMode).toBe("announce");
+  });
+
+  it("sends a repeating job's start time so the first run happens then", async () => {
+    const request = vi.fn(async (method: string, _payload?: unknown) => {
+      if (method === "cron.add") {
+        return { id: "job-1" };
+      }
+      if (method === "cron.list") {
+        return { jobs: [] };
+      }
+      if (method === "cron.status") {
+        return { enabled: true, jobs: 0, nextWakeAtMs: null };
+      }
+      return {};
+    });
+    const state = createState({
+      client: { request } as unknown as CronState["client"],
+      cronForm: {
+        ...DEFAULT_CRON_FORM,
+        name: "Atlas update",
+        scheduleKind: "every",
+        everyAmount: "20",
+        everyUnit: "minutes",
+        everyStartAt: "2026-10-06T16:05",
+        sessionTarget: "isolated",
+        payloadKind: "agentTurn",
+        payloadText: "Email Sam for an update.",
+      },
+    });
+
+    expect(await addCronJob(state)).toBe(true);
+
+    const payload = requestPayload(findRequestCall(request.mock.calls, "cron.add"));
+    expectNestedRecordFields(payload, "schedule", {
+      kind: "every",
+      everyMs: 20 * 60_000,
+      anchorMs: Date.parse("2026-10-06T16:05"),
+    });
+  });
+
+  it("fills the form from a sentence: the task alone, the timing in the schedule", () => {
+    const next = applyCronDraftToForm(DEFAULT_CRON_FORM, {
+      name: "Atlas update",
+      task: "Email Sam for an update.",
+      schedule: { kind: "every", amount: 20, unit: "minutes", startAt: "2026-10-06T16:05" },
+    });
+    expect(next).toMatchObject({
+      name: "Atlas update",
+      payloadKind: "agentTurn",
+      payloadText: "Email Sam for an update.",
+      scheduleKind: "every",
+      everyAmount: "20",
+      everyUnit: "minutes",
+      everyStartAt: "2026-10-06T16:05",
+    });
+  });
+
+  it("shows why a sentence could not be drafted", async () => {
+    const request = vi.fn(async () => ({
+      ok: false,
+      reason: "Couldn't tell when this should run.",
+    }));
+    const state = createState({
+      client: { request } as unknown as CronState["client"],
+      cronDraftText: "email Sam",
+    });
+
+    await draftCronJobFromText(state);
+
+    expect(state.cronDraftError).toBe("Couldn't tell when this should run.");
+    expect(state.cronDraftBusy).toBe(false);
+    expect(request).toHaveBeenCalledWith(
+      "cron.draft",
+      expect.objectContaining({ text: "email Sam", now: expect.any(String) }),
+    );
   });
 
   it("forwards webhook delivery in cron.add payload", async () => {

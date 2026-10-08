@@ -90,6 +90,22 @@ describe("runCronIsolatedAgentTurn model overrides", () => {
     vi.useRealTimers();
   });
 
+  // A fresh catalog build discovers every provider and took over three minutes
+  // on a cold gateway, so runs died at the 60 s setup watchdog before starting.
+  it("reads the saved model catalog instead of rebuilding it", async () => {
+    await withTempHome(async (home) => {
+      const { res } = await runCronTurn(home, {
+        jobPayload: { kind: "agentTurn", message: DEFAULT_MESSAGE },
+      });
+
+      expect(res.status).toBe("ok");
+      expect(vi.mocked(loadModelCatalog)).toHaveBeenCalled();
+      for (const [params] of vi.mocked(loadModelCatalog).mock.calls) {
+        expect(params).toMatchObject({ readOnly: true });
+      }
+    });
+  });
+
   it("treats blank model overrides as unset", async () => {
     await withTempHome(async (home) => {
       const { res } = await runCronTurn(home, {

@@ -730,7 +730,60 @@
 
 .sidebar-recent-sessions__list {
   display: grid;
+  gap: 10px;
+  /* Up to 30 chats: scroll inside the list so the menu below stays in reach. */
+  max-height: min(46vh, 520px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+
+.sidebar-chat-section {
+  display: grid;
   gap: 4px;
+}
+
+.sidebar-chat-section__label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 10px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.sidebar-chat-section__label svg {
+  width: 11px;
+  height: 11px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 2px;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.sidebar-chat-see-all {
+  justify-self: start;
+  margin: 0 4px;
+  padding: 4px 6px;
+  border: none;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.sidebar-chat-see-all:hover {
+  color: var(--text);
+  background: color-mix(in srgb, var(--bg-hover) 72%, transparent);
+}
+
+.sidebar-chat-see-all:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
 }
 
 .sidebar-session-select {
@@ -933,7 +986,7 @@
   background: var(--card);
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-md);
-  box-shadow: var(--shadow-lg, 0 8px 24px rgba(0,0,0,0.18));
+  box-shadow: var(--shadow-lg, 0 8px 24px rgba(0, 0, 0, 0.18));
   padding: 4px;
   min-width: 140px;
   animation: rise 0.12s var(--ease-out) backwards;
@@ -992,7 +1045,7 @@
   background: var(--card);
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-md);
-  box-shadow: var(--shadow-lg, 0 8px 24px rgba(0,0,0,0.18));
+  box-shadow: var(--shadow-lg, 0 8px 24px rgba(0, 0, 0, 0.18));
   padding: 12px 14px;
   min-width: 200px;
   animation: rise 0.12s var(--ease-out) backwards;
@@ -1943,4 +1996,11 @@
 
 .chat-controls-dropdown {
   display: none;
+}
+
+/* Menus under the last chats in the scrolling list open upward. */
+.sidebar-session-menu.sidebar-popover--above,
+.sidebar-session-delete-confirm.sidebar-popover--above {
+  top: auto;
+  bottom: calc(100% - 4px);
 }

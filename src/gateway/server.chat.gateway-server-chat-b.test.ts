@@ -2831,6 +2831,64 @@ describe("gateway server chat", () => {
     });
   });
 
+  test("chat.search finds words on the active branch only", async () => {
+    await withGatewayChatHarness(async ({ ws, createSessionDir }) => {
+      const sessionDir = await prepareMainHistoryHarness({ ws, createSessionDir });
+      await writeMainSessionTranscript(sessionDir, [
+        JSON.stringify({
+          id: "msg-root",
+          parentId: null,
+          message: {
+            role: "user",
+            content: [{ type: "text", text: "Which documents do I need for the visa?" }],
+            timestamp: Date.now(),
+          },
+        }),
+        JSON.stringify({
+          id: "msg-regenerated-away",
+          parentId: "msg-root",
+          message: {
+            role: "assistant",
+            content: [{ type: "text", text: "Bring a zebra certificate." }],
+            timestamp: Date.now(),
+          },
+        }),
+        JSON.stringify({
+          id: "msg-current",
+          parentId: "msg-root",
+          message: {
+            role: "assistant",
+            content: [{ type: "text", text: "Bring your passport and two photos." }],
+            timestamp: Date.now(),
+          },
+        }),
+      ]);
+
+      const found = await rpcReq<{
+        results?: Array<{ messageId?: string; role?: string; snippet?: string }>;
+        truncated?: boolean;
+      }>(ws, "chat.search", { query: "passport photos" });
+      expect(found.ok).toBe(true);
+      expect(found.payload?.results).toEqual([
+        expect.objectContaining({
+          messageId: "msg-current",
+          role: "assistant",
+          snippet: "Bring your passport and two photos.",
+        }),
+      ]);
+      expect(found.payload?.truncated).toBe(false);
+
+      const replaced = await rpcReq<{ results?: unknown[] }>(ws, "chat.search", {
+        query: "zebra",
+      });
+      expect(replaced.ok).toBe(true);
+      expect(replaced.payload?.results).toEqual([]);
+
+      const invalid = await rpcReq(ws, "chat.search", { query: "passport", limit: 500 });
+      expect(invalid.ok).toBe(false);
+    });
+  });
+
   test("chat.message.get does not return pre-session announce pairs hidden by history", async () => {
     await withGatewayChatHarness(async ({ ws, createSessionDir }) => {
       await connectOk(ws);

@@ -42,7 +42,7 @@ interface EmbeddedGatewayRuntime {
   resolveEffectiveChatHistoryMaxChars: (cfg: DaisyClawConfig) => number;
   projectRecentChatDisplayMessages: (
     msgs: unknown[],
-    opts?: { maxChars?: number; maxMessages?: number },
+    opts?: { maxChars?: number; replyMaxChars?: number; maxMessages?: number },
   ) => unknown[];
   capArrayByJsonBytes: (items: unknown[], maxBytes: number) => { items: unknown[] };
   listSessionsFromStoreAsync: (opts: {
@@ -178,6 +178,8 @@ async function handleChatHistory(params: Record<string, unknown>): Promise<{
   const normalized = rt.augmentChatHistoryWithCanvasBlocks(
     rt.projectRecentChatDisplayMessages(rawMessages, {
       maxChars: effectiveMaxChars,
+      // This history goes to the model, not a reader: keep replies at the tight cap.
+      replyMaxChars: effectiveMaxChars,
       maxMessages: max,
     }),
   );

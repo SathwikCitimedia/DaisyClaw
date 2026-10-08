@@ -69,6 +69,13 @@ export type SubscribeEmbeddedAgentSessionParams = {
   }) => void | Promise<void>;
   onHeartbeatToolResponse?: (response: HeartbeatToolResponse) => void | Promise<void>;
   terminalLifecyclePhase?: "end" | "finishing";
+  /**
+   * Offered a context-overflow error the run can still recover from by
+   * compacting and retrying. Returns true when the run holds it (sending it
+   * only if recovery fails), so the person never sees an error flash up while
+   * the retry quietly succeeds.
+   */
+  holdRecoverableOverflowError?: (emit: () => void) => boolean;
   /** Read immediately before terminal lifecycle emission. */
   isTerminalAborted?: () => boolean | undefined;
   /** Gate final block delivery/lifecycle after the natural answer is known. */

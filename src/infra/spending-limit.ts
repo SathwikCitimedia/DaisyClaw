@@ -13,6 +13,7 @@
  */
 import type { DaisyClawConfig } from "../config/types.daisyclaw.js";
 import { loadCostUsageSummary } from "./session-cost-usage.js";
+import { formatSpendingLimit } from "./spending-currency.js";
 
 /**
  * How long a month-to-date total is reused before it is recomputed. Spend only
@@ -34,12 +35,19 @@ export type SpendingStatus = {
   nearLimit: boolean;
   /** Start of the month this total covers. */
   periodStartMs: number;
+  /**
+   * Replies this month that used tokens on a model with no known price, so the
+   * real total is higher than `spentUsd` by an unknown amount.
+   */
+  unpricedReplies: number;
 };
 
 /** Warn once four fifths of the month's allowance is gone. */
 const NEAR_LIMIT_FRACTION = 0.8;
 
-let cache: { key: string; loadedAtMs: number; spentUsd: number } | null = null;
+type MonthToDate = { spentUsd: number; unpricedReplies: number };
+
+let cache: ({ key: string; loadedAtMs: number } & MonthToDate) | null = null;
 
 /** Test seam: forget the cached month-to-date total. */
 export function resetSpendingCacheForTest(): void {
@@ -63,14 +71,14 @@ export function resolveMonthStartMs(nowMs: number): number {
   return start.getTime();
 }
 
-async function loadMonthToDateSpendUsd(params: {
+async function loadMonthToDate(params: {
   cfg?: DaisyClawConfig;
   nowMs: number;
-}): Promise<number> {
+}): Promise<MonthToDate> {
   const periodStartMs = resolveMonthStartMs(params.nowMs);
   const key = String(periodStartMs);
   if (cache && cache.key === key && params.nowMs - cache.loadedAtMs < SPEND_CACHE_TTL_MS) {
-    return cache.spentUsd;
+    return { spentUsd: cache.spentUsd, unpricedReplies: cache.unpricedReplies };
   }
   const summary = await loadCostUsageSummary({
     startMs: periodStartMs,
@@ -78,8 +86,11 @@ async function loadMonthToDateSpendUsd(params: {
     ...(params.cfg ? { config: params.cfg } : {}),
   });
   const spentUsd = Number.isFinite(summary.totals.totalCost) ? summary.totals.totalCost : 0;
-  cache = { key, loadedAtMs: params.nowMs, spentUsd };
-  return spentUsd;
+  const unpricedReplies = Number.isFinite(summary.totals.missingCostEntries)
+    ? summary.totals.missingCostEntries
+    : 0;
+  cache = { key, loadedAtMs: params.nowMs, spentUsd, unpricedReplies };
+  return { spentUsd, unpricedReplies };
 }
 
 /**
@@ -95,8 +106,12 @@ export async function evaluateSpending(params: {
   const periodStartMs = resolveMonthStartMs(nowMs);
   const limitUsd = readMonthlyLimitUsd(params.cfg);
   let spentUsd: number;
+  let unpricedReplies = 0;
   try {
-    spentUsd = await loadMonthToDateSpendUsd({ ...(params.cfg ? { cfg: params.cfg } : {}), nowMs });
+    ({ spentUsd, unpricedReplies } = await loadMonthToDate({
+      ...(params.cfg ? { cfg: params.cfg } : {}),
+      nowMs,
+    }));
   } catch {
     // A guard that cannot read usage must never be the reason a message fails.
     spentUsd = 0;
@@ -109,6 +124,7 @@ export async function evaluateSpending(params: {
       exceeded: false,
       nearLimit: false,
       periodStartMs,
+      unpricedReplies,
     };
   }
   const remainingUsd = Math.max(0, limitUsd - spentUsd);
@@ -119,15 +135,33 @@ export async function evaluateSpending(params: {
     exceeded: spentUsd >= limitUsd,
     nearLimit: spentUsd >= limitUsd * NEAR_LIMIT_FRACTION && spentUsd < limitUsd,
     periodStartMs,
+    unpricedReplies,
   };
 }
 
-/** The sentence shown to the user when their own ceiling stops a request. */
-export function describeSpendingLimitReached(status: SpendingStatus): string {
-  const limit = status.limitUsd == null ? "your limit" : `$${status.limitUsd.toFixed(2)}`;
+/**
+ * The sentence shown to the user when their own ceiling stops a request, with
+ * the limit in the currency and amount they typed.
+ */
+export function describeSpendingLimitReached(
+  status: SpendingStatus,
+  cfg?: DaisyClawConfig,
+): string {
+  const limit =
+    status.limitUsd == null
+      ? "your limit"
+      : formatSpendingLimit({ cfg, limitUsd: status.limitUsd, locale: systemLocale() });
   return (
     `You've reached the monthly limit you set (${limit}). ` +
     "Daisy has stopped making paid requests. You can raise the limit in Settings, " +
     "and it resets at the start of next month."
   );
+}
+
+function systemLocale(): string | undefined {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().locale;
+  } catch {
+    return undefined;
+  }
 }

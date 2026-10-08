@@ -76,6 +76,14 @@ describe("resolveActiveToolLabel", () => {
     expect(resolveActiveToolLabel("WebSearch")).toBe("Searching the web…");
   });
 
+  it("knows the agent's own tool names, which use underscores", () => {
+    expect(resolveActiveToolLabel("web_search")).toBe("Searching the web…");
+    expect(resolveActiveToolLabel("web_fetch")).toBe("Reading a web page…");
+    expect(resolveActiveToolLabel("image_generate")).toBe("Making an image…");
+    expect(resolveActiveToolLabel("cron")).toBe("Updating the schedule…");
+    expect(resolveActiveToolLabel("memory_get")).toBe("Checking memory…");
+  });
+
   it("derives a phrase for skill invocations", () => {
     expect(resolveActiveToolLabel("skill:weather")).toBe("Using weather…");
     expect(resolveActiveToolLabel("skills_quick_notes")).toBe("Using quick notes…");

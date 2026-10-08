@@ -1163,6 +1163,43 @@ describe("runCronIsolatedAgentTurn delivery instruction", () => {
     restoreFastTestEnv(previousFastTestEnv);
   });
 
+  // A job's text is often the user's whole request, schedule included. Runs
+  // read it literally and tried to set the schedule up again instead of
+  // sending the email they were for.
+  it("tells each scheduled run the schedule exists and the task is due now", async () => {
+    mockRunCronFallbackPassthrough();
+
+    await runCronIsolatedAgentTurn(makeParams());
+
+    const prompt = expectEmbeddedRunPrompt();
+    expect(prompt).toContain("Do the task once, now.");
+    expect(prompt).toContain("do not create, change or remove scheduled jobs");
+    expect(prompt).toContain("do not start anything that needs the user");
+    expect(prompt).toContain("Settings → Connections");
+  });
+
+  it("holds back only chat messages, not an email the task asks for", async () => {
+    mockRunCronFallbackPassthrough();
+    resolveCronDeliveryPlanMock.mockReturnValue({
+      requested: true,
+      mode: "announce",
+      channel: "messagechat",
+      to: "123",
+    });
+
+    await runCronIsolatedAgentTurn({
+      ...makeParams(),
+      job: makeMessageToolPolicyJob(
+        { mode: "announce", channel: "messagechat", to: "123" },
+        { kind: "agentTurn", message: "email Sam for an update", toolsAllow: ["exec"] },
+      ),
+    });
+
+    const prompt = expectEmbeddedRunPrompt();
+    expect(prompt).toContain("through a chat app");
+    expect(prompt).toContain("such as sending an email");
+  });
+
   it("appends shared delivery guidance to the prompt when announce delivery is requested", async () => {
     mockRunCronFallbackPassthrough();
     resolveCronDeliveryPlanMock.mockReturnValue({
@@ -1178,7 +1215,7 @@ describe("runCronIsolatedAgentTurn delivery instruction", () => {
     const prompt = expectEmbeddedRunPrompt();
     expect(prompt).toContain("Use the message tool");
     expect(prompt).toContain("will be delivered automatically");
-    expect(prompt).not.toContain("note who/where");
+    expect(prompt).not.toContain("instead of sending it yourself");
   });
 
   it("does not prompt for the message tool when toolsAllow excludes it", async () => {

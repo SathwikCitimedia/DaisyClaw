@@ -1264,6 +1264,49 @@ describe("chat directive tag stripping for non-streaming final payloads", () => 
     });
   });
 
+  // A copy saved mid-reply landed beside the run's next message and dropped
+  // out of history, taking the assistant's meme with it.
+  it("saves no copy of an image the assistant named in its own text", async () => {
+    createTranscriptFixture("daisyclaw-chat-send-agent-own-image-");
+    const transcriptDir = path.dirname(mockState.transcriptPath);
+    const ownImage = path.join(transcriptDir, "own-meme.png");
+    fs.writeFileSync(
+      ownImage,
+      Buffer.from(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/woAAn8B9FD5fHAAAAAASUVORK5CYII=",
+        "base64",
+      ),
+    );
+    mockState.config = { agents: { defaults: { workspace: transcriptDir } } };
+    mockState.triggerAgentRunStart = true;
+    mockState.dispatchedReplies = [
+      {
+        kind: "block",
+        payload: setReplyPayloadMetadata(
+          { text: "Here's your meme", mediaUrl: ownImage, mediaUrls: [ownImage] },
+          { mediaFromAssistantText: true },
+        ),
+      },
+    ];
+    const respond = vi.fn();
+    const context = createChatContext();
+
+    await runNonStreamingChatSend({
+      context,
+      respond,
+      idempotencyKey: "idem-agent-own-image",
+      expectBroadcast: false,
+    });
+
+    expect(findAssistantUpdateWithBlock((block) => block.type === "image")).toBeUndefined();
+    // Preparing the copy's image is the first thing a copy does, so no attempt
+    // at it shows none was started, even where image preparation is missing.
+    const warnings = (context.logGateway.warn as unknown as ReturnType<typeof vi.fn>).mock.calls;
+    expect(warnings.map((call) => String(call[0]))).not.toContainEqual(
+      expect.stringContaining("webchat image embedding"),
+    );
+  });
+
   it("persists auto-TTS final media as audio-only so webchat does not duplicate assistant text", async () => {
     const transcriptDir = createTranscriptFixture("daisyclaw-chat-send-agent-tts-final-");
     const audioPath = path.join(transcriptDir, "tts.mp3");
@@ -3773,6 +3816,73 @@ describe("chat directive tag stripping for non-streaming final payloads", () => 
       expect(userTurnInput?.MediaPaths).toEqual(["/tmp/chat-send-brief.pdf"]);
       expect(userTurnInput?.MediaTypes).toEqual(["application/pdf"]);
     });
+  });
+
+  it("acknowledges a document send without looking up the model list", async () => {
+    createTranscriptFixture("daisyclaw-chat-send-document-no-catalog-");
+    mockState.finalText = "ok";
+    mockState.savedMediaResults = [{ path: "/tmp/guide.pdf", contentType: "application/pdf" }];
+    const respond = vi.fn();
+    const context = createChatContext();
+    const loadCatalog = vi.fn(context.loadGatewayModelCatalog);
+    context.loadGatewayModelCatalog = loadCatalog;
+
+    await runNonStreamingChatSend({
+      context,
+      respond,
+      idempotencyKey: "idem-document-no-catalog",
+      message: "analyze this",
+      requestParams: {
+        attachments: [
+          {
+            type: "file",
+            mimeType: "application/pdf",
+            fileName: "guide.pdf",
+            content: Buffer.from("%PDF-1.4\n").toString("base64"),
+          },
+        ],
+      },
+      expectBroadcast: false,
+      waitForCompletion: false,
+    });
+
+    await waitForAssertion(() => {
+      expect(mockState.lastDispatchCtx?.MediaTypes).toEqual(["application/pdf"]);
+    });
+    expect(loadCatalog).not.toHaveBeenCalled();
+  });
+
+  it("checks image support against the saved model list before building the full one", async () => {
+    createTranscriptFixture("daisyclaw-chat-send-image-saved-catalog-");
+    mockState.finalText = "ok";
+    const respond = vi.fn();
+    const context = createChatContext();
+    const loadCatalog = vi.fn(context.loadGatewayModelCatalog);
+    context.loadGatewayModelCatalog = loadCatalog;
+
+    await runNonStreamingChatSend({
+      context,
+      respond,
+      idempotencyKey: "idem-image-saved-catalog",
+      message: "describe image",
+      requestParams: {
+        attachments: [
+          {
+            mimeType: "image/png",
+            content:
+              "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/woAAn8B9FD5fHAAAAAASUVORK5CYII=",
+          },
+        ],
+      },
+      expectBroadcast: false,
+      waitFor: "none",
+    });
+
+    await waitForAssertion(() => {
+      expect(mockState.lastDispatchImageOrder).toEqual(["inline"]);
+    });
+    expect(loadCatalog).toHaveBeenCalledWith({ readOnly: true });
+    expect(loadCatalog).not.toHaveBeenCalledWith({ readOnly: false });
   });
 
   it("preserves offloaded attachment media paths in transcript order", async () => {

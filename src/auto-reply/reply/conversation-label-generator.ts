@@ -25,6 +25,8 @@ export type ConversationLabelParams = {
   maxLength?: number;
   /** Abort budget for the model call; defaults to {@link DEFAULT_TIMEOUT_MS}. */
   timeoutMs?: number;
+  /** Output token budget; labels need little, structured answers need more. */
+  maxTokens?: number;
 };
 
 function isTextContentBlock(block: { type: string }): block is TextContent {
@@ -114,7 +116,10 @@ export async function generateConversationLabel(
       },
       {
         apiKey,
-        maxTokens: 100,
+        maxTokens:
+          typeof params.maxTokens === "number" && params.maxTokens > 0
+            ? Math.floor(params.maxTokens)
+            : 100,
         ...(isCodexSimpleCompletionModel(runtimeModel) ? {} : { temperature: 0.3 }),
         signal: controller.signal,
       },

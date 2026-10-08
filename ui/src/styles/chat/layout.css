@@ -1298,7 +1298,6 @@
   box-shadow: var(--focus-ring);
 }
 
-
 .agent-chat__talk-select-icon,
 .agent-chat__talk-select-check {
   display: inline-flex;
@@ -3099,3 +3098,252 @@
 
 /* Mobile dropdown toggle — hidden on desktop */
 /* Mobile gear toggle + dropdown are hidden by default in layout.css */
+
+/* ── File cards: a file reads as itself (type icon, name, kind) ── */
+.chat-file-card {
+  --file-color: var(--muted);
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  width: min(280px, 100%);
+  min-width: 0;
+  padding: 9px 12px 9px 9px;
+  border: 1px solid var(--border-strong);
+  border-radius: calc(var(--radius-lg) + 2px);
+  background: var(--card);
+  color: var(--text);
+  text-decoration: none;
+  transition:
+    border-color 120ms ease-out,
+    background 120ms ease-out;
+}
+
+.chat-file-card--link:hover {
+  border-color: color-mix(in srgb, var(--file-color) 45%, var(--border-strong));
+  background: color-mix(in srgb, var(--file-color) 5%, var(--card));
+}
+
+.chat-file-card--link:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.chat-file-card__icon {
+  display: inline-grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--file-color) 13%, transparent);
+  color: var(--file-color);
+}
+
+.chat-file-card__icon svg {
+  width: 22px;
+  height: 22px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.chat-file-card__glyph-text {
+  fill: currentColor;
+  stroke: none;
+  font-family: var(--font-sans, system-ui, sans-serif);
+  font-size: 5.6px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+}
+
+.chat-file-card__text {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+
+.chat-file-card__name {
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-file-card__type {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.chat-file-card[data-file-kind="pdf"] {
+  --file-color: #e5484d;
+}
+
+.chat-file-card[data-file-kind="word"] {
+  --file-color: #2f6fe4;
+}
+
+.chat-file-card[data-file-kind="spreadsheet"],
+.chat-file-card[data-file-kind="csv"] {
+  --file-color: #1f9d55;
+}
+
+.chat-file-card[data-file-kind="presentation"] {
+  --file-color: #e8590c;
+}
+
+.chat-file-card[data-file-kind="archive"] {
+  --file-color: #c48a00;
+}
+
+.chat-file-card[data-file-kind="code"],
+.chat-file-card[data-file-kind="json"] {
+  --file-color: #7c5cff;
+}
+
+.chat-file-card[data-file-kind="text"],
+.chat-file-card[data-file-kind="markdown"] {
+  --file-color: #64748b;
+}
+
+.chat-file-card[data-file-kind="audio"] {
+  --file-color: #d6336c;
+}
+
+.chat-file-card[data-file-kind="video"] {
+  --file-color: #9b5de5;
+}
+
+.chat-file-card[data-file-kind="image"] {
+  --file-color: #0ea5a4;
+}
+
+/* In the message box, the remove button sits in the card's corner. */
+.chat-attachments-preview .chat-file-card {
+  padding-right: 34px;
+}
+
+.chat-attachments-preview .chat-file-card .chat-attachment-remove {
+  top: 50%;
+  right: 8px;
+  width: 22px;
+  height: 22px;
+  border: 1px solid var(--border-strong);
+  background: var(--bg-elevated);
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1;
+  transform: translateY(-50%);
+  transition:
+    opacity 120ms ease-out,
+    color 120ms ease-out;
+}
+
+.chat-attachments-preview .chat-file-card .chat-attachment-remove:hover {
+  color: var(--text);
+}
+
+/* With a mouse, the remove button appears on hover, as in other chat apps;
+   on touch screens it stays visible because there is no hover. */
+@media (hover: hover) {
+  .chat-attachments-preview .chat-file-card .chat-attachment-remove {
+    opacity: 0;
+  }
+
+  .chat-attachments-preview .chat-file-card:hover .chat-attachment-remove,
+  .chat-attachments-preview .chat-file-card .chat-attachment-remove:focus-visible {
+    opacity: 1;
+  }
+}
+
+/* ── Empty chat: greeting, message box and ideas in the middle (ChatGPT-style) ──
+   The box is the same element as in a running chat; only its place changes,
+   so the first message sends it to the bottom without losing what was typed. */
+.chat-main--welcome {
+  justify-content: center;
+  /* Sit a little above true centre, where the eye lands. */
+  padding-bottom: 10vh;
+}
+
+.chat-main--welcome .chat-thread {
+  flex: 0 0 auto;
+  overflow: visible;
+}
+
+.agent-chat__welcome--greeting {
+  flex: none;
+  width: min(760px, calc(100% - 36px));
+  margin: 0 auto;
+  padding: 0 0 20px;
+  gap: 0;
+}
+
+.agent-chat__welcome .agent-chat__greeting {
+  margin: 0;
+  color: var(--text-strong, var(--text));
+  font-size: clamp(22px, 2.4vw, 30px);
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  line-height: 1.25;
+  text-align: center;
+}
+
+.chat-main--welcome .agent-chat__input {
+  width: min(760px, calc(100% - 36px));
+  margin: 0 auto;
+  border-radius: calc(var(--radius-lg) + 8px);
+  box-shadow: 0 10px 30px color-mix(in srgb, black 8%, transparent);
+}
+
+.agent-chat__suggestions--welcome {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  width: min(760px, calc(100% - 36px));
+  margin: 16px auto 0;
+}
+
+.agent-chat__suggestions--welcome .agent-chat__suggestion {
+  min-height: 34px;
+  padding: 6px 14px;
+  border-radius: var(--radius-full);
+  font-size: 12.5px;
+}
+
+/* The first message sends the box down to the bottom with a short settle. */
+.agent-chat__input--settling {
+  animation: composer-settle 260ms var(--ease-out, ease-out);
+}
+
+@keyframes composer-settle {
+  from {
+    opacity: 0.4;
+    transform: translateY(-36px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .agent-chat__input--settling {
+    animation: none;
+  }
+}
+
+@media (max-width: 640px) {
+  .chat-main--welcome {
+    padding-bottom: 6vh;
+  }
+
+  .agent-chat__welcome--greeting,
+  .chat-main--welcome .agent-chat__input,
+  .agent-chat__suggestions--welcome {
+    width: calc(100% - 24px);
+  }
+}

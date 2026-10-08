@@ -17,6 +17,7 @@ import {
   retryReconnectableQueuedChatSends,
   scopedAgentListParamsForSession,
   scopedAgentParamsForSession,
+  settleUnconfirmedSendForRun,
 } from "./app-chat.ts";
 import type { EventLogEntry } from "./app-events.ts";
 import {
@@ -35,6 +36,7 @@ import {
 } from "./app-tool-stream.ts";
 import { shouldReloadHistoryForFinalEvent } from "./chat-event-reload.ts";
 import { loadChatComposerSnapshot, restoreChatComposerState } from "./chat/composer-persistence.ts";
+import { setFullMessageClient } from "./chat/full-message-text.ts";
 import { extractTextFromMessage } from "./chat/realtime-talk-shared.ts";
 import { reconcileChatRunLifecycle } from "./chat/run-lifecycle.ts";
 import { parseChatSideResult, type ChatSideResult } from "./chat/side-result.ts";
@@ -1002,6 +1004,7 @@ export function connectGateway(host: GatewayHost, options?: ConnectGatewayOption
     },
   });
   host.client = client;
+  setFullMessageClient(client);
   previousClient?.stop();
   client.start();
 }
@@ -1103,6 +1106,12 @@ function handleChatGatewayEvent(host: GatewayHost, payload: ChatEventPayload | u
     sideResultHost.chatSideResultTerminalRuns?.delete(payload.runId);
     return;
   }
+  const settledUnconfirmedSend =
+    isTerminalChatState(payload?.state) &&
+    settleUnconfirmedSendForRun(
+      host as unknown as Parameters<typeof settleUnconfirmedSendForRun>[0],
+      payload?.runId,
+    );
   const activeRunIdBeforeEvent = host.chatRunId;
   const state = handleChatEvent(host as unknown as ChatState, payload);
   recordFirstAssistantChatTiming(
@@ -1136,6 +1145,11 @@ function handleChatGatewayEvent(host: GatewayHost, payload: ChatEventPayload | u
     deferredReloadHost.pendingSessionMessageReloadSessionKey = null;
   }
   if (finalEventNeedsHistoryReload && !historyReloaded && !terminalEventIsForDifferentActiveRun) {
+    void loadChatHistory(host as unknown as ChatState);
+    return;
+  }
+  if (settledUnconfirmedSend && !historyReloaded) {
+    // The message went through after all: show it from the saved conversation.
     void loadChatHistory(host as unknown as ChatState);
     return;
   }

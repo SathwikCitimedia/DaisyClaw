@@ -4,6 +4,7 @@ import {
   errorShape,
   formatValidationErrors,
   validateCronAddParams,
+  validateCronDraftParams,
   validateCronGetParams,
   validateCronListParams,
   validateCronRemoveParams,
@@ -121,7 +122,10 @@ function assertCompatibleAnnounceTarget(params: {
   }
 }
 
-function assertValidCronAnnounceDelivery(params: { cfg: DaisyClawConfig; delivery?: CronDelivery }) {
+function assertValidCronAnnounceDelivery(params: {
+  cfg: DaisyClawConfig;
+  delivery?: CronDelivery;
+}) {
   if (params.delivery && (params.delivery.mode ?? "announce") === "announce") {
     assertCompatibleAnnounceTarget({
       channel: params.delivery.channel,
@@ -636,6 +640,25 @@ export const cronHandlers: GatewayRequestHandlers = {
       }
       throw error;
     }
+    respond(true, result, undefined);
+  },
+  // Drafts form fields from one sentence for the user to review; saves nothing.
+  "cron.draft": async ({ params, respond, context }) => {
+    if (!validateCronDraftParams(params)) {
+      respondInvalidCronParams(
+        respond,
+        "cron.draft",
+        formatValidationErrors(validateCronDraftParams.errors),
+      );
+      return;
+    }
+    const { draftCronJobFromText } = await import("../cron-draft.js");
+    const result = await draftCronJobFromText({
+      text: params.text,
+      now: params.now,
+      timeZone: params.timeZone,
+      cfg: context.getRuntimeConfig(),
+    });
     respond(true, result, undefined);
   },
   "cron.runs": async ({ params, respond, context }) => {

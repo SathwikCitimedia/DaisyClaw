@@ -10,7 +10,7 @@ type PaletteItem = {
   id: string;
   label: string;
   icon: IconName;
-  category: "search" | "navigation" | "skills";
+  category: "search" | "navigation" | "skills" | "actions" | "chats";
   action: string;
   description?: string;
 };
@@ -24,6 +24,26 @@ function buildSlashPaletteItems(): PaletteItem[] {
     action: `/${command.name}`,
     description: command.description,
   }));
+}
+
+function getPaletteActionItems(): PaletteItem[] {
+  return [
+    {
+      id: "action-shortcuts",
+      label: t("overview.palette.items.keyboardShortcuts"),
+      icon: "keyboard",
+      category: "actions",
+      action: "action:shortcuts",
+    },
+    {
+      id: "action-export-chat",
+      label: t("overview.palette.items.exportChat"),
+      icon: "download",
+      category: "actions",
+      action: "action:export-chat",
+      description: t("overview.palette.descriptions.exportChat"),
+    },
+  ];
 }
 
 function getPaletteBaseItems(): PaletteItem[] {
@@ -90,12 +110,24 @@ function getPaletteBaseItems(): PaletteItem[] {
 }
 
 function getPaletteItemsInternal(): PaletteItem[] {
-  return [...buildSlashPaletteItems(), ...getPaletteBaseItems()];
+  return [...getPaletteActionItems(), ...buildSlashPaletteItems(), ...getPaletteBaseItems()];
 }
 
 export function getPaletteItems(): readonly PaletteItem[] {
   return getPaletteItemsInternal();
 }
+
+/** A message found by searching the user's chats, already labelled for display. */
+export type PaletteChatResult = {
+  label: string;
+  description: string;
+};
+
+export type PaletteChatSearchView = {
+  status: "idle" | "loading" | "done" | "error" | "unsupported";
+  results: readonly PaletteChatResult[];
+  truncated: boolean;
+};
 
 export type CommandPaletteProps = {
   open: boolean;
@@ -107,23 +139,48 @@ export type CommandPaletteProps = {
   onActiveIndexChange: (index: number) => void;
   onNavigate: (tab: string) => void;
   onSlashCommand: (command: string) => void;
+  /** Runs an app action such as opening the shortcuts sheet or exporting the open chat. */
+  onAction?: (action: string) => void;
+  /** Messages matching the query, searched across the user's chats. */
+  chatSearch?: PaletteChatSearchView;
+  onOpenChatResult?: (index: number) => void;
 };
 
-function filteredItems(query: string): PaletteItem[] {
+function chatResultItems(props?: Pick<CommandPaletteProps, "chatSearch">): PaletteItem[] {
+  return (props?.chatSearch?.results ?? []).map((result, index) => ({
+    id: `chat-result-${index}`,
+    label: result.label,
+    icon: "messageSquare",
+    category: "chats",
+    action: `chat:${index}`,
+    description: result.description,
+  }));
+}
+
+function filteredItems(
+  query: string,
+  props?: Pick<CommandPaletteProps, "chatSearch">,
+): PaletteItem[] {
   const items = getPaletteItemsInternal();
   if (!query) {
     return items;
   }
   const q = normalizeLowercaseStringOrEmpty(query);
-  return items.filter(
+  const commands = items.filter(
     (item) =>
       normalizeLowercaseStringOrEmpty(item.label).includes(q) ||
       normalizeLowercaseStringOrEmpty(item.description).includes(q),
   );
+  // Chat matches were found by the gateway for this query; they are not
+  // filtered again by label here.
+  return [...commands, ...chatResultItems(props)];
 }
 
-export function getFilteredPaletteItems(query: string): readonly PaletteItem[] {
-  return filteredItems(query);
+export function getFilteredPaletteItems(
+  query: string,
+  props?: Pick<CommandPaletteProps, "chatSearch">,
+): readonly PaletteItem[] {
+  return filteredItems(query, props);
 }
 
 function groupItems(items: PaletteItem[]): Array<[string, PaletteItem[]]> {
@@ -177,6 +234,10 @@ function restoreFocus() {
 function selectItem(item: PaletteItem, props: CommandPaletteProps) {
   if (item.action.startsWith("nav:")) {
     props.onNavigate(item.action.slice(4));
+  } else if (item.action.startsWith("chat:")) {
+    props.onOpenChatResult?.(Number(item.action.slice("chat:".length)));
+  } else if (item.action.startsWith("action:")) {
+    props.onAction?.(item.action.slice("action:".length));
   } else {
     props.onSlashCommand(item.action);
   }
@@ -234,7 +295,7 @@ function handleKeydown(e: KeyboardEvent, props: CommandPaletteProps) {
     return;
   }
 
-  const items = filteredItems(props.query);
+  const items = filteredItems(props.query, props);
   if (items.length === 0 && (e.key === "ArrowDown" || e.key === "ArrowUp" || e.key === "Enter")) {
     return;
   }
@@ -271,6 +332,10 @@ function getCategoryLabel(category: string): string {
       return t("overview.palette.categories.navigation");
     case "skills":
       return t("overview.palette.categories.skills");
+    case "actions":
+      return t("overview.palette.categories.actions");
+    case "chats":
+      return t("overview.palette.categories.chats");
     default:
       return category;
   }
@@ -318,14 +383,46 @@ function focusInput(el: Element | undefined) {
   }
 }
 
+/**
+ * What the "In your chats" search is doing, when there are no result rows to
+ * say it: searching, nothing found, or failed. Found results are ordinary rows.
+ */
+function renderChatSearchStatus(props: CommandPaletteProps) {
+  const search = props.chatSearch;
+  if (!search || search.status === "idle" || search.status === "unsupported") {
+    return nothing;
+  }
+  const hasRows = search.results.length > 0;
+  let text: string | null = null;
+  if (search.status === "loading" && !hasRows) {
+    text = t("overview.palette.chatSearch.searching");
+  } else if (search.status === "done" && !hasRows) {
+    text = t("overview.palette.chatSearch.noMatches");
+  } else if (search.status === "error") {
+    text = t("overview.palette.chatSearch.failed");
+  } else if (search.status === "done" && search.truncated) {
+    text = t("overview.palette.chatSearch.truncated");
+  }
+  if (!text) {
+    return nothing;
+  }
+  return html`
+    ${hasRows
+      ? nothing
+      : html`<div class="cmd-palette__group-label">${getCategoryLabel("chats")}</div>`}
+    <div class="cmd-palette__status muted" role="status">${text}</div>
+  `;
+}
+
 export function renderCommandPalette(props: CommandPaletteProps) {
   if (!props.open) {
     return nothing;
   }
   activeProps = props;
 
-  const items = filteredItems(props.query);
+  const items = filteredItems(props.query, props);
   const grouped = groupItems(items);
+  const chatStatus = renderChatSearchStatus(props);
   const activeItem = items[props.activeIndex];
   const activeOptionId = activeItem ? getOptionId(activeItem) : nothing;
   const paletteLabel = t("overview.palette.placeholder");
@@ -370,7 +467,7 @@ export function renderCommandPalette(props: CommandPaletteProps) {
           }}
         />
         <div id=${paletteListboxId} class="cmd-palette__results" role="listbox">
-          ${grouped.length === 0
+          ${grouped.length === 0 && chatStatus === nothing
             ? html`<div class="cmd-palette__empty">
                 <span class="nav-item__icon" style="opacity:0.3;width:20px;height:20px"
                   >${icons.search}</span
@@ -386,7 +483,9 @@ export function renderCommandPalette(props: CommandPaletteProps) {
                     return html`
                       <div
                         id=${getOptionId(item)}
-                        class="cmd-palette__item ${isActive ? "cmd-palette__item--active" : ""}"
+                        class="cmd-palette__item ${isActive
+                          ? "cmd-palette__item--active"
+                          : ""} ${item.category === "chats" ? "cmd-palette__item--chat" : ""}"
                         role="option"
                         aria-selected=${isActive ? "true" : "false"}
                         @click=${(e: Event) => {
@@ -396,17 +495,24 @@ export function renderCommandPalette(props: CommandPaletteProps) {
                         @mouseenter=${() => props.onActiveIndexChange(globalIndex)}
                       >
                         <span class="nav-item__icon">${icons[item.icon]}</span>
-                        <span>${item.label}</span>
-                        ${item.description
-                          ? html`<span class="cmd-palette__item-desc muted"
-                              >${item.description}</span
-                            >`
-                          : nothing}
+                        ${item.category === "chats"
+                          ? html`<span class="cmd-palette__chat-text">
+                              <span class="cmd-palette__chat-label">${item.label}</span>
+                              <span class="cmd-palette__chat-snippet muted"
+                                >${item.description}</span
+                              >
+                            </span>`
+                          : html`<span>${item.label}</span> ${item.description
+                                ? html`<span class="cmd-palette__item-desc muted"
+                                    >${item.description}</span
+                                  >`
+                                : nothing}`}
                       </div>
                     `;
                   })}
                 `,
               )}
+          ${chatStatus}
         </div>
         <div class="cmd-palette__footer">
           <span><kbd>↑↓</kbd> ${t("overview.palette.footer.navigate")}</span>

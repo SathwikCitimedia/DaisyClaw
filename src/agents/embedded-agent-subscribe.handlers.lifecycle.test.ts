@@ -20,6 +20,7 @@ function createContext(
     onBeforeLifecycleTerminal?: () => void | Promise<void>;
     onBlockReply?: ((payload: unknown) => void) | undefined;
     onBlockReplyFlush?: () => void | Promise<void>;
+    holdRecoverableOverflowError?: (emit: () => void) => boolean;
   },
 ): EmbeddedAgentSubscribeContext {
   // Lifecycle tests only need terminal state and delivery callbacks; omitted
@@ -36,6 +37,7 @@ function createContext(
       onBeforeLifecycleTerminal: overrides?.onBeforeLifecycleTerminal,
       ...(onBlockReply ? { onBlockReply } : {}),
       onBlockReplyFlush: overrides?.onBlockReplyFlush,
+      holdRecoverableOverflowError: overrides?.holdRecoverableOverflowError,
     },
     state: {
       lastAssistant: lastAssistant as EmbeddedAgentSubscribeContext["state"]["lastAssistant"],
@@ -96,6 +98,60 @@ function firstWarnMeta(ctx: EmbeddedAgentSubscribeContext): Record<string, unkno
 }
 
 describe("handleAgentEnd", () => {
+  // The run recovers from an overflow by summarizing and retrying; showing the
+  // error first made "prompt too large" flash up before the answer arrived.
+  it("hands a recoverable overflow error to the run instead of showing it", async () => {
+    emitAgentEventMock.mockClear();
+    const onAgentEvent = vi.fn();
+    let held: (() => void) | undefined;
+    const overflow = {
+      role: "assistant",
+      stopReason: "error",
+      errorMessage:
+        "Context overflow: estimated context size exceeds safe threshold during tool loop.",
+      content: [],
+    };
+    const ctx = createContext(overflow, {
+      onAgentEvent,
+      holdRecoverableOverflowError: (emit) => {
+        held = emit;
+        return true;
+      },
+    });
+
+    await handleAgentEnd(ctx);
+
+    expect(emitAgentEventMock).not.toHaveBeenCalled();
+    expect(onAgentEvent).not.toHaveBeenCalled();
+    // If recovery fails, the run sends the very same error.
+    held?.();
+    expect(emitAgentEventMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        stream: "lifecycle",
+        data: expect.objectContaining({ phase: "error" }),
+      }),
+    );
+  });
+
+  it("shows other errors, and overflows the run cannot recover from, straight away", async () => {
+    for (const [errorMessage, hold] of [
+      ["Rate limit reached", () => true],
+      ["Context overflow: prompt too large for the model.", () => false],
+    ] as const) {
+      emitAgentEventMock.mockClear();
+      const ctx = createContext(
+        { role: "assistant", stopReason: "error", errorMessage, content: [] },
+        { holdRecoverableOverflowError: hold },
+      );
+
+      await handleAgentEnd(ctx);
+
+      expect(emitAgentEventMock).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ phase: "error" }) }),
+      );
+    }
+  });
+
   it("suppresses raw assistant error messages in user-facing lifecycle events", async () => {
     // Canary text proves provider error strings are sanitized before lifecycle
     // events reach channel integrations.

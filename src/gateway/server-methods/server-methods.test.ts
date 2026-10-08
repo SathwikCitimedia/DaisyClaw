@@ -26,6 +26,7 @@ import {
 } from "../../infra/system-run-approval-binding.js";
 import { resetLogger, setLoggerOverride } from "../../logging.js";
 import {
+  DEFAULT_CHAT_HISTORY_REPLY_MAX_CHARS,
   DEFAULT_CHAT_HISTORY_TEXT_MAX_CHARS,
   augmentChatHistoryWithCanvasBlocks,
   dropPreSessionStartAnnouncePairs,
@@ -1713,9 +1714,9 @@ describe("dropPreSessionStartAnnouncePairs (#85648)", () => {
       },
     ];
     const out = dropPreSessionStartAnnouncePairs(messages, cutoff);
-    expect(out.map((m) => asOptionalRecord(asOptionalRecord(m)?.["__daisyclaw"])?.["seq"])).toEqual([
-      1, 2, 5,
-    ]);
+    expect(out.map((m) => asOptionalRecord(asOptionalRecord(m)?.["__daisyclaw"])?.["seq"])).toEqual(
+      [1, 2, 5],
+    );
   });
 
   it("drops imported CLI-shaped announce pairs using timestamp and text fallback", () => {
@@ -1830,9 +1831,9 @@ describe("dropPreSessionStartAnnouncePairs (#85648)", () => {
       },
     ];
     const out = dropPreSessionStartAnnouncePairs(messages, cutoff);
-    expect(out.map((m) => asOptionalRecord(asOptionalRecord(m)?.["__daisyclaw"])?.["seq"])).toEqual([
-      1,
-    ]);
+    expect(out.map((m) => asOptionalRecord(asOptionalRecord(m)?.["__daisyclaw"])?.["seq"])).toEqual(
+      [1],
+    );
   });
 
   it("does not drop a normal pre-cutoff user message that is not a subagent_announce", () => {
@@ -1868,6 +1869,58 @@ describe("dropPreSessionStartAnnouncePairs (#85648)", () => {
     ];
     const out = dropPreSessionStartAnnouncePairs(messages, cutoff);
     expect(out).toEqual(messages);
+  });
+});
+
+describe("chat history reply text", () => {
+  const replyText = (messages: unknown[]) =>
+    (messages[0] as { content: Array<{ type: string; text?: string; thinking?: string }> }).content;
+
+  // A 9,800-character answer used to reach the screen cut at 8,000 with
+  // "...(truncated)..." although the whole answer was saved.
+  it("keeps a long reply whole at the default cap", () => {
+    const answer = "Long answer. ".repeat(800);
+    const projected = projectRecentChatDisplayMessages(
+      [{ role: "assistant", content: [{ type: "text", text: answer }], timestamp: 1 }],
+      { maxChars: DEFAULT_CHAT_HISTORY_TEXT_MAX_CHARS },
+    );
+
+    expect(replyText(projected)[0]?.text).toBe(answer);
+  });
+
+  it("still caps a reply past the reading cap, and thinking at the tight cap", () => {
+    const projected = projectRecentChatDisplayMessages(
+      [
+        {
+          role: "assistant",
+          content: [
+            { type: "thinking", thinking: "t".repeat(DEFAULT_CHAT_HISTORY_TEXT_MAX_CHARS + 10) },
+            { type: "text", text: "x".repeat(DEFAULT_CHAT_HISTORY_REPLY_MAX_CHARS + 10) },
+          ],
+          timestamp: 1,
+        },
+      ],
+      {},
+    );
+    const blocks = replyText(projected);
+
+    expect(blocks.find((b) => b.type === "text")?.text).toBe(
+      `${"x".repeat(DEFAULT_CHAT_HISTORY_REPLY_MAX_CHARS)}\n...(truncated)...`,
+    );
+    expect(blocks.find((b) => b.type === "thinking")?.thinking).toBe(
+      `${"t".repeat(DEFAULT_CHAT_HISTORY_TEXT_MAX_CHARS)}\n...(truncated)...`,
+    );
+  });
+
+  it("honours a caller's own size, and an explicit reply cap", () => {
+    const message = { role: "user", content: [{ type: "text", text: "abcdefghij" }], timestamp: 1 };
+
+    expect(replyText(projectRecentChatDisplayMessages([message], { maxChars: 4 }))[0]?.text).toBe(
+      "abcd\n...(truncated)...",
+    );
+    expect(
+      replyText(projectRecentChatDisplayMessages([message], { replyMaxChars: 6 }))[0]?.text,
+    ).toBe("abcdef\n...(truncated)...");
   });
 });
 

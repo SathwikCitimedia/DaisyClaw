@@ -53,6 +53,8 @@ export type CronFormState = {
   scheduleAt: string;
   everyAmount: string;
   everyUnit: "minutes" | "hours" | "days";
+  /** First run of a repeating job, as a datetime-local value; empty means now. */
+  everyStartAt: string;
   cronExpr: string;
   cronTz: string;
   scheduleExact: boolean;

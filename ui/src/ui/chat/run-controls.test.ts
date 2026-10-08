@@ -258,7 +258,9 @@ describe("chat status indicators", () => {
       );
 
       let indicator = container.querySelector(".compaction-indicator--active");
-      expect(indicator?.textContent?.trim()).toBe("Compacting context...");
+      expect(indicator?.textContent?.trim()).toBe(
+        "Making room in the conversation… this can take a minute",
+      );
       indicator = container.querySelector(".compaction-indicator--fallback");
       expect(indicator?.textContent?.trim()).toBe(
         "Fallback active: deepinfra/moonshotai/Kimi-K2.5",
@@ -281,7 +283,7 @@ describe("chat status indicators", () => {
         },
       );
       indicator = container.querySelector(".compaction-indicator--complete");
-      expect(indicator?.textContent?.trim()).toBe("Context compacted");
+      expect(indicator?.textContent?.trim()).toBe("Earlier messages summarized to make room");
       indicator = container.querySelector(".compaction-indicator--fallback-cleared");
       expect(indicator?.textContent?.trim()).toBe("Fallback cleared: fireworks/minimax-m2p5");
 

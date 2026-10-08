@@ -53,6 +53,8 @@ export function renderCompactionIndicator(status: CompactionStatus | null | unde
   if (!status) {
     return nothing;
   }
+  // Summarizing earlier messages can take a minute; said plainly, it reads as
+  // progress rather than as a reply that has stalled.
   if (status.phase === "active" || status.phase === "retrying") {
     return html`
       <div
@@ -60,7 +62,10 @@ export function renderCompactionIndicator(status: CompactionStatus | null | unde
         role="status"
         aria-live="polite"
       >
-        ${icons.loader} Compacting context...
+        ${icons.loader}
+        ${status.phase === "retrying"
+          ? "Room made. Finishing your reply…"
+          : "Making room in the conversation… this can take a minute"}
       </div>
     `;
   }
@@ -73,7 +78,7 @@ export function renderCompactionIndicator(status: CompactionStatus | null | unde
           role="status"
           aria-live="polite"
         >
-          ${icons.check} Context compacted
+          ${icons.check} Earlier messages summarized to make room
         </div>
       `;
     }

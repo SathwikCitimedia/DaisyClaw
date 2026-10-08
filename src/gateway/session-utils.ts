@@ -1727,21 +1727,45 @@ export function resolveSessionModelRef(
   return resolved;
 }
 
+async function findSavedCatalogModelEntry(params: {
+  loadGatewayModelCatalog: (params?: { readOnly?: boolean }) => Promise<ModelCatalogEntry[]>;
+  provider?: string;
+  model: string;
+}): Promise<ModelCatalogEntry | undefined> {
+  try {
+    const saved = await params.loadGatewayModelCatalog({ readOnly: true });
+    return findModelCatalogEntry(saved, { provider: params.provider, modelId: params.model });
+  } catch {
+    return undefined;
+  }
+}
+
 export async function resolveGatewayModelSupportsImages(params: {
   loadGatewayModelCatalog: (params?: { readOnly?: boolean }) => Promise<ModelCatalogEntry[]>;
   provider?: string;
   model?: string;
+  /**
+   * Look the model up in the model list saved on disk first, and build the
+   * full list only when the model is missing from it. Building the full list
+   * asks every provider for its models and can take minutes on a cold start,
+   * which is too long for anything a person is waiting on.
+   */
+  preferSavedCatalog?: boolean;
 }): Promise<boolean> {
   if (!params.model) {
     return true;
   }
 
   try {
-    const catalog = await params.loadGatewayModelCatalog({ readOnly: false });
-    const modelEntry = findModelCatalogEntry(catalog, {
-      provider: params.provider,
-      modelId: params.model,
-    });
+    const savedEntry = params.preferSavedCatalog
+      ? await findSavedCatalogModelEntry({ ...params, model: params.model })
+      : undefined;
+    const modelEntry =
+      savedEntry ??
+      findModelCatalogEntry(await params.loadGatewayModelCatalog({ readOnly: false }), {
+        provider: params.provider,
+        modelId: params.model,
+      });
     const normalizedProvider = normalizeOptionalLowercaseString(
       params.provider ?? modelEntry?.provider,
     );

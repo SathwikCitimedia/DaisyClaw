@@ -84,7 +84,7 @@ describe("preflightCronModelProvider", () => {
     expect(result).toEqual({ status: "available" });
     const request = requireFetchPreflightRequest();
     expect(request.url).toBe("http://127.0.0.1:8000/v1/models");
-    expect(request.timeoutMs).toBe(2500);
+    expect(request.timeoutMs).toBe(10_000);
   });
 
   it("marks unreachable local Ollama endpoints unavailable and caches the result", async () => {
@@ -170,5 +170,40 @@ describe("preflightCronModelProvider", () => {
     expect(first.status).toBe("unavailable");
     expect(second).toEqual({ status: "available" });
     expect(fetchWithSsrFGuardMock).toHaveBeenCalledTimes(2);
+  });
+
+  // Straight after the gateway starts, it can be too busy to read an answer in
+  // time. A server that answers in half a second was skipped as unreachable.
+  it("tries a timed-out check once more before skipping the run", async () => {
+    vi.useFakeTimers();
+    try {
+      const timeout = Object.assign(new Error("request timed out"), { name: "TimeoutError" });
+      fetchWithSsrFGuardMock.mockRejectedValueOnce(timeout).mockResolvedValueOnce({
+        response: { status: 401 },
+        release: vi.fn(async () => {}),
+      });
+      const pending = preflightCronModelProvider({
+        cfg: {
+          models: {
+            providers: {
+              litellm: {
+                api: "openai-completions" as const,
+                baseUrl: "http://10.21.66.8:4000/v1",
+                models: [],
+              },
+            },
+          },
+        },
+        provider: "litellm",
+        model: "claude-sonnet-4-5",
+        nowMs: 5_000,
+      });
+      await vi.advanceTimersByTimeAsync(1_000);
+
+      expect(await pending).toEqual({ status: "available" });
+      expect(fetchWithSsrFGuardMock).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

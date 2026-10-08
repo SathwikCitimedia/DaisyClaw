@@ -445,6 +445,7 @@ enumeration of `src/gateway/server-methods/*.ts`.
     - `sessions.get` returns the full stored session row.
     - Chat execution still uses `chat.history`, `chat.send`, `chat.abort`, and `chat.inject`. `chat.history` is display-normalized for UI clients: inline directive tags are stripped from visible text, plain-text tool-call XML payloads (including `<tool_call>...</tool_call>`, `<function_call>...</function_call>`, `<tool_calls>...</tool_calls>`, `<function_calls>...</function_calls>`, and truncated tool-call blocks) and leaked ASCII/full-width model control tokens are stripped, pure silent-token assistant rows such as exact `NO_REPLY` / `no_reply` are omitted, and oversized rows can be replaced with placeholders.
     - `chat.message.get` is the additive bounded full-message reader for a single visible transcript entry. Clients pass `sessionKey`, optional `agentId` when the session selection is agent-scoped, plus a transcript `messageId` previously surfaced through `chat.history`, and the Gateway returns the same display-normalized projection without the lightweight history truncation cap when the stored entry is still available and not oversized.
+    - `chat.search` searches the text of user and assistant messages across the most recently used chats (up to 200), newest first, reading only each chat's active branch. Clients pass `query` (every word must appear; a `"quoted phrase"` stays together), optional `agentId`, and optional `limit` (1–50, default 30). Each result carries `sessionKey`, `agentId`, optional `sessionLabel`, `role`, a short `snippet` around the match, and the transcript `messageId` when available; a chat contributes at most three results. The search stops at its result cap or a time budget and reports `truncated: true` when it did not read every chat. Scheduled-job and sub-agent sessions are not searched.
 
   </Accordion>
 
@@ -481,6 +482,7 @@ enumeration of `src/gateway/server-methods/*.ts`.
     - Automation: `wake` schedules an immediate or next-heartbeat wake text injection; `cron.get`, `cron.list`, `cron.status`, `cron.add`, `cron.update`, `cron.remove`, `cron.run`, `cron.runs` manage scheduled work.
     - `cron.run` remains an enqueue-style RPC for manual runs. Clients that need completion semantics should read the returned `runId` and poll `cron.runs`.
     - `cron.runs` accepts an optional non-empty `runId` filter so clients can follow one queued manual run without racing against other history entries for the same job.
+    - `cron.draft` (`operator.admin`) turns one sentence into a job draft for review and saves nothing. Params: `text`, the viewer's local `now` (`YYYY-MM-DDTHH:MM`, optionally with a weekday) and an optional `timeZone`. The result is `{ ok: true, draft: { name, task, schedule }, source }` or `{ ok: false, reason }`. `schedule` is `{ kind: "every", amount, unit, startAt? }`, `{ kind: "cron", expr }` or `{ kind: "at", at }`, with times in the viewer's local time. `source` is `model` when the configured model drafted it and `rules` when built-in phrase rules did.
     - Skills and tools: `commands.list`, `skills.*`, `tools.catalog`, `tools.effective`, `tools.invoke`.
 
   </Accordion>
@@ -627,6 +629,36 @@ terminal summary, and sanitized error text.
     the default agent workspace.
   - Config mode patches `skills.entries.<skillKey>` values such as `enabled`,
     `apiKey`, and `env`.
+
+### Account sign-in (`connections.*`)
+
+Google and Spotify are signed in through the skills' own tools (`gog` and
+`spotify_player`), which run a browser sign-in on the gateway host and store the
+login themselves. The gateway runs that sign-in and tracks it:
+
+- `connections.status` (`operator.read`) reports whether each tool is installed,
+  whether a Google OAuth client is stored, the signed-in Google accounts,
+  whether Spotify is signed in, and any sign-in in progress. Pass
+  `jobsOnly: true` to get only the in-progress sign-ins (cheap enough to poll).
+- `connections.google.setClient` (`operator.admin`) stores the user's own
+  Google "Desktop app" OAuth client file (`credentialsJson`) with
+  `gog auth credentials set`. A Web client or a wrong file is rejected with a
+  reason.
+- `connections.connect` (`operator.admin`) starts a sign-in (`service`:
+  `google` with `email`, or `spotify`) and returns at once with a job. The tool
+  opens the user's browser; the job ends `succeeded` only after the gateway
+  confirms the login was stored, or `failed` (with `message`), `cancelled`, or
+  timed out after 5 minutes. `authUrl` carries the sign-in page when the tool
+  printed one.
+- `connections.cancel` and `connections.disconnect` (`operator.admin`) stop a
+  sign-in in progress, or remove a Google account (`gog auth remove`) or
+  Spotify's stored login.
+- `connections.checkKeys` (`operator.admin`) asks a service whether pasted
+  account values work before Settings saves them (`skillKey`, and `env` keyed
+  by the variable the skill reads). It returns `status`: `valid`, `invalid`
+  (with a `message` to show), `unreachable` (the service could not be asked,
+  with a `message`), or `unchecked` for services without a check. Notion and
+  Trello are checked; nothing is saved by this method.
 
 ### `models.list` views
 

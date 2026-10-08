@@ -74,7 +74,27 @@ const TOOL_LABELS: Record<string, string> = {
   websearch: "Searching the web…",
   webfetch: "Reading a web page…",
   memory: "Checking memory…",
+  memoryquery: "Checking memory…",
+  memorysearch: "Checking memory…",
+  memoryget: "Checking memory…",
   skill: "Using a skill…",
+  process: "Running a command…",
+  applypatch: "Editing a file…",
+  imagegenerate: "Making an image…",
+  musicgenerate: "Making music…",
+  videogenerate: "Making a video…",
+  image: "Looking at an image…",
+  pdf: "Reading a PDF…",
+  tts: "Making a voice note…",
+  cron: "Updating the schedule…",
+  reminder: "Setting a reminder…",
+  message: "Sending a message…",
+  messageactions: "Sending a message…",
+  browser: "Using the browser…",
+  canvas: "Drawing on the canvas…",
+  sessionsspawn: "Asking a helper…",
+  subagents: "Working with helpers…",
+  updateplan: "Planning the steps…",
 };
 
 /**
@@ -185,7 +205,9 @@ export function resolveActiveToolLabel(toolName: string | null | undefined): str
   if (!name) {
     return null;
   }
-  const direct = TOOL_LABELS[name];
+  // The agent's tools are named with underscores ("web_search"); the table
+  // is keyed without separators so both spellings find the same phrase.
+  const direct = TOOL_LABELS[name] ?? TOOL_LABELS[name.replace(/[-_\s]+/g, "")];
   if (direct) {
     return direct;
   }

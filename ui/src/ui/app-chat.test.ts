@@ -54,6 +54,8 @@ let markQueuedChatSendsWaitingForReconnect: typeof import("./app-chat.ts").markQ
 let retryReconnectableQueuedChatSends: typeof import("./app-chat.ts").retryReconnectableQueuedChatSends;
 let recordChatSendServerTiming: typeof import("./app-chat.ts").recordChatSendServerTiming;
 let recordFirstAssistantChatTiming: typeof import("./app-chat.ts").recordFirstAssistantChatTiming;
+let settleUnconfirmedSendForRun: typeof import("./app-chat.ts").settleUnconfirmedSendForRun;
+let GatewayRequestTimeoutError: typeof import("./gateway.ts").GatewayRequestTimeoutError;
 
 async function loadChatHelpers(): Promise<void> {
   ({
@@ -70,7 +72,9 @@ async function loadChatHelpers(): Promise<void> {
     retryReconnectableQueuedChatSends,
     recordChatSendServerTiming,
     recordFirstAssistantChatTiming,
+    settleUnconfirmedSendForRun,
   } = await import("./app-chat.ts"));
+  ({ GatewayRequestTimeoutError } = await import("./gateway.ts"));
 }
 
 function requestUrl(input: string | URL | Request): string {
@@ -870,7 +874,9 @@ describe("refreshChatAvatar", () => {
     const host = makeHost({ basePath: "/daisyclaw/", sessionKey: "agent:ops:main" });
     await refreshChatAvatar(host);
 
-    expect(fetchUrl(fetchMock as unknown as MockCallSource, 0)).toBe("/daisyclaw/avatar/ops?meta=1");
+    expect(fetchUrl(fetchMock as unknown as MockCallSource, 0)).toBe(
+      "/daisyclaw/avatar/ops?meta=1",
+    );
     expect(fetchInit(fetchMock as unknown as MockCallSource, 0).method).toBe("GET");
     expect(host.chatAvatarUrl).toBeNull();
   });
@@ -2665,6 +2671,78 @@ describe("handleSendChat", () => {
       sendState: "failed",
       sendError: "send blocked by session policy",
     });
+  });
+
+  it("asks a slow gateway again with the same run id instead of failing the send", async () => {
+    let sends = 0;
+    const request = vi.fn((method: string, _params?: unknown) => {
+      if (method !== "chat.send") {
+        throw new Error(`Unexpected request: ${method}`);
+      }
+      sends += 1;
+      return sends === 1
+        ? Promise.reject(new GatewayRequestTimeoutError("chat.send", 30_000))
+        : Promise.resolve({ status: "in_flight" });
+    });
+    const host = makeHost({
+      client: { request } as unknown as ChatHost["client"],
+      chatMessage: "analyze this pdf",
+    });
+
+    await handleSendChat(host);
+
+    const payloads = request.mock.calls
+      .filter(([method]) => method === "chat.send")
+      .map(([, params]) => params as { idempotencyKey?: string });
+    expect(payloads).toHaveLength(2);
+    expect(payloads[1]?.idempotencyKey).toBe(payloads[0]?.idempotencyKey);
+    expect(host.chatQueue).toStrictEqual([]);
+    expect(host.chatMessages).toHaveLength(1);
+  });
+
+  it("shows a send the gateway never confirmed without refilling the box", async () => {
+    const request = vi.fn((method: string) => {
+      if (method === "chat.send") {
+        return Promise.reject(new GatewayRequestTimeoutError("chat.send", 30_000));
+      }
+      throw new Error(`Unexpected request: ${method}`);
+    });
+    const host = makeHost({
+      client: { request } as unknown as ChatHost["client"],
+      chatMessage: "analyze this pdf",
+    });
+
+    await handleSendChat(host);
+
+    expect(request.mock.calls.filter(([method]) => method === "chat.send")).toHaveLength(4);
+    // Refilling the box would invite sending it again under a new id: twice.
+    expect(host.chatMessage).toBe("");
+    expect(host.chatQueue).toHaveLength(1);
+    expect(host.chatQueue[0]).toMatchObject({
+      text: "analyze this pdf",
+      sendState: "failed",
+      sendError: "DaisyClaw didn't confirm this message. Retry won't send it twice.",
+    });
+  });
+
+  it("drops the not-sent line once the gateway answers that message after all", () => {
+    const host = makeHost({
+      chatQueue: [
+        {
+          id: "unconfirmed",
+          text: "analyze this pdf",
+          createdAt: 1,
+          sendSubmittedAtMs: 10,
+          sendRunId: "run-late",
+          sendState: "failed",
+        },
+        { id: "queued", text: "after the reply", createdAt: 2 },
+      ],
+    });
+
+    expect(settleUnconfirmedSendForRun(host, "run-other")).toBe(false);
+    expect(settleUnconfirmedSendForRun(host, "run-late")).toBe(true);
+    expect(host.chatQueue.map((item) => item.id)).toStrictEqual(["queued"]);
   });
 
   it("restores the BTW draft when detached send fails", async () => {

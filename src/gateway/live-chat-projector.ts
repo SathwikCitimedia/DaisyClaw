@@ -22,6 +22,40 @@ function capLiveAssistantBuffer(text: string): string {
   return text.slice(-MAX_LIVE_CHAT_BUFFER_CHARS);
 }
 
+/** The image and media paths an assistant event carries, in order. */
+export function collectLiveAssistantMediaUrls(data: {
+  mediaUrls?: unknown;
+  mediaUrl?: unknown;
+}): string[] {
+  const urls = [
+    ...(Array.isArray(data.mediaUrls) ? data.mediaUrls : []),
+    ...(typeof data.mediaUrl === "string" ? [data.mediaUrl] : []),
+  ]
+    .filter((url): url is string => typeof url === "string")
+    .map((url) => url.trim())
+    .filter(Boolean);
+  return [...new Set(urls)];
+}
+
+/**
+ * Puts the media a live reply has produced back into its text, as the
+ * `MEDIA:` lines the model wrote. Live events carry text with those lines
+ * taken out and the paths alongside, so without this an image the assistant
+ * made only appeared once the reply finished and the page reloaded. A line is
+ * added where the image first turned up, so it stays with the words around
+ * it, and re-added at the end if a rewrite of the text dropped it.
+ */
+export function withLiveAssistantMedia(text: string, mediaUrls: readonly string[]): string {
+  let next = text;
+  for (const url of mediaUrls) {
+    const line = `MEDIA:${url}`;
+    if (!next.includes(line)) {
+      next = next ? `${next.replace(/\s+$/, "")}\n\n${line}\n\n` : `${line}\n\n`;
+    }
+  }
+  return next;
+}
+
 /** Merges assistant full-text and delta events into a capped live buffer. */
 export function resolveMergedAssistantText(params: {
   previousText: string;

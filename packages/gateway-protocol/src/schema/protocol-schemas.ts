@@ -7,6 +7,16 @@
  */
 import type { TSchema } from "typebox";
 import {
+  ConnectionJobViewSchema,
+  ConnectionsCancelParamsSchema,
+  ConnectionsCheckKeysParamsSchema,
+  ConnectionsCheckKeysResultSchema,
+  ConnectionsConnectParamsSchema,
+  ConnectionsDisconnectParamsSchema,
+  ConnectionsGoogleSetClientParamsSchema,
+  ConnectionsStatusParamsSchema,
+} from "./account-connections.js";
+import {
   AgentEventSchema,
   AgentIdentityParamsSchema,
   AgentIdentityResultSchema,
@@ -129,6 +139,11 @@ import {
   ChatRecommendActionsResultSchema,
 } from "./chat-actions.js";
 import {
+  ChatSearchHitSchema,
+  ChatSearchParamsSchema,
+  ChatSearchResultSchema,
+} from "./chat-search.js";
+import {
   CommandEntrySchema,
   CommandsListParamsSchema,
   CommandsListResultSchema,
@@ -154,6 +169,8 @@ import {
   CronRunLogEntrySchema,
   CronRunParamsSchema,
   CronRunsParamsSchema,
+  CronDraftParamsSchema,
+  CronDraftResultSchema,
   CronStatusParamsSchema,
   CronUpdateParamsSchema,
 } from "./cron.js";
@@ -541,6 +558,8 @@ export const ProtocolSchemas = {
   CronRemoveParams: CronRemoveParamsSchema,
   CronRunParams: CronRunParamsSchema,
   CronRunsParams: CronRunsParamsSchema,
+  CronDraftParams: CronDraftParamsSchema,
+  CronDraftResult: CronDraftResultSchema,
   CronRunLogEntry: CronRunLogEntrySchema,
   LogsTailParams: LogsTailParamsSchema,
   LogsTailResult: LogsTailResultSchema,
@@ -575,6 +594,17 @@ export const ProtocolSchemas = {
   ChatMessageGetResult: ChatMessageGetResultSchema,
   ChatRecommendActionsParams: ChatRecommendActionsParamsSchema,
   ChatRecommendActionsResult: ChatRecommendActionsResultSchema,
+  ChatSearchParams: ChatSearchParamsSchema,
+  ChatSearchHit: ChatSearchHitSchema,
+  ChatSearchResult: ChatSearchResultSchema,
+  ConnectionJobView: ConnectionJobViewSchema,
+  ConnectionsStatusParams: ConnectionsStatusParamsSchema,
+  ConnectionsGoogleSetClientParams: ConnectionsGoogleSetClientParamsSchema,
+  ConnectionsConnectParams: ConnectionsConnectParamsSchema,
+  ConnectionsCancelParams: ConnectionsCancelParamsSchema,
+  ConnectionsDisconnectParams: ConnectionsDisconnectParamsSchema,
+  ConnectionsCheckKeysParams: ConnectionsCheckKeysParamsSchema,
+  ConnectionsCheckKeysResult: ConnectionsCheckKeysResultSchema,
   ChatSendParams: ChatSendParamsSchema,
   ChatAbortParams: ChatAbortParamsSchema,
   ChatInjectParams: ChatInjectParamsSchema,

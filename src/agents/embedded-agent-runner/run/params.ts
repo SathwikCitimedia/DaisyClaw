@@ -217,6 +217,13 @@ export type RunEmbeddedAgentParams = {
    * final lifecycle "end" after durable post-turn maintenance completes.
    */
   deferTerminalLifecycleEnd?: boolean;
+  /**
+   * Offered a context-overflow error the run can still recover from by
+   * compacting and retrying. Returns true when the run holds it (sending it
+   * only if recovery fails), so the person never sees an error flash up while
+   * the retry quietly succeeds.
+   */
+  holdRecoverableOverflowError?: (emit: () => void) => boolean;
   lane?: string;
   enqueue?: CommandQueueEnqueueFn;
   extraSystemPrompt?: string;

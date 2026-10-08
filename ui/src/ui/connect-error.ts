@@ -6,7 +6,7 @@ import {
   readConnectPairingRequiredMessage,
   readPairingConnectErrorDetails,
 } from "../../../packages/gateway-protocol/src/connect-error-details.js";
-import { resolveGatewayErrorDetailCode } from "./gateway.ts";
+import { GatewayRequestTimeoutError, resolveGatewayErrorDetailCode } from "./gateway.ts";
 import { normalizeLowercaseStringOrEmpty } from "./string-coerce.ts";
 
 type ErrorWithMessageAndDetails = {
@@ -93,7 +93,14 @@ function formatErrorFromMessageAndDetails(error: ErrorWithMessageAndDetails): st
   return message;
 }
 
+/** Shown when the gateway is slow to answer; the raw method name means nothing to people. */
+export const GATEWAY_SLOW_MESSAGE =
+  "DaisyClaw is taking longer than usual to answer. Try again in a moment.";
+
 export function formatConnectError(error: unknown): string {
+  if (error instanceof GatewayRequestTimeoutError) {
+    return GATEWAY_SLOW_MESSAGE;
+  }
   if (error && typeof error === "object") {
     return formatErrorFromMessageAndDetails(error as ErrorWithMessageAndDetails);
   }

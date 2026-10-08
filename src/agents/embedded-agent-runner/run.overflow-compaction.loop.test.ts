@@ -234,6 +234,53 @@ describe("overflow compaction in run loop", () => {
     expect(result.meta.error).toBeUndefined();
   });
 
+  // The attempt hands its overflow error to the run rather than showing it,
+  // because "prompt too large" flashing up before the answer read as failure.
+  it("drops an overflow error the run held once the retry runs", async () => {
+    const shownErrors = vi.fn();
+    mockedRunEmbeddedAttempt
+      .mockImplementationOnce(async (attemptParams) => {
+        const held = (
+          attemptParams as { holdRecoverableOverflowError?: (emit: () => void) => boolean }
+        ).holdRecoverableOverflowError?.(shownErrors);
+        expect(held).toBe(true);
+        return makeAttemptResult({ promptError: makeOverflowError() });
+      })
+      .mockResolvedValueOnce(makeAttemptResult({ promptError: null }));
+    mockedCompactDirect.mockResolvedValueOnce(
+      makeCompactionSuccess({
+        summary: "Compacted session",
+        firstKeptEntryId: "entry-7",
+        tokensBefore: 150000,
+      }),
+    );
+
+    const result = await runEmbeddedAgent(baseParams);
+
+    expect(result.meta.error).toBeUndefined();
+    expect(shownErrors).not.toHaveBeenCalled();
+  });
+
+  it("sends the held overflow error when recovery fails", async () => {
+    const shownErrors = vi.fn();
+    mockedRunEmbeddedAttempt.mockImplementation(async (attemptParams) => {
+      (
+        attemptParams as { holdRecoverableOverflowError?: (emit: () => void) => boolean }
+      ).holdRecoverableOverflowError?.(shownErrors);
+      return makeAttemptResult({ promptError: makeOverflowError() });
+    });
+    mockedCompactDirect.mockResolvedValueOnce({
+      ok: false,
+      compacted: false,
+      reason: "nothing to compact",
+    });
+
+    const result = await runEmbeddedAgent(baseParams);
+
+    expect(result.meta.error?.kind).toBe("context_overflow");
+    expect(shownErrors).toHaveBeenCalledTimes(1);
+  });
+
   it("returns error if compaction fails", async () => {
     const overflowError = makeOverflowError();
 

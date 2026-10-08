@@ -1,5 +1,5 @@
 // Gateway Protocol schema module defines protocol validation shapes.
-import { Type, type TSchema } from "typebox";
+import { Type, type Static, type TSchema } from "typebox";
 import { NonEmptyString } from "./primitives.js";
 
 /**
@@ -516,6 +516,53 @@ export const CronRemoveParamsSchema = cronIdOrJobIdParams({});
 export const CronRunParamsSchema = cronIdOrJobIdParams({
   mode: Type.Optional(Type.Union([Type.Literal("due"), Type.Literal("force")])),
 });
+
+/** A sentence describing a job, drafted into form fields for review. */
+export const CronDraftParamsSchema = Type.Object(
+  {
+    text: Type.String({ minLength: 1, maxLength: 2000 }),
+    /** The viewer's local time, "YYYY-MM-DDTHH:MM" with an optional weekday. */
+    now: Type.String({ minLength: 16, maxLength: 64 }),
+    timeZone: Type.Optional(Type.String({ maxLength: 64 })),
+  },
+  { additionalProperties: false },
+);
+
+/** A schedule as the New Job form holds it; times are the viewer's local time. */
+export const CronDraftScheduleSchema = Type.Union([
+  Type.Object(
+    {
+      kind: Type.Literal("every"),
+      amount: Type.Integer({ minimum: 1 }),
+      unit: Type.Union([Type.Literal("minutes"), Type.Literal("hours"), Type.Literal("days")]),
+      startAt: Type.Optional(Type.String()),
+    },
+    { additionalProperties: false },
+  ),
+  Type.Object(
+    { kind: Type.Literal("cron"), expr: NonEmptyString },
+    { additionalProperties: false },
+  ),
+  Type.Object({ kind: Type.Literal("at"), at: NonEmptyString }, { additionalProperties: false }),
+]);
+
+export const CronDraftResultSchema = Type.Union([
+  Type.Object(
+    {
+      ok: Type.Literal(true),
+      draft: Type.Object(
+        { name: NonEmptyString, task: NonEmptyString, schedule: CronDraftScheduleSchema },
+        { additionalProperties: false },
+      ),
+      source: Type.Union([Type.Literal("model"), Type.Literal("rules")]),
+    },
+    { additionalProperties: false },
+  ),
+  Type.Object({ ok: Type.Literal(false), reason: Type.String() }, { additionalProperties: false }),
+]);
+
+export type CronDraftParams = Static<typeof CronDraftParamsSchema>;
+export type CronDraftResult = Static<typeof CronDraftResultSchema>;
 
 /** Query params for cron run history. */
 export const CronRunsParamsSchema = Type.Object(

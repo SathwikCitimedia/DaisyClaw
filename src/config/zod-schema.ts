@@ -530,6 +530,11 @@ export const DaisyClawSchema = z
     spending: z
       .object({
         monthlyLimitUsd: z.number().nonnegative().optional(),
+        currency: z
+          .string()
+          .regex(/^[A-Z]{3}$/)
+          .optional(),
+        monthlyLimit: z.number().nonnegative().optional(),
       })
       .strict()
       .optional(),

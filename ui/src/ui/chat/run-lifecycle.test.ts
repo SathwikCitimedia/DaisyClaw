@@ -257,3 +257,54 @@ describe("reconcileChatRunFromCurrentSessionRow stale-active suppression (#87875
     expect(rowActive(host)).toBe(false);
   });
 });
+
+describe("a finished status left over from the previous answer", () => {
+  // The row's status is saved a beat after a run starts, so the first update
+  // after sending still says "done" from the last answer. Ending the reply on
+  // it hid the dots and the Stop button until the answer popped in at the end.
+  it("does not end a reply on a status that finished before the reply began", () => {
+    const replyStartedAt = Date.now();
+    const host = makeHost({
+      chatRunId: "run-now",
+      chatStream: "",
+      chatStreamStartedAt: replyStartedAt,
+    });
+
+    const reconciled = reconcileChatRunFromSessionRow(host, {
+      key: "s1",
+      kind: "direct",
+      updatedAt: 1,
+      hasActiveRun: true,
+      status: "done",
+      endedAt: replyStartedAt - 60_000,
+    });
+
+    expect(reconciled).toBe(false);
+    expect(host.chatRunId).toBe("run-now");
+  });
+
+  it("still ends the reply once it has really finished", () => {
+    const replyStartedAt = Date.now() - 5_000;
+    const host = makeHost({
+      chatRunId: "run-now",
+      chatStream: "partial",
+      chatStreamStartedAt: replyStartedAt,
+    });
+
+    const reconciled = reconcileChatRunFromSessionRow(
+      host,
+      {
+        key: "s1",
+        kind: "direct",
+        updatedAt: 1,
+        hasActiveRun: false,
+        status: "done",
+        endedAt: replyStartedAt + 4_000,
+      },
+      { publishRunStatus: false },
+    );
+
+    expect(reconciled).toBe(true);
+    expect(host.chatRunId).toBeNull();
+  });
+});

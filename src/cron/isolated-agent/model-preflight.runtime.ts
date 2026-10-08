@@ -1,13 +1,18 @@
 /** Preflights local model-provider endpoints before scheduled cron runner startup. */
 import { normalizeProviderId } from "@daisyclaw/model-catalog-core/provider-id";
 import { normalizeLowercaseStringOrEmpty } from "@daisyclaw/normalization-core/string-coerce";
-import type { ModelProviderConfig } from "../../config/types.models.js";
 import type { DaisyClawConfig } from "../../config/types.daisyclaw.js";
+import type { ModelProviderConfig } from "../../config/types.models.js";
 import { fetchWithSsrFGuard } from "../../infra/net/fetch-guard.js";
 import type { SsrFPolicy } from "../../infra/net/ssrf.js";
 
 const PREFLIGHT_CACHE_TTL_MS = 5 * 60_000;
-const PREFLIGHT_TIMEOUT_MS = 2_500;
+// A LAN or VPN server and a gateway busy starting up can both take a few
+// seconds to answer. At 2.5 s, a run straight after startup was skipped as
+// "not reachable" against a server that answers in half a second.
+const PREFLIGHT_TIMEOUT_MS = 10_000;
+/** A timed-out check is tried once more after this pause; a refused one is not. */
+const PREFLIGHT_RETRY_DELAY_MS = 1_000;
 
 type PreflightApi = "ollama" | "openai-completions";
 
@@ -178,6 +183,40 @@ async function probeLocalProviderEndpoint(params: {
   }
 }
 
+/**
+ * A check that ran out of time says little: the server may be slow, or this
+ * process too busy to read its answer in time. A refused connection, by
+ * contrast, means nothing is listening.
+ */
+function isPreflightTimeout(error: unknown): boolean {
+  const name = error instanceof Error ? error.name : "";
+  const message = error instanceof Error ? error.message : String(error);
+  return name === "TimeoutError" || name === "AbortError" || /timed? ?out/i.test(message);
+}
+
+async function probeWithOneRetryOnTimeout(params: {
+  api: PreflightApi;
+  baseUrl: string;
+}): Promise<EndpointPreflightResult> {
+  try {
+    await probeLocalProviderEndpoint(params);
+    return { status: "available" };
+  } catch (error) {
+    if (!isPreflightTimeout(error)) {
+      return { status: "unavailable", error };
+    }
+  }
+  await new Promise<void>((resolve) => {
+    setTimeout(resolve, PREFLIGHT_RETRY_DELAY_MS);
+  });
+  try {
+    await probeLocalProviderEndpoint(params);
+    return { status: "available" };
+  } catch (error) {
+    return { status: "unavailable", error };
+  }
+}
+
 /** Checks local model-provider reachability before a scheduled cron run starts. */
 export async function preflightCronModelProvider(params: {
   cfg: DaisyClawConfig;
@@ -214,13 +253,7 @@ export async function preflightCronModelProvider(params: {
     });
   }
 
-  let result: EndpointPreflightResult;
-  try {
-    await probeLocalProviderEndpoint({ api, baseUrl });
-    result = { status: "available" };
-  } catch (error) {
-    result = { status: "unavailable", error };
-  }
+  const result = await probeWithOneRetryOnTimeout({ api, baseUrl });
   preflightCache.set(cacheKey, { checkedAtMs: nowMs, result });
   if (result.status === "available") {
     return { status: "available" };

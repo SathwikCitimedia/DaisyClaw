@@ -2251,6 +2251,137 @@
 }
 
 /* ===========================================
+   Image Viewer (chat pictures open in the app)
+   =========================================== */
+
+.image-viewer {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  max-width: 100vw;
+  height: 100dvh;
+  max-height: 100dvh;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: color-mix(in srgb, black 88%, transparent);
+  color: #f7f8f8;
+  animation: fade-in 0.14s var(--ease-out, ease-out);
+}
+
+.image-viewer::backdrop {
+  background: transparent;
+}
+
+.image-viewer__stage {
+  position: absolute;
+  inset: 56px 64px 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.image-viewer__image {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  border-radius: var(--radius-md);
+  box-shadow: 0 24px 64px color-mix(in srgb, black 50%, transparent);
+  user-select: none;
+}
+
+.image-viewer__toolbar {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  left: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.image-viewer__counter {
+  margin-right: auto;
+  padding: 4px 10px;
+  border-radius: var(--radius-full);
+  background: rgba(255, 255, 255, 0.08);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.image-viewer__btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: var(--radius-full);
+  background: rgba(255, 255, 255, 0.08);
+  color: inherit;
+  cursor: pointer;
+  transition: background 120ms ease-out;
+}
+
+.image-viewer__btn:hover {
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.image-viewer__btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--ring);
+}
+
+.image-viewer__btn svg {
+  width: 18px;
+  height: 18px;
+}
+
+.image-viewer__nav {
+  position: absolute;
+  top: 50%;
+  width: 44px;
+  height: 44px;
+  transform: translateY(-50%);
+}
+
+.image-viewer__nav--prev {
+  left: 12px;
+}
+
+.image-viewer__nav--next {
+  right: 12px;
+}
+
+@media (max-width: 640px) {
+  .image-viewer__stage {
+    inset: 56px 12px 72px;
+  }
+
+  .image-viewer__nav {
+    top: auto;
+    bottom: 16px;
+    transform: none;
+  }
+
+  .image-viewer__nav--prev {
+    left: calc(50% - 52px);
+  }
+
+  .image-viewer__nav--next {
+    right: calc(50% - 52px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .image-viewer {
+    animation: none;
+  }
+}
+
+/* ===========================================
    Confirm Dialog (replaces native confirm())
    =========================================== */
 
@@ -2978,6 +3109,76 @@
   display: none;
 }
 
+/* One sentence in, the form filled in for review. */
+.cron-draft {
+  display: grid;
+  gap: 8px;
+  padding: 14px;
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--border));
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--accent) 5%, var(--bg-elevated));
+}
+
+.cron-draft__label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-strong, var(--text));
+}
+
+.cron-draft__row {
+  display: flex;
+  gap: 8px;
+}
+
+.cron-draft__input {
+  flex: 1;
+  min-width: 0;
+}
+
+.cron-draft__button {
+  flex: 0 0 auto;
+}
+
+.cron-draft__hint,
+.cron-draft__error {
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.cron-draft__error {
+  color: var(--danger);
+}
+
+.cron-draft__summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.cron-draft__summary-label {
+  font-weight: 600;
+}
+
+/* The task names one interval and the schedule another. */
+.cron-mismatch {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin-top: 8px;
+  padding: 8px 12px;
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--warn) 12%, transparent);
+  font-size: 12.5px;
+  color: var(--text);
+}
+
 .cron-form-section {
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
@@ -3583,8 +3784,10 @@
 
 .callout--dismissible {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: 10px;
+  padding-block: 8px;
+  padding-inline-end: 8px;
 }
 
 .callout__content {
@@ -3592,6 +3795,7 @@
   flex: 1;
 }
 
+/* A close button that is easy to find: tinted and outlined in the callout's own colour. */
 .callout__dismiss {
   width: 28px;
   height: 28px;
@@ -3599,20 +3803,104 @@
   align-items: center;
   justify-content: center;
   flex: 0 0 auto;
-  border: 0;
+  border: 1px solid color-mix(in srgb, currentColor 30%, transparent);
   border-radius: var(--radius-sm);
-  background: transparent;
+  background: color-mix(in srgb, currentColor 8%, transparent);
   color: currentColor;
   cursor: pointer;
+  transition: background var(--duration-fast, 120ms) ease;
 }
 
 .callout__dismiss:hover {
-  background: rgba(255, 255, 255, 0.08);
+  background: color-mix(in srgb, currentColor 18%, transparent);
+}
+
+.callout__dismiss:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 2px;
 }
 
 .callout__dismiss svg {
   width: 16px;
   height: 16px;
+}
+
+/*
+ * An error that has passed does not sit on screen: it fades away after ten
+ * seconds (dismissible-error.ts clears it when the fade ends). Pointing at it
+ * or tabbing into it holds it while it is read.
+ */
+.error-auto-hide {
+  animation: error-auto-hide 10s linear forwards;
+}
+
+.error-auto-hide:hover,
+.error-auto-hide:focus-within {
+  animation-play-state: paused;
+}
+
+@keyframes error-auto-hide {
+  0%,
+  96% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes error-auto-hide-still {
+  to {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .error-auto-hide {
+    animation-name: error-auto-hide-still;
+  }
+}
+
+.pill--dismissible {
+  gap: 6px;
+  padding-inline-end: 4px;
+  max-width: min(520px, 100%);
+}
+
+.pill__text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pill__dismiss {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  flex: 0 0 auto;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: color-mix(in srgb, currentColor 12%, transparent);
+  color: currentColor;
+  cursor: pointer;
+}
+
+.pill__dismiss:hover {
+  background: color-mix(in srgb, currentColor 22%, transparent);
+}
+
+.pill__dismiss:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 1px;
+}
+
+.pill__dismiss svg {
+  width: 12px;
+  height: 12px;
 }
 
 .callout.danger {
@@ -7296,9 +7584,12 @@ td.data-table-key-col {
   color: var(--text);
 }
 
+/* Columns use minmax(0, 1fr) throughout: a plain 1fr column never shrinks
+   below its widest content, so one long title pushed the cards out past the
+   edge of the setup card. */
 .first-run__grid {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
   width: 100%;
 }
@@ -7407,7 +7698,7 @@ td.data-table-key-col {
 
 .first-run__skills-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
   width: 100%;
   text-align: left;
@@ -7417,6 +7708,7 @@ td.data-table-key-col {
   display: flex;
   align-items: center;
   gap: 10px;
+  min-width: 0;
   padding: 10px 12px;
   border: 1px solid color-mix(in srgb, var(--border) 85%, white 8%);
   border-radius: var(--radius-lg);
@@ -7519,24 +7811,13 @@ td.data-table-key-col {
 
 .first-run__skill-title {
   display: inline-flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 6px;
+  gap: 2px 6px;
+  min-width: 0;
   font-size: 13px;
   font-weight: 650;
   color: var(--text-strong, var(--text));
-  white-space: nowrap;
-}
-
-.first-run__skill-chip {
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-  color: var(--muted);
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  padding: 1px 7px;
-  white-space: nowrap;
 }
 
 .first-run__skill-desc {
@@ -7629,7 +7910,32 @@ td.data-table-key-col {
 }
 
 .first-run__grid--three {
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+/* Accounts that need connecting are listed apart, without a switch that
+   could not do anything until the account is connected. */
+.first-run__skills-later {
+  display: grid;
+  gap: 8px;
+  width: 100%;
+  text-align: left;
+}
+
+.first-run__skills-later-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.first-run__skill-card--later {
+  opacity: 0.85;
+}
+
+.first-run__skill-note {
+  font-size: 11px;
+  line-height: 1.35;
+  color: var(--accent);
 }
 
 /* Embedded channel guided setup inside the wizard card. */
@@ -7644,20 +7950,20 @@ td.data-table-key-col {
 
 @media (max-width: 900px) {
   .first-run__skills-grid {
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
 @media (max-width: 700px) {
   .first-run__grid--three {
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
 @media (max-width: 560px) {
   .first-run__grid,
   .first-run__skills-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 
@@ -8650,6 +8956,42 @@ td.data-table-key-col {
   font-size: 12px;
 }
 
+.cmd-palette__item--chat {
+  align-items: flex-start;
+}
+
+.cmd-palette__item--chat .nav-item__icon {
+  margin-top: 2px;
+}
+
+.cmd-palette__chat-text {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.cmd-palette__chat-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cmd-palette__chat-snippet {
+  display: -webkit-box;
+  overflow: hidden;
+  font-size: 12px;
+  line-height: 1.4;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow-wrap: anywhere;
+}
+
+.cmd-palette__status {
+  padding: 8px 18px 12px;
+  font-size: 13px;
+}
+
 .cmd-palette__empty {
   display: flex;
   align-items: center;
@@ -8680,6 +9022,67 @@ td.data-table-key-col {
   background: var(--bg);
   font-family: var(--mono);
   font-size: 10px;
+  line-height: 1.4;
+}
+
+/* ===========================================
+   Keyboard Shortcuts Sheet
+   =========================================== */
+
+.shortcuts-sheet {
+  gap: 16px;
+  overflow-y: auto;
+}
+
+.shortcuts-sheet__group-title {
+  margin-bottom: 6px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.shortcuts-sheet__list {
+  display: grid;
+  margin: 0;
+}
+
+.shortcuts-sheet__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 7px 0;
+  border-top: 1px solid var(--border);
+}
+
+.shortcuts-sheet__row:first-child {
+  border-top: 0;
+}
+
+.shortcuts-sheet__label {
+  font-size: 13px;
+}
+
+.shortcuts-sheet__keys {
+  display: inline-flex;
+  gap: 4px;
+  margin: 0;
+  flex-shrink: 0;
+}
+
+.shortcuts-sheet__keys kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  padding: 2px 6px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--secondary);
+  font-family: var(--mono);
+  font-size: 11px;
   line-height: 1.4;
 }
 
@@ -9279,4 +9682,142 @@ details[open] > .ov-expandable-toggle::after {
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
+}
+
+/* ===========================================
+   Chat find bar and pinned messages bar
+   =========================================== */
+
+.agent-chat__search-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 12px 16px 0;
+  padding: 6px 6px 6px 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  background: var(--card);
+}
+
+.agent-chat__search-bar > svg {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  color: var(--muted);
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+}
+
+.agent-chat__search-bar input {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  outline: none;
+}
+
+.agent-chat__pinned {
+  margin: 12px 16px 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--card);
+  overflow: hidden;
+}
+
+.agent-chat__pinned-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 12px;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+
+.agent-chat__pinned-toggle:hover {
+  background: var(--bg-hover);
+}
+
+.agent-chat__pinned-toggle svg {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+}
+
+.agent-chat__pinned-toggle > svg:first-child {
+  color: var(--accent);
+}
+
+.agent-chat__pinned-toggle .collapse-chevron {
+  margin-left: auto;
+}
+
+.agent-chat__pinned-list {
+  display: grid;
+  max-height: min(40dvh, 280px);
+  overflow-y: auto;
+  border-top: 1px solid var(--border);
+}
+
+.agent-chat__pinned-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px 2px 0;
+  border-top: 1px solid var(--border);
+}
+
+.agent-chat__pinned-item:first-child {
+  border-top: 0;
+}
+
+.agent-chat__pinned-jump {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 7px 12px;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.agent-chat__pinned-jump:hover {
+  background: var(--bg-hover);
+}
+
+.agent-chat__pinned-jump:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.agent-chat__pinned-role {
+  flex-shrink: 0;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.agent-chat__pinned-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }

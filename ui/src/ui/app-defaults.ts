@@ -28,6 +28,7 @@ export const DEFAULT_CRON_FORM: CronFormState = {
   scheduleAt: "",
   everyAmount: "30",
   everyUnit: "minutes",
+  everyStartAt: "",
   cronExpr: "0 7 * * *",
   cronTz: "",
   scheduleExact: false,

@@ -81,6 +81,14 @@ const loadChatHandlers = lazyHandlerModule(
   () => import("./server-methods/chat.js"),
   (module) => module.chatHandlers,
 );
+const loadAccountConnectionHandlers = lazyHandlerModule(
+  () => import("./server-methods/account-connections.js"),
+  (module) => module.accountConnectionHandlers,
+);
+const loadChatSearchHandlers = lazyHandlerModule(
+  () => import("./server-methods/chat-search.js"),
+  (module) => module.chatSearchHandlers,
+);
 const loadCommandsHandlers = lazyHandlerModule(
   () => import("./server-methods/commands.js"),
   (module) => module.commandsHandlers,
@@ -312,6 +320,21 @@ export const coreGatewayHandlers: GatewayRequestHandlers = {
     loadHandlers: loadChatHandlers,
   }),
   ...createLazyCoreHandlers({
+    methods: ["chat.search"],
+    loadHandlers: loadChatSearchHandlers,
+  }),
+  ...createLazyCoreHandlers({
+    methods: [
+      "connections.status",
+      "connections.google.setClient",
+      "connections.connect",
+      "connections.cancel",
+      "connections.disconnect",
+      "connections.checkKeys",
+    ],
+    loadHandlers: loadAccountConnectionHandlers,
+  }),
+  ...createLazyCoreHandlers({
     methods: ["commands.list"],
     loadHandlers: loadCommandsHandlers,
   }),
@@ -326,6 +349,7 @@ export const coreGatewayHandlers: GatewayRequestHandlers = {
       "cron.remove",
       "cron.run",
       "cron.runs",
+      "cron.draft",
     ],
     loadHandlers: loadCronHandlers,
   }),
@@ -510,6 +534,7 @@ export const coreGatewayHandlers: GatewayRequestHandlers = {
       "sessions.create",
       "sessions.compaction.branch",
       "sessions.compaction.restore",
+      "sessions.forkFromMessage",
       "sessions.send",
       "sessions.steer",
       "sessions.abort",

@@ -252,3 +252,80 @@ describe("first-run wizard: skipping the AI brain", () => {
     expect(state.firstRunStep).toBe(0);
   });
 });
+
+describe("first-run wizard: picking skills", () => {
+  function skill(skillKey: string, extra: Record<string, unknown> = {}) {
+    return { skillKey, name: skillKey, disabled: false, eligible: true, missing: {}, ...extra };
+  }
+
+  function renderSkillsStep() {
+    const state = createState();
+    // "Run setup again" starts the skills step afresh, as a first run does.
+    reopenFirstRunWizard(state);
+    Object.assign(state, {
+      firstRunStep: 2,
+      skillsReport: {
+        skills: [
+          skill("weather"),
+          skill("taskflow"),
+          skill("gog", {
+            disabled: true,
+            missing: { bins: ["gog"] },
+            install: [{ id: "download-win-x64", kind: "download", label: "gog", bins: ["gog"] }],
+          }),
+          skill("spotify-player", { disabled: true }),
+          skill("notion", { disabled: true, missing: { env: ["NOTION_API_TOKEN"] } }),
+          skill("trello", {
+            requirements: { env: ["TRELLO_API_KEY", "TRELLO_TOKEN"] },
+            missing: { env: [] },
+          }),
+        ],
+      },
+    });
+    const host = document.createElement("div");
+    render(renderFirstRunWizard(state), host);
+    return Object.assign(host, { state });
+  }
+
+  const titles = (root: Element) =>
+    [...root.querySelectorAll(".first-run__skill-title")].map((node) => node.textContent?.trim());
+
+  it("lists accounts that are not connected apart, with no switch, saying what it takes", () => {
+    const host = renderSkillsStep();
+    const later = host.querySelector("[data-first-run-connect-later]");
+    expect(later?.textContent).toContain("Connect these later in Settings");
+    expect(titles(later!)).toEqual(["Google", "Spotify", "Notion"]);
+    expect(later!.querySelector(".first-run__switch")).toBeNull();
+    const notes = [...later!.querySelectorAll(".first-run__skill-note")].map((n) => n.textContent);
+    expect(notes).toEqual([
+      "Your own Google account · about 15 minutes · Daisy can guide you",
+      "One click to sign in · needs Spotify Premium",
+      "Paste a token from Notion",
+    ]);
+  });
+
+  it("downloads the tools those accounts need while setup carries on", async () => {
+    const host = renderSkillsStep();
+    await vi.waitFor(() =>
+      expect(host.state.client!.request).toHaveBeenCalledWith(
+        "skills.install",
+        { name: "gog", installId: "download-win-x64", timeoutMs: 120_000 },
+        { timeoutMs: 150_000 },
+      ),
+    );
+  });
+
+  it("gives a connected account a switch like any other skill", () => {
+    const host = renderSkillsStep();
+    const grid = host.querySelector(".first-run__skills-grid")!;
+    expect(titles(grid)).toEqual(["Weather", "Background Jobs", "Trello"]);
+    expect(grid.querySelectorAll(".first-run__switch")).toHaveLength(3);
+  });
+
+  it("describes TaskFlow as what it is, not a to-do list", () => {
+    const text = renderSkillsStep().textContent ?? "";
+    expect(text).toContain("Background Jobs");
+    expect(text).not.toMatch(/to-do/i);
+    expect(text).not.toMatch(/connect in settings/i);
+  });
+});

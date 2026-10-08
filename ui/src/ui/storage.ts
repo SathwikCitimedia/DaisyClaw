@@ -79,6 +79,12 @@ export function normalizeTextScale(value: unknown, fallback: TextScaleStop = 100
   return best;
 }
 
+/**
+ * A chat pinned to the sidebar. The name is kept with the pin so a pinned chat
+ * older than the loaded chat list still shows under its own name.
+ */
+export type PinnedSessionRef = { key: string; label: string };
+
 export type UiSettings = {
   gatewayUrl: string;
   token: string;
@@ -95,6 +101,7 @@ export type UiSettings = {
   navWidth: number; // Sidebar width when expanded (240–400px)
   navGroupsCollapsed: Record<string, boolean>; // Which nav groups are collapsed
   recentSessionsCollapsed?: boolean; // Collapse recent sessions list in sidebar
+  pinnedSessions?: PinnedSessionRef[]; // Chats pinned to the top of the sidebar, in pin order
   borderRadius: number; // Corner roundness (0–100, default 50)
   textScale?: TextScaleStop; // Browser-local text scale percentage
   customTheme?: ImportedCustomTheme;
@@ -314,6 +321,9 @@ export function loadSettings(): UiSettings {
       textScale: normalizeTextScale(parsed.textScale, defaults.textScale),
       customTheme: customTheme ?? undefined,
       locale: isSupportedLocale(parsed.locale) ? parsed.locale : undefined,
+      ...(normalizePinnedSessions(parsed.pinnedSessions).length > 0
+        ? { pinnedSessions: normalizePinnedSessions(parsed.pinnedSessions) }
+        : {}),
     };
     if ("token" in parsed) {
       persistSettings(settings);
@@ -322,6 +332,26 @@ export function loadSettings(): UiSettings {
   } catch {
     return defaults;
   }
+}
+
+const MAX_PINNED_SESSIONS = 50;
+
+export function normalizePinnedSessions(value: unknown): PinnedSessionRef[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  const pins: PinnedSessionRef[] = [];
+  for (const entry of value) {
+    if (!entry || typeof entry !== "object") {
+      continue;
+    }
+    const { key, label } = entry as { key?: unknown; label?: unknown };
+    if (typeof key !== "string" || !key.trim() || pins.some((pin) => pin.key === key)) {
+      continue;
+    }
+    pins.push({ key, label: typeof label === "string" ? label.slice(0, 200) : "" });
+  }
+  return pins.slice(0, MAX_PINNED_SESSIONS);
 }
 
 export function saveSettings(next: UiSettings) {
@@ -437,6 +467,9 @@ function persistSettings(next: UiSettings) {
     ...(next.customTheme ? { customTheme: next.customTheme } : {}),
     sessionsByGateway,
     ...(next.locale ? { locale: next.locale } : {}),
+    ...(normalizePinnedSessions(next.pinnedSessions).length > 0
+      ? { pinnedSessions: normalizePinnedSessions(next.pinnedSessions) }
+      : {}),
   };
   const serialized = JSON.stringify(persisted);
   try {

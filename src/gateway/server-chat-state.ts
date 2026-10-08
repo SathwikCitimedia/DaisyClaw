@@ -94,6 +94,8 @@ export type ChatRunState = {
   /** Length of text at the time of the last broadcast, used to avoid duplicate flushes. */
   deltaLastBroadcastLen: Map<string, number>;
   deltaLastBroadcastText: Map<string, string>;
+  /** Media each live reply has produced so far, in the order it appeared. */
+  liveMediaUrls: Map<string, string[]>;
   agentDeltaSentAt: Map<string, number>;
   bufferedAgentEvents: Map<string, BufferedAgentEvent>;
   abortedRuns: Map<string, number>;
@@ -110,6 +112,7 @@ export function createChatRunState(): ChatRunState {
   const deltaSentAt = new Map<string, number>();
   const deltaLastBroadcastLen = new Map<string, number>();
   const deltaLastBroadcastText = new Map<string, string>();
+  const liveMediaUrls = new Map<string, string[]>();
   const agentDeltaSentAt = new Map<string, number>();
   const bufferedAgentEvents = new Map<string, BufferedAgentEvent>();
   const abortedRuns = new Map<string, number>();
@@ -121,6 +124,7 @@ export function createChatRunState(): ChatRunState {
     deltaSentAt.delete(runId);
     deltaLastBroadcastLen.delete(runId);
     deltaLastBroadcastText.delete(runId);
+    liveMediaUrls.delete(runId);
     for (const key of [runId, `${runId}:assistant`, `${runId}:thinking`]) {
       agentDeltaSentAt.delete(key);
       bufferedAgentEvents.delete(key);
@@ -135,6 +139,7 @@ export function createChatRunState(): ChatRunState {
     deltaSentAt.clear();
     deltaLastBroadcastLen.clear();
     deltaLastBroadcastText.clear();
+    liveMediaUrls.clear();
     agentDeltaSentAt.clear();
     bufferedAgentEvents.clear();
     abortedRuns.clear();
@@ -148,6 +153,7 @@ export function createChatRunState(): ChatRunState {
     deltaSentAt,
     deltaLastBroadcastLen,
     deltaLastBroadcastText,
+    liveMediaUrls,
     agentDeltaSentAt,
     bufferedAgentEvents,
     abortedRuns,

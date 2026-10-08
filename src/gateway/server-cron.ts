@@ -48,6 +48,7 @@ import {
 } from "../routing/session-key.js";
 import { defaultRuntime } from "../runtime.js";
 import { parseAgentSessionKey } from "../sessions/session-key-utils.js";
+import { postUndeliveredCronRunToChat } from "./cron-chat-fallback.js";
 import {
   dispatchGatewayCronFinishedNotifications,
   sendGatewayCronFailureAlert,
@@ -595,6 +596,14 @@ export function buildGatewayCronService(params: {
           resolveCronAgent,
           webhookToken: params.cfg.cron?.webhookToken,
           globalFailureDestination: params.cfg.cron?.failureDestination,
+        });
+        void postUndeliveredCronRunToChat({
+          evt,
+          job,
+          resolveCronAgent,
+          broadcast: params.broadcast,
+        }).catch((err: unknown) => {
+          cronLogger.warn({ jobId: evt.jobId, err: String(err) }, "cron: chat fallback failed");
         });
 
         void appendCronRunLog({

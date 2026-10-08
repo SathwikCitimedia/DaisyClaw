@@ -16,6 +16,7 @@ import {
 } from "../../utils/message-channel.js";
 import { formatErrorMessage } from "../errors.js";
 import { resolveOutboundChannelPlugin } from "./channel-resolution.js";
+import { NO_CONFIGURED_CHANNELS_LEAD } from "./no-configured-channels.js";
 
 /** Deliverable message channel id that can be selected for message actions. */
 export type MessageChannelId = DeliverableMessageChannel;
@@ -119,7 +120,7 @@ function formatMissingOfficialExternalChannelsMessage(
 
 function formatNoConfiguredChannelsMessage(): string {
   return [
-    "Channel is required (no configured channels detected).",
+    NO_CONFIGURED_CHANNELS_LEAD,
     "Run daisyclaw channels add to configure one, or pass --channel <channel> after enabling a channel.",
     "Use daisyclaw channels list --all to see available channel ids.",
   ].join(" ");

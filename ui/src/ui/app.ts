@@ -84,8 +84,13 @@ import {
 import type { AppViewState } from "./app-view-state.ts";
 import { normalizeAssistantIdentity } from "./assistant-identity.ts";
 import { BrowserVoiceSession, isBrowserVoiceSupported } from "./chat/browser-voice.ts";
+import {
+  cancelPaletteChatSearch,
+  IDLE_PALETTE_CHAT_SEARCH,
+  type PaletteChatSearchState,
+} from "./chat/chat-search.ts";
 import { restoreChatComposerState } from "./chat/composer-persistence.ts";
-import { exportChatMarkdown } from "./chat/export.ts";
+import { exportChatWithFeedback } from "./chat/export-chat-action.ts";
 import {
   createRealtimeTalkConversationState,
   updateRealtimeTalkConversation,
@@ -100,6 +105,7 @@ import {
 import type { ChatRunUiStatus } from "./chat/run-lifecycle.ts";
 import type { ChatSideResult } from "./chat/side-result.ts";
 import type { VoiceErrorFix } from "./chat/voice-error.ts";
+import { INITIAL_ACCOUNT_SIGN_IN, type AccountSignInStore } from "./controllers/account-sign-in.ts";
 import {
   loadToolsEffective as loadToolsEffectiveInternal,
   refreshVisibleToolsEffectiveForCurrentSession as refreshVisibleToolsEffectiveForCurrentSessionInternal,
@@ -127,6 +133,11 @@ import type {
   SkillMessage,
   SkillSetupItemState,
 } from "./controllers/skills.ts";
+import type {
+  SpendingLoadState,
+  SpendingSaveState,
+  SpendingStatus,
+} from "./controllers/spending.ts";
 import { importCustomThemeFromUrl } from "./custom-theme.ts";
 import type { GatewayBrowserClient, GatewayHelloOk } from "./gateway.ts";
 import type { Tab } from "./navigation.ts";
@@ -162,6 +173,7 @@ import type {
 import type { ChatAttachment, ChatQueueItem, CronFormState } from "./ui-types.ts";
 import { generateUUID } from "./uuid.ts";
 import type { NostrProfileFormState } from "./views/channels.nostr-profile-form.ts";
+import { isKeyboardShortcutsHotkey } from "./views/keyboard-shortcuts.ts";
 
 declare global {
   interface Window {
@@ -638,6 +650,9 @@ export class DaisyClawApp extends LitElement {
   @state() cronError: string | null = null;
   @state() cronForm: CronFormState = { ...DEFAULT_CRON_FORM };
   @state() cronFormCollapsed = true;
+  @state() cronDraftText = "";
+  @state() cronDraftBusy = false;
+  @state() cronDraftError: string | null = null;
   @state() cronFieldErrors: import("./controllers/cron.js").CronFieldErrors = {};
   @state() cronEditingJobId: string | null = null;
   @state() cronRunsJobId: string | null = null;
@@ -661,6 +676,8 @@ export class DaisyClawApp extends LitElement {
   // Overview dashboard state
   @state() attentionItems: import("./types.js").AttentionItem[] = [];
   @state() paletteOpen = false;
+  @state() paletteChatSearch: PaletteChatSearchState = IDLE_PALETTE_CHAT_SEARCH;
+  @state() shortcutsOpen = false;
   @state() themePopoverOpen = false;
   @state() paletteQuery = "";
   @state() paletteActiveIndex = 0;
@@ -677,10 +694,14 @@ export class DaisyClawApp extends LitElement {
     kind: "success" | "error";
     message: string;
   } | null = null;
-  /** Month-to-date provider spend and the user's ceiling, from usage.spending. */
-  @state() spendingThisMonthUsd: number | null = null;
-  @state() spendingLimitUsd: number | null = null;
-  @state() spendingExceeded = false;
+  /** The Connect or Disconnect card open over Settings → Connections. */
+  @state() connectionDialog: import("./views/connections.ts").ConnectionDialogState | null = null;
+  /** Browser sign-in for Google and Spotify in Settings → Connections. */
+  @state() accountSignIn: AccountSignInStore = INITIAL_ACCOUNT_SIGN_IN;
+  /** Month-to-date provider spend, the user's ceiling and their currency, from usage.spending. */
+  @state() spendingStatus: SpendingStatus | null = null;
+  @state() spendingLoad: SpendingLoadState = "idle";
+  @state() spendingSave: SpendingSaveState = "idle";
   @state() skillsLoading = false;
   @state() skillsReport: SkillStatusReport | null = null;
   @state() skillsError: string | null = null;
@@ -807,6 +828,12 @@ export class DaisyClawApp extends LitElement {
         this.paletteQuery = "";
         this.paletteActiveIndex = 0;
       }
+      cancelPaletteChatSearch(this);
+      return;
+    }
+    if (isKeyboardShortcutsHotkey(e)) {
+      e.preventDefault();
+      this.shortcutsOpen = !this.shortcutsOpen;
     }
   };
   private chatMobileControlsKeydownHandler = (e: KeyboardEvent) => {
@@ -892,7 +919,10 @@ export class DaisyClawApp extends LitElement {
           await createChatSessionInternal(this as unknown as AppViewState, { source: "user" });
           break;
         case "export":
-          exportChatMarkdown(this.chatMessages, this.assistantName);
+          await exportChatWithFeedback(
+            this as unknown as Parameters<typeof exportChatWithFeedback>[0],
+            this.sessionKey,
+          );
           break;
         case "refresh-tools-effective": {
           await refreshVisibleToolsEffectiveForCurrentSessionInternal(this);

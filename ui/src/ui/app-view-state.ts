@@ -21,6 +21,11 @@ import type {
   SkillMessage,
   SkillSetupItemState,
 } from "./controllers/skills.ts";
+import type {
+  SpendingLoadState,
+  SpendingSaveState,
+  SpendingStatus,
+} from "./controllers/spending.ts";
 import type { EmbedSandboxMode } from "./embed-sandbox.ts";
 import type { GatewayBrowserClient, GatewayHelloOk } from "./gateway.ts";
 import type { Tab } from "./navigation.ts";
@@ -247,9 +252,11 @@ export type AppViewState = {
   connectionDrafts: Record<string, string>;
   connectionBusyKey: string | null;
   connectionNotice: { skillKey: string; kind: "success" | "error"; message: string } | null;
-  spendingThisMonthUsd: number | null;
-  spendingLimitUsd: number | null;
-  spendingExceeded: boolean;
+  connectionDialog: import("./views/connections.ts").ConnectionDialogState | null;
+  accountSignIn: import("./controllers/account-sign-in.ts").AccountSignInStore;
+  spendingStatus: SpendingStatus | null;
+  spendingLoad: SpendingLoadState;
+  spendingSave: SpendingSaveState;
   configSnapshot: ConfigSnapshot | null;
   configSchema: unknown;
   configSchemaVersion: string | null;
@@ -450,6 +457,9 @@ export type AppViewState = {
   | "cronError"
   | "cronForm"
   | "cronFormCollapsed"
+  | "cronDraftText"
+  | "cronDraftBusy"
+  | "cronDraftError"
   | "cronFieldErrors"
   | "cronEditingJobId"
   | "cronRunsJobId"
@@ -534,6 +544,8 @@ export type AppViewState = {
     updateAvailable: import("./types.js").UpdateAvailable | null;
     attentionItems: AttentionItem[];
     paletteOpen: boolean;
+    paletteChatSearch: import("./chat/chat-search.ts").PaletteChatSearchState;
+    shortcutsOpen: boolean;
     themePopoverOpen: boolean;
     paletteQuery: string;
     paletteActiveIndex: number;

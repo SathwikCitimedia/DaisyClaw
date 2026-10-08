@@ -2571,6 +2571,41 @@ describe("resolveGatewayModelSupportsImages", () => {
     ).resolves.toBe(true);
   });
 
+  test("answers from the saved model list without building the full one", async () => {
+    const loadGatewayModelCatalog = vi.fn(async (params?: { readOnly?: boolean }) =>
+      params?.readOnly
+        ? [{ id: "vision", name: "Vision", provider: "litellm", input: ["text", "image"] as const }]
+        : [],
+    );
+    await expect(
+      resolveGatewayModelSupportsImages({
+        model: "vision",
+        provider: "litellm",
+        preferSavedCatalog: true,
+        loadGatewayModelCatalog: loadGatewayModelCatalog as never,
+      }),
+    ).resolves.toBe(true);
+    expect(loadGatewayModelCatalog).toHaveBeenCalledTimes(1);
+    expect(loadGatewayModelCatalog).toHaveBeenCalledWith({ readOnly: true });
+  });
+
+  test("builds the full model list when the saved one does not know the model", async () => {
+    const loadGatewayModelCatalog = vi.fn(async (params?: { readOnly?: boolean }) =>
+      params?.readOnly
+        ? []
+        : [{ id: "fresh", name: "Fresh", provider: "litellm", input: ["text", "image"] as const }],
+    );
+    await expect(
+      resolveGatewayModelSupportsImages({
+        model: "fresh",
+        provider: "litellm",
+        preferSavedCatalog: true,
+        loadGatewayModelCatalog: loadGatewayModelCatalog as never,
+      }),
+    ).resolves.toBe(true);
+    expect(loadGatewayModelCatalog).toHaveBeenLastCalledWith({ readOnly: false });
+  });
+
   test("fails closed on ambiguous providerless catalog matches", async () => {
     await expect(
       resolveGatewayModelSupportsImages({

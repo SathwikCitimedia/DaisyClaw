@@ -61,7 +61,12 @@ import {
   type LoadSessionsOverrides,
   type SessionsState,
 } from "./controllers/sessions.ts";
-import { GatewayRequestError, type GatewayBrowserClient, type GatewayHelloOk } from "./gateway.ts";
+import {
+  GatewayRequestError,
+  GatewayRequestTimeoutError,
+  type GatewayBrowserClient,
+  type GatewayHelloOk,
+} from "./gateway.ts";
 import { normalizeBasePath } from "./navigation.ts";
 import {
   areUiSessionKeysEquivalent,
@@ -542,6 +547,38 @@ function removeVisibleOrScopedQueuedMessageWithoutReleasing(
     removeQueuedMessageWithoutReleasing(host, id) ??
     (sessionKey ? removeQueuedMessageWithoutReleasing(host, id, sessionKey) : null)
   );
+}
+
+/**
+ * How many times a send asks a slow gateway before the message is shown as
+ * not sent. Each ask waits out the request timeout (30 s), so this is about
+ * two minutes. The gateway confirms a message only once its files are saved,
+ * so a confirmation that takes a while is not a failure.
+ */
+const CHAT_SEND_CONFIRM_ATTEMPTS = 4;
+
+/** Shown under a message the gateway never confirmed. */
+export const CHAT_SEND_UNCONFIRMED_MESSAGE =
+  "DaisyClaw didn't confirm this message. Retry won't send it twice.";
+
+async function requestChatSendPatiently(
+  host: ChatHost,
+  params: Parameters<typeof requestChatSend>[1],
+): Promise<ChatSendAck> {
+  let attempt = 0;
+  for (;;) {
+    attempt += 1;
+    try {
+      return await requestChatSend(host as unknown as ChatState, params);
+    } catch (err) {
+      // Asking again with the same run id is safe: the gateway recognises the
+      // message and reports it in progress instead of running it twice.
+      const timedOut = err instanceof GatewayRequestTimeoutError;
+      if (!timedOut || attempt >= CHAT_SEND_CONFIRM_ATTEMPTS || !host.connected) {
+        throw err;
+      }
+    }
+  }
 }
 
 function isRecoverableChatSendError(err: unknown, formattedError: string): boolean {
@@ -1064,7 +1101,7 @@ async function sendQueuedChatMessage(
           runId,
           sessionKey,
         })
-      : await requestChatSend(host as unknown as ChatState, {
+      : await requestChatSendPatiently(host, {
           message,
           attachments: hasAttachments ? attachments : undefined,
           runId,
@@ -1133,7 +1170,10 @@ async function sendQueuedChatMessage(
     discardChatAttachmentDataUrls(excludeComposerAttachments(host, attachments));
     return "sent";
   } catch (err) {
-    const error = formatConnectError(err);
+    // A message the gateway never confirmed may still be running, so it is not
+    // put back in the box: sending it again from there would send it twice.
+    const unconfirmed = err instanceof GatewayRequestTimeoutError;
+    const error = unconfirmed ? CHAT_SEND_UNCONFIRMED_MESSAGE : formatConnectError(err);
     if (isRecoverableChatSendError(err, error)) {
       updateQueuedMessageForSession(host, sessionKey, id, (item) => ({
         ...item,
@@ -1155,7 +1195,9 @@ async function sendQueuedChatMessage(
     }));
     if (isVisibleSession()) {
       setChatError(host, error);
-      restoreComposerAfterFailedSend(host, opts ?? {});
+      if (!unconfirmed) {
+        restoreComposerAfterFailedSend(host, opts ?? {});
+      }
     }
     recordChatSendTiming(host, prepared, "failed", prepared.sendSubmittedAtMs, { error });
     return "failed";
@@ -1579,6 +1621,25 @@ export function removeQueuedMessage(host: ChatHost, id: string) {
   for (const item of removed) {
     releaseChatAttachmentPayloads(excludeComposerAttachments(host, item.attachments));
   }
+}
+
+/**
+ * A message shown as not sent can still reach the gateway after the screen
+ * stopped waiting for it. Its reply proves it did, so the not-sent line goes.
+ * Returns true when such a message was found.
+ */
+export function settleUnconfirmedSendForRun(host: ChatHost, runId: string | undefined): boolean {
+  if (!runId) {
+    return false;
+  }
+  const item = host.chatQueue.find(
+    (entry) => entry.sendRunId === runId && entry.sendState === "failed",
+  );
+  if (!item) {
+    return false;
+  }
+  removeQueuedMessage(host, item.id);
+  return true;
 }
 
 export function clearPendingQueueItemsForRun(host: ChatHost, runId: string | undefined) {

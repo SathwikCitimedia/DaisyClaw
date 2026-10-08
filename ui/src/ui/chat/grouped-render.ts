@@ -8,8 +8,8 @@ import { getSafeLocalStorage } from "../../local-storage.ts";
 import type { AssistantIdentity } from "../assistant-identity.ts";
 import type { EmbedSandboxMode } from "../embed-sandbox.ts";
 import { icons } from "../icons.ts";
+import { openImageViewerFromElement } from "../image-viewer.ts";
 import { toSanitizedMarkdownHtml, toStreamingMarkdownHtml } from "../markdown.ts";
-import { openExternalUrlSafe } from "../open-external-url.ts";
 import type { SidebarContent } from "../sidebar-content.ts";
 import { detectTextDirection } from "../text-direction.ts";
 import { resolveToolDisplay } from "../tool-display.ts";
@@ -20,6 +20,8 @@ import type {
   ToolCard,
 } from "../types/chat-types.ts";
 import { resolveLocalUserName } from "../user-identity.ts";
+import { renderFileCard } from "./file-card.ts";
+import { resolveFullMessageText, TRUNCATION_MARKER } from "./full-message-text.ts";
 export { resolveAssistantTextAvatar } from "../views/agents-utils.ts";
 import { renderChatAvatar } from "./chat-avatar.ts";
 import { renderCopyAsMarkdownButton } from "./copy-as-markdown.ts";
@@ -389,6 +391,7 @@ export function renderStreamingGroup(
   assistant?: AssistantIdentity,
   basePath?: string,
   authToken?: string | null,
+  media?: { localMediaPreviewRoots?: readonly string[]; onRequestUpdate?: () => void },
 ) {
   const name = assistant?.name ?? "Assistant";
 
@@ -403,7 +406,16 @@ export function renderStreamingGroup(
             timestamp: startedAt,
           },
           `stream:${startedAt}`,
-          { isStreaming, showReasoning: false },
+          {
+            isStreaming,
+            showReasoning: false,
+            // An image made mid-reply shows as soon as it is ready, loaded the
+            // same way as in a finished message.
+            basePath,
+            assistantAttachmentAuthToken: authToken,
+            localMediaPreviewRoots: media?.localMediaPreviewRoots ?? [],
+            onRequestUpdate: media?.onRequestUpdate,
+          },
           onOpenSidebar,
         )}
         <div class="chat-group-footer">
@@ -456,6 +468,17 @@ export function renderMessageGroup(
     onEditSubmit?: (key: string, text: string) => void;
     /** Next-action chips rendered inline in the footer of the latest assistant group. */
     actionChips?: TemplateResult | typeof nothing;
+    /** Identity the pinned bar uses to find this group again; absent when it cannot be pinned. */
+    pinId?: string | null;
+    /** Every identity of this group's messages, so a pin made under an older one still finds it. */
+    pinIds?: readonly string[];
+    pinned?: boolean;
+    onTogglePin?: () => void;
+    /** Present only on the latest reply, when asking again is safe. */
+    onRegenerate?: () => void;
+    regenerating?: boolean;
+    /** Delivery of messages in this group that the gateway has not confirmed yet. */
+    sendStatuses?: readonly ChatSendStatus[];
   },
 ) {
   const normalizedRole = normalizeRoleForGrouping(group.role);
@@ -620,7 +643,11 @@ export function renderMessageGroup(
   }
 
   return html`
-    <div class="chat-group ${roleClass}">
+    <div
+      class="chat-group ${roleClass} ${opts.pinned ? "chat-group--pinned" : ""}"
+      data-pin-id=${opts.pinId ?? nothing}
+      data-pin-ids=${opts.pinIds?.length ? opts.pinIds.join(" ") : nothing}
+    >
       ${renderChatAvatar(
         group.role,
         {
@@ -665,6 +692,7 @@ export function renderMessageGroup(
         ${normalizedRole === "user" && opts.editingBusyKey === group.key
           ? renderEditUpdating()
           : nothing}
+        ${normalizedRole === "user" ? (opts.sendStatuses ?? []).map(renderSendStatus) : nothing}
         <div class="chat-group-footer">
           ${normalizedRole === "user"
             ? html`
@@ -676,6 +704,9 @@ export function renderMessageGroup(
                   : opts.onEdit
                     ? renderEditButton(() => opts.onEdit!(groupPlainText(group)))
                     : nothing}
+                ${opts.onTogglePin
+                  ? renderPinButton(opts.onTogglePin, opts.pinned === true)
+                  : nothing}
                 ${opts.onDelete
                   ? renderDeleteButton(
                       opts.onDelete,
@@ -692,6 +723,12 @@ export function renderMessageGroup(
                 ${normalizedRole === "assistant" ? (opts.actionChips ?? nothing) : nothing}
                 ${opts.onQuote
                   ? renderQuoteButton(() => opts.onQuote!(groupPlainText(group)))
+                  : nothing}
+                ${opts.onTogglePin
+                  ? renderPinButton(opts.onTogglePin, opts.pinned === true)
+                  : nothing}
+                ${opts.onRegenerate
+                  ? renderRegenerateButton(opts.onRegenerate, opts.regenerating === true)
                   : nothing}
               `}
         </div>
@@ -795,6 +832,44 @@ function renderEditButton(onEdit: () => void) {
       }}
     >
       ${icons.penLine}
+    </button>
+  `;
+}
+
+function renderPinButton(onToggle: () => void, pinned: boolean) {
+  const label = pinned ? t("chat.messageActions.unpin") : t("chat.messageActions.pin");
+  return html`
+    <button
+      class="chat-group-pin ${pinned ? "chat-group-pin--active" : ""}"
+      title=${label}
+      aria-label=${label}
+      aria-pressed=${pinned ? "true" : "false"}
+      type="button"
+      @click=${(e: Event) => {
+        e.stopPropagation();
+        onToggle();
+      }}
+    >
+      ${pinned ? icons.pinOff : icons.pin}
+    </button>
+  `;
+}
+
+function renderRegenerateButton(onRegenerate: () => void, busy: boolean) {
+  const label = busy ? t("chat.messageActions.regenerating") : t("chat.messageActions.regenerate");
+  return html`
+    <button
+      class="chat-group-regenerate ${busy ? "chat-group-regenerate--busy" : ""}"
+      title=${label}
+      aria-label=${label}
+      type="button"
+      ?disabled=${busy}
+      @click=${(e: Event) => {
+        e.stopPropagation();
+        onRegenerate();
+      }}
+    >
+      ${icons.refresh}
     </button>
   `;
 }
@@ -907,6 +982,53 @@ function renderInlineEdit(
 }
 
 // Shown under the user's bubble while an edit is being applied (fork + send).
+export type ChatSendStatus = {
+  state: "failed" | "waiting-reconnect" | "waiting-model";
+  /** Why it failed, in words the person can act on. */
+  error?: string;
+  onRetry?: () => void;
+  onRemove?: () => void;
+};
+
+/** How delivery of a just-sent message is going, under its bubble. */
+function renderSendStatus(status: ChatSendStatus) {
+  const failed = status.state === "failed";
+  const text = failed
+    ? (status.error ?? t("chat.sendStatus.failed"))
+    : status.state === "waiting-reconnect"
+      ? t("chat.sendStatus.waitingReconnect")
+      : t("chat.sendStatus.waitingModel");
+  return html`
+    <div
+      class="chat-send-status ${failed ? "chat-send-status--failed" : ""}"
+      role=${failed ? "alert" : "status"}
+    >
+      ${failed ? html`<span class="chat-send-status__icon" aria-hidden="true">!</span>` : nothing}
+      <span class="chat-send-status__text">${text}</span>
+      ${failed && status.onRetry
+        ? html`<button
+            class="chat-send-status__action"
+            type="button"
+            title=${t("chat.queue.retrySend")}
+            @click=${status.onRetry}
+          >
+            ${icons.refresh}<span>${t("chat.queue.retry")}</span>
+          </button>`
+        : nothing}
+      ${status.onRemove
+        ? html`<button
+            class="chat-send-status__action"
+            type="button"
+            aria-label=${t("chat.sendStatus.removeLabel")}
+            @click=${status.onRemove}
+          >
+            ${t("chat.sendStatus.remove")}
+          </button>`
+        : nothing}
+    </div>
+  `;
+}
+
 function renderEditUpdating() {
   return html`
     <div class="chat-inline-edit__updating" role="status" aria-live="polite">
@@ -917,7 +1039,7 @@ function renderEditUpdating() {
 }
 
 // Flatten a group's messages to plain text for edit/quote actions.
-function groupPlainText(group: MessageGroup): string {
+export function groupPlainText(group: MessageGroup): string {
   return group.messages
     .map((item) => {
       const content = (item.message as { content?: unknown }).content;
@@ -1059,10 +1181,6 @@ function renderMessageImages(images: RenderableImageBlock[], opts?: ImageRenderO
     return nothing;
   }
 
-  const openImage = (url: string) => {
-    openExternalUrlSafe(url, { allowDataImage: true });
-  };
-
   const renderImageElement = (img: RenderableImageBlock, previewUrl: string) => html`
     <img
       src=${previewUrl}
@@ -1070,7 +1188,8 @@ function renderMessageImages(images: RenderableImageBlock[], opts?: ImageRenderO
       class="chat-message-image"
       width=${img.width ?? nothing}
       height=${img.height ?? nothing}
-      @click=${() => openImage(previewUrl)}
+      @click=${(event: Event) =>
+        openImageViewerFromElement(event.currentTarget as HTMLImageElement)}
     />
   `;
 
@@ -1516,7 +1635,8 @@ function renderAssistantAttachments(
               src=${attachmentUrl}
               alt=${attachment.label}
               class="chat-message-image"
-              @click=${() => openExternalUrlSafe(attachmentUrl, { allowDataImage: true })}
+              @click=${(event: Event) =>
+                openImageViewerFromElement(event.currentTarget as HTMLImageElement)}
             />
           `;
         }
@@ -1567,25 +1687,26 @@ function renderAssistantAttachments(
           `;
         }
         if (!attachmentUrl) {
-          return renderAssistantAttachmentStatusCard({
-            kind: "document",
-            label: attachment.label,
-            badge: availability.status === "checking" ? "Checking..." : "Unavailable",
-            reason: availability.status === "unavailable" ? availability.reason : undefined,
-          });
+          // Same card as an openable file, so the file still reads as itself;
+          // the type line says why it can't be opened.
+          return html`
+            ${renderFileCard({
+              fileName: attachment.label,
+              mimeType: attachment.mimeType,
+              status: availability.status === "checking" ? "Checking…" : "Unavailable",
+            })}
+            ${availability.status === "unavailable" && availability.reason
+              ? html`<div class="chat-assistant-attachment-card__reason">
+                  ${availability.reason}
+                </div>`
+              : nothing}
+          `;
         }
-        return html`
-          <div class="chat-assistant-attachment-card">
-            <span class="chat-assistant-attachment-card__icon">${icons.paperclip}</span>
-            <a
-              class="chat-assistant-attachment-card__link"
-              href=${attachmentUrl}
-              target="_blank"
-              rel="noreferrer"
-              >${attachment.label}</a
-            >
-          </div>
-        `;
+        return renderFileCard({
+          fileName: attachment.label,
+          mimeType: attachment.mimeType,
+          href: attachmentUrl,
+        });
       })}
     </div>
   `;
@@ -1773,11 +1894,6 @@ function renderGroupedMessage(
     opts.showReasoning && role === "assistant" ? extractThinkingCached(message) : null;
   const markdownBase = extractedText?.trim() ? extractedText : null;
   const reasoningMarkdown = extractedThinking ? formatReasoningMarkdown(extractedThinking) : null;
-  const markdown = markdownBase;
-  const markdownRenderOptions = role === "user" ? { codeBlockChrome: "none" as const } : undefined;
-  const canCopyMarkdown = role === "assistant" && Boolean(markdown?.trim());
-  const canExpand = role === "assistant" && Boolean(onOpenSidebar && markdown?.trim());
-  const hasActions = canCopyMarkdown || canExpand;
   const transcriptMeta =
     m["__daisyclaw"] && typeof m["__daisyclaw"] === "object" && !Array.isArray(m["__daisyclaw"])
       ? (m["__daisyclaw"] as Record<string, unknown>)
@@ -1791,8 +1907,24 @@ function renderGroupedMessage(
   const shouldFetchFullMessage = Boolean(
     sidebarMessageId &&
     !m.daisyclawMessageToolMirror &&
-    (transcriptMeta?.truncated === true || markdown?.includes("\n...(truncated)...")),
+    (transcriptMeta?.truncated === true || markdownBase?.includes(TRUNCATION_MARKER)),
   );
+  // History can cap a very long message; the whole one is saved, so the bubble
+  // shows that rather than an answer that stops mid-sentence.
+  const fullText =
+    shouldFetchFullMessage && sidebarMessageId && opts.sessionKey && !opts.isStreaming
+      ? resolveFullMessageText({
+          sessionKey: opts.sessionKey,
+          ...(opts.agentId ? { agentId: opts.agentId } : {}),
+          messageId: sidebarMessageId,
+          onReady: opts.onRequestUpdate,
+        })
+      : undefined;
+  const markdown = fullText ?? markdownBase;
+  const markdownRenderOptions = role === "user" ? { codeBlockChrome: "none" as const } : undefined;
+  const canCopyMarkdown = role === "assistant" && Boolean(markdown?.trim());
+  const canExpand = role === "assistant" && Boolean(onOpenSidebar && markdown?.trim());
+  const hasActions = canCopyMarkdown || canExpand;
 
   // Detect pure-JSON messages and render as collapsible block
   const jsonResult = markdown && !opts.isStreaming ? detectJson(markdown) : null;

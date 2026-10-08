@@ -8,6 +8,8 @@
 
 import { html, nothing } from "lit";
 import { t } from "../../i18n/index.ts";
+import { DEFAULT_CRON_FORM } from "../app-defaults.ts";
+import { describeCronForm } from "../cron-describe.ts";
 import { icons } from "../icons.ts";
 import type { CronFormState } from "../ui-types.ts";
 
@@ -22,6 +24,17 @@ export type CronQuickCreateProps = {
   onCreate: () => void;
   onCancel: () => void;
   onAdvancedCreate?: () => void;
+  /**
+   * Splits the step-one sentence into task and schedule before step two. When
+   * absent, Next simply moves on.
+   */
+  onDescribe?: () => void;
+  /** Whether a chat app is set up to receive results. */
+  hasChatApps?: boolean;
+  /** True while the job is being saved. */
+  creating?: boolean;
+  /** Why the last save failed, in words for the user. */
+  createError?: string | null;
 };
 
 export type CronQuickCreateStep = "what" | "when" | "how";
@@ -31,6 +44,26 @@ export type CronQuickCreateDraft = {
   name: string;
   schedulePreset: SchedulePresetId | "custom";
   deliveryPreset: DeliveryPresetId;
+  /** The schedule for the "custom" preset; times are local datetime values. */
+  custom?: CronQuickCreateCustomSchedule;
+  /** True while step one's sentence is being split into task and schedule. */
+  describing?: boolean;
+  /** Set when the task was rewritten from the user's sentence, to say so. */
+  splitFrom?: string;
+  /** Why the last Create failed, shown above the buttons until the next try. */
+  createError?: string;
+};
+
+export type CronQuickCreateCustomSchedule =
+  | { kind: "every"; amount: string; unit: CronFormState["everyUnit"]; startAt: string }
+  | { kind: "cron"; expr: string }
+  | { kind: "at"; at: string };
+
+const DEFAULT_CUSTOM_SCHEDULE: CronQuickCreateCustomSchedule = {
+  kind: "every",
+  amount: "30",
+  unit: "minutes",
+  startAt: "",
 };
 
 type SchedulePresetId =
@@ -91,12 +124,22 @@ const SCHEDULE_PRESETS: SchedulePreset[] = [
   },
 ];
 
+const CUSTOM_PRESET = {
+  labelKey: "cron.quickCreate.schedules.custom.label",
+  icon: "⏱",
+  descriptionKey: "cron.quickCreate.schedules.custom.description",
+};
+
 type DeliveryPreset = {
   id: DeliveryPresetId;
   labelKey: string;
   descriptionKey: string;
 };
 
+// Two choices: tell me, or don't. "Silent" used to run the task inside the main
+// chat, which the scheduler allows only for reminder notes, so every task saved
+// with it was refused and Create seemed to do nothing. Both now run the task on
+// its own. The old "Independent session" was the same as the new Silent.
 const DELIVERY_PRESETS: DeliveryPreset[] = [
   {
     id: "notify",
@@ -107,11 +150,6 @@ const DELIVERY_PRESETS: DeliveryPreset[] = [
     id: "silent",
     labelKey: "cron.quickCreate.delivery.silent.label",
     descriptionKey: "cron.quickCreate.delivery.silent.description",
-  },
-  {
-    id: "isolated",
-    labelKey: "cron.quickCreate.delivery.isolated.label",
-    descriptionKey: "cron.quickCreate.delivery.isolated.description",
   },
 ];
 
@@ -135,6 +173,46 @@ function buildDefaultScheduleAt(now = new Date()): string {
   const hour = String(next.getHours()).padStart(2, "0");
   const minute = String(next.getMinutes()).padStart(2, "0");
   return `${year}-${month}-${day}T${hour}:${minute}`;
+}
+
+/**
+ * Takes a job drafted from the step-one sentence: the task without its timing,
+ * and the timing as a custom schedule, so "every 20 min … starting 4:05 PM"
+ * is not squeezed into the nearest preset.
+ */
+export function applyCronDraftToQuickCreate(
+  draft: CronQuickCreateDraft,
+  job: {
+    name: string;
+    task: string;
+    schedule:
+      | { kind: "every"; amount: number; unit: CronFormState["everyUnit"]; startAt?: string }
+      | { kind: "cron"; expr: string }
+      | { kind: "at"; at: string };
+  },
+): CronQuickCreateDraft {
+  const schedule = job.schedule;
+  const custom: CronQuickCreateCustomSchedule =
+    schedule.kind === "every"
+      ? {
+          kind: "every",
+          amount: String(schedule.amount),
+          unit: schedule.unit,
+          startAt: schedule.startAt ?? "",
+        }
+      : schedule.kind === "cron"
+        ? { kind: "cron", expr: schedule.expr }
+        : { kind: "at", at: schedule.at };
+  const original = draft.prompt.trim();
+  return {
+    ...draft,
+    name: draft.name.trim() || job.name,
+    prompt: job.task,
+    splitFrom: job.task !== original ? original : undefined,
+    schedulePreset: "custom",
+    custom,
+    describing: false,
+  };
 }
 
 // ── Convert draft to CronFormState patch ──
@@ -177,6 +255,28 @@ export function draftToCronFormPatch(draft: CronQuickCreateDraft): Partial<CronF
       patch.scheduleAt = buildDefaultScheduleAt();
       patch.deleteAfterRun = true;
       break;
+    case "custom": {
+      const custom = draft.custom ?? DEFAULT_CUSTOM_SCHEDULE;
+      if (custom.kind === "every") {
+        patch.scheduleKind = "every";
+        patch.everyAmount = custom.amount;
+        patch.everyUnit = custom.unit;
+        patch.everyStartAt = custom.startAt;
+      } else if (custom.kind === "cron") {
+        patch.scheduleKind = "cron";
+        patch.cronExpr = custom.expr;
+        try {
+          patch.cronTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+        } catch {
+          // Leave the gateway's own time zone.
+        }
+      } else {
+        patch.scheduleKind = "at";
+        patch.scheduleAt = custom.at;
+        patch.deleteAfterRun = true;
+      }
+      break;
+    }
     default:
       break;
   }
@@ -189,10 +289,6 @@ export function draftToCronFormPatch(draft: CronQuickCreateDraft): Partial<CronF
       patch.wakeMode = "now";
       break;
     case "silent":
-      patch.sessionTarget = "main";
-      patch.deliveryMode = "none";
-      patch.wakeMode = "now";
-      break;
     case "isolated":
       patch.sessionTarget = "isolated";
       patch.deliveryMode = "none";
@@ -277,11 +373,82 @@ function renderWhatStep(props: CronQuickCreateProps) {
       </div>
       <button
         class="btn primary"
-        ?disabled=${!props.draft.prompt.trim()}
-        @click=${() => props.onStepChange("when")}
+        ?disabled=${!props.draft.prompt.trim() || props.draft.describing}
+        @click=${() => (props.onDescribe ? props.onDescribe() : props.onStepChange("when"))}
       >
-        ${t("common.next")} ${icons.chevronRight}
+        ${props.draft.describing
+          ? t("cron.quickCreate.describing")
+          : html`${t("common.next")} ${icons.chevronRight}`}
       </button>
+    </div>
+  `;
+}
+
+function renderCustomScheduleFields(props: CronQuickCreateProps) {
+  const custom = props.draft.custom ?? DEFAULT_CUSTOM_SCHEDULE;
+  const set = (next: CronQuickCreateCustomSchedule) => props.onDraftChange({ custom: next });
+  if (custom.kind === "cron") {
+    return html`
+      <div class="cqc-custom">
+        <label class="cqc-field__label" for="cqc-custom-cron">${t("cron.form.expression")}</label>
+        <input
+          id="cqc-custom-cron"
+          class="cqc-input"
+          .value=${custom.expr}
+          @input=${(e: Event) => set({ kind: "cron", expr: (e.target as HTMLInputElement).value })}
+        />
+      </div>
+    `;
+  }
+  if (custom.kind === "at") {
+    return html`
+      <div class="cqc-custom">
+        <label class="cqc-field__label" for="cqc-custom-at">${t("cron.form.runAt")}</label>
+        <input
+          id="cqc-custom-at"
+          class="cqc-input"
+          type="datetime-local"
+          .value=${custom.at}
+          @input=${(e: Event) => set({ kind: "at", at: (e.target as HTMLInputElement).value })}
+        />
+      </div>
+    `;
+  }
+  return html`
+    <div class="cqc-custom cqc-custom--every">
+      <label class="cqc-field__label" for="cqc-custom-amount">${t("cron.form.every")}</label>
+      <div class="cqc-custom__row">
+        <input
+          id="cqc-custom-amount"
+          class="cqc-input cqc-custom__amount"
+          inputmode="numeric"
+          .value=${custom.amount}
+          @input=${(e: Event) =>
+            set({ ...custom, amount: (e.target as HTMLInputElement).value.replace(/\D/g, "") })}
+        />
+        <select
+          class="cqc-input cqc-custom__unit"
+          .value=${custom.unit}
+          @change=${(e: Event) =>
+            set({
+              ...custom,
+              unit: (e.target as HTMLSelectElement).value as CronFormState["everyUnit"],
+            })}
+        >
+          <option value="minutes">${t("cron.form.minutes")}</option>
+          <option value="hours">${t("cron.form.hours")}</option>
+          <option value="days">${t("cron.form.days")}</option>
+        </select>
+      </div>
+      <label class="cqc-field__label" for="cqc-custom-start">${t("cron.form.startingAt")}</label>
+      <input
+        id="cqc-custom-start"
+        class="cqc-input"
+        type="datetime-local"
+        .value=${custom.startAt}
+        @input=${(e: Event) => set({ ...custom, startAt: (e.target as HTMLInputElement).value })}
+      />
+      <span class="cqc-body__hint muted">${t("cron.form.startingAtHint")}</span>
     </div>
   `;
 }
@@ -291,6 +458,12 @@ function renderWhenStep(props: CronQuickCreateProps) {
     <div class="cqc-body">
       <h3 class="cqc-body__heading">${t("cron.quickCreate.whenHeading")}</h3>
       <p class="cqc-body__hint muted">${t("cron.quickCreate.whenHint")}</p>
+      ${props.draft.splitFrom
+        ? html`<div class="cqc-split-note" role="status">
+            <span>${t("cron.quickCreate.splitNote")}</span>
+            <span class="cqc-split-note__task">${props.draft.prompt}</span>
+          </div>`
+        : nothing}
       <div class="cqc-preset-grid">
         ${SCHEDULE_PRESETS.map(
           (preset) => html`
@@ -306,7 +479,22 @@ function renderWhenStep(props: CronQuickCreateProps) {
             </button>
           `,
         )}
+        <button
+          class="cqc-preset-card ${props.draft.schedulePreset === "custom"
+            ? "cqc-preset-card--active"
+            : ""}"
+          @click=${() =>
+            props.onDraftChange({
+              schedulePreset: "custom",
+              custom: props.draft.custom ?? DEFAULT_CUSTOM_SCHEDULE,
+            })}
+        >
+          <span class="cqc-preset-card__icon">${CUSTOM_PRESET.icon}</span>
+          <span class="cqc-preset-card__label">${t(CUSTOM_PRESET.labelKey)}</span>
+          <span class="cqc-preset-card__desc muted">${t(CUSTOM_PRESET.descriptionKey)}</span>
+        </button>
       </div>
+      ${props.draft.schedulePreset === "custom" ? renderCustomScheduleFields(props) : nothing}
     </div>
     <div class="cqc-actions">
       <div class="cqc-actions__secondary">
@@ -345,14 +533,30 @@ function renderHowStep(props: CronQuickCreateProps) {
           `,
         )}
       </div>
+      <div class="cqc-summary" aria-live="polite">
+        <span class="cqc-summary__label">${t("cron.form.summaryLabel")}</span>
+        <span
+          >${describeCronForm(
+            { ...DEFAULT_CRON_FORM, ...draftToCronFormPatch(props.draft) } as CronFormState,
+            props.hasChatApps === true,
+          )}</span
+        >
+      </div>
     </div>
+    ${props.createError
+      ? html`<div class="cqc-error" role="alert">${props.createError}</div>`
+      : nothing}
     <div class="cqc-actions">
       <div class="cqc-actions__secondary">
-        <button class="btn" @click=${() => props.onStepChange("when")}>${t("common.back")}</button>
+        <button class="btn" ?disabled=${props.creating} @click=${() => props.onStepChange("when")}>
+          ${t("common.back")}
+        </button>
         ${renderAdvancedButton(props)}
       </div>
-      <button class="btn primary" @click=${props.onCreate}>
-        ${t("common.create")} ${icons.check}
+      <button class="btn primary" ?disabled=${props.creating} @click=${props.onCreate}>
+        ${props.creating
+          ? t("cron.quickCreate.creating")
+          : html`${t("common.create")} ${icons.check}`}
       </button>
     </div>
   `;

@@ -244,7 +244,7 @@ function focusChatSessionPickerSearch(state: AppViewState) {
   setTimeout(focus, 0);
 }
 
-function openChatSessionPicker(state: AppViewState, surface: ChatSessionSelectSurface) {
+export function openChatSessionPicker(state: AppViewState, surface: ChatSessionSelectSurface) {
   state.chatSessionPickerOpen = true;
   state.chatSessionPickerSurface = surface;
   state.chatSessionPickerError = null;

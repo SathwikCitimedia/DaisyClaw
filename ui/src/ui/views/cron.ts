@@ -9,6 +9,12 @@ import type {
   CronJobsLastStatusFilter,
   CronJobsScheduleKindFilter,
 } from "../controllers/cron.ts";
+import {
+  describeCronForm,
+  describeCronRunError,
+  findScheduleMismatch,
+  formatEvery,
+} from "../cron-describe.ts";
 import { getCronJobPayload } from "../cron-payload.ts";
 import { resolveCronJobLastRunStatus } from "../cron-status.ts";
 import { formatRelativeTimestamp, formatMs } from "../format.ts";
@@ -70,6 +76,14 @@ export type CronProps = {
   deliveryToSuggestions: string[];
   accountSuggestions: string[];
   onFormChange: (patch: Partial<CronFormState>) => void;
+  /** The one-sentence description above the New Job form. */
+  draftText?: string;
+  draftBusy?: boolean;
+  draftError?: string | null;
+  /** Whether a chat app is set up to receive results; otherwise they go to the Daisy chat. */
+  hasChatApps?: boolean;
+  onDraftTextChange?: (text: string) => void;
+  onDraft?: () => void;
   onRefresh: () => void;
   onAdd: () => void;
   onEdit: (job: CronJob) => void;
@@ -803,6 +817,7 @@ export function renderCron(props: CronProps) {
                 </button>
               </div>
               <div class="cron-form" ?hidden=${formCollapsed}>
+                ${renderDraftBox(props, isEditing)}
                 <div class="cron-required-legend">
                   <span class="cron-required-marker" aria-hidden="true">*</span> ${t(
                     "cron.form.required",
@@ -1005,6 +1020,7 @@ export function renderCron(props: CronProps) {
                       props.fieldErrors.payloadText,
                       errorIdForField("payloadText"),
                     )}
+                    ${renderScheduleMismatch(props)}
                   </label>
                 </section>
 
@@ -1500,6 +1516,90 @@ export function renderCron(props: CronProps) {
   `;
 }
 
+/**
+ * One sentence in, a filled-in form out: "every 20 min email Sam for an
+ * update, starting 4:05 PM". Drafting saves nothing; the user reviews the
+ * fields and the line below, then saves as usual.
+ */
+function renderDraftBox(props: CronProps, isEditing: boolean) {
+  const summary = props.form.payloadText.trim()
+    ? describeCronForm(props.form, props.hasChatApps === true)
+    : "";
+  const canDraft = Boolean(props.onDraft && props.draftText?.trim()) && !props.draftBusy;
+  return html`
+    ${!isEditing && props.onDraft
+      ? html`<section class="cron-draft">
+          <label class="cron-draft__label" for="cron-draft-text"
+            >${t("cron.form.describeLabel")}</label
+          >
+          <div class="cron-draft__row">
+            <input
+              id="cron-draft-text"
+              class="cron-draft__input"
+              .value=${props.draftText ?? ""}
+              placeholder=${t("cron.form.describePlaceholder")}
+              ?disabled=${props.draftBusy}
+              @input=${(e: Event) =>
+                props.onDraftTextChange?.((e.target as HTMLInputElement).value)}
+              @keydown=${(e: KeyboardEvent) => {
+                if (e.key === "Enter" && canDraft) {
+                  e.preventDefault();
+                  props.onDraft?.();
+                }
+              }}
+            />
+            <button
+              type="button"
+              class="btn btn--primary cron-draft__button"
+              ?disabled=${!canDraft}
+              @click=${() => props.onDraft?.()}
+            >
+              ${props.draftBusy ? t("cron.form.describeBusy") : t("cron.form.describeButton")}
+            </button>
+          </div>
+          ${props.draftError
+            ? html`<div class="cron-draft__error" role="alert">${props.draftError}</div>`
+            : html`<div class="cron-draft__hint muted">${t("cron.form.describeHint")}</div>`}
+        </section>`
+      : nothing}
+    ${summary
+      ? html`<div class="cron-draft__summary" aria-live="polite">
+          <span class="cron-draft__summary-label">${t("cron.form.summaryLabel")}</span>
+          <span>${summary}</span>
+        </div>`
+      : nothing}
+  `;
+}
+
+/**
+ * A task that says "every 20 minutes" on a schedule of every hour runs every
+ * hour, while its words ask for something else. Offers to make them agree.
+ */
+function renderScheduleMismatch(props: CronProps) {
+  const said = findScheduleMismatch(props.form);
+  if (!said) {
+    return nothing;
+  }
+  const wanted = formatEvery(said.amount, said.unit);
+  return html`
+    <div class="cron-mismatch" role="status">
+      <span>${t("cron.form.mismatch", { wanted })}</span>
+      <button
+        type="button"
+        class="btn btn--sm"
+        @click=${() =>
+          props.onFormChange({
+            scheduleKind: "every",
+            everyAmount: String(said.amount),
+            everyUnit: said.unit,
+          })}
+      >
+        ${t("cron.form.mismatchFix", { wanted })}
+      </button>
+    </div>
+  `;
+}
+
 function renderScheduleFields(props: CronProps) {
   const form = props.form;
   if (form.scheduleKind === "at") {
@@ -1556,6 +1656,17 @@ function renderScheduleFields(props: CronProps) {
             <option value="hours">${t("cron.form.hours")}</option>
             <option value="days">${t("cron.form.days")}</option>
           </select>
+        </label>
+        <label class="field cron-span-2">
+          <span>${t("cron.form.startingAt")}</span>
+          <input
+            id="cron-every-start"
+            type="datetime-local"
+            .value=${form.everyStartAt}
+            @input=${(e: Event) =>
+              props.onFormChange({ everyStartAt: (e.target as HTMLInputElement).value })}
+          />
+          <span class="field-hint muted">${t("cron.form.startingAtHint")}</span>
         </label>
       </div>
     `;
@@ -1878,7 +1989,10 @@ function renderRun(
       : usage && typeof usage.input_tokens === "number" && typeof usage.output_tokens === "number"
         ? `${usage.input_tokens} in / ${usage.output_tokens} out`
         : null;
-  const bodySource = entry.summary || entry.error || t("cron.runEntry.noSummary");
+  const bodySource =
+    entry.summary ||
+    (entry.error ? describeCronRunError(entry.error) : "") ||
+    t("cron.runEntry.noSummary");
   const showErrorInMeta = Boolean(entry.error) && Boolean(entry.summary);
   return html`
     <div class="list-item cron-run-entry">
@@ -1929,7 +2043,11 @@ function renderRun(
                 >
               </div>`
             : nothing}
-          ${showErrorInMeta ? html`<div class="muted">${entry.error}</div>` : nothing}
+          ${showErrorInMeta
+            ? html`<div class="muted" title=${entry.error ?? ""}>
+                ${describeCronRunError(entry.error)}
+              </div>`
+            : nothing}
           ${entry.deliveryError ? html`<div class="muted">${entry.deliveryError}</div>` : nothing}
         </div>
       </div>
